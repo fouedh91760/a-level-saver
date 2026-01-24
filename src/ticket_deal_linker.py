@@ -207,9 +207,11 @@ class TicketDealLinker:
 
     def _find_by_contact_email(self, ticket: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """
-        Strategy 3: Search deals by contact email.
+        Strategy 3: Search deals by contact email (2-step: Contact → Deals).
 
-        Searches for open deals associated with the ticket contact's email.
+        1. Find Contact in CRM by email
+        2. Get all Deals associated with that Contact
+        3. Return the most recent deal (preferring open deals)
         """
         contact = ticket.get("contact", {})
         email = contact.get("email") or contact.get("emailId")
@@ -218,31 +220,53 @@ class TicketDealLinker:
             logger.debug("No contact email found in ticket")
             return None
 
-        logger.info(f"Searching deals for contact email: {email}")
+        logger.info(f"Step 1: Searching CRM Contact by email: {email}")
 
         try:
-            # Search for deals with this contact email
-            # Try multiple field names that might contain the email
-            search_queries = [
-                f"(Email:equals:{email})",
-                f"(Contact_Email:equals:{email})",
-                f"((Email:equals:{email})and(Stage:not_equals:Closed Won)and(Stage:not_equals:Closed Lost))"
-            ]
+            # Step 1: Search for Contact by email
+            result = self.crm_client.search_contacts(
+                criteria=f"(Email:equals:{email})",
+                per_page=1
+            )
+            contacts = result.get("data", [])
 
-            for query in search_queries:
-                try:
-                    result = self.crm_client.search_deals(criteria=query, per_page=1)
-                    deals = result.get("data", [])
-                    if deals:
-                        return deals[0]
-                except Exception as e:
-                    logger.debug(f"Search with query '{query}' failed: {e}")
-                    continue
+            if not contacts:
+                logger.info(f"  No CRM Contact found with email: {email}")
+                return None
+
+            crm_contact = contacts[0]
+            contact_id = crm_contact.get("id")
+            contact_name = f"{crm_contact.get('First_Name', '')} {crm_contact.get('Last_Name', '')}".strip()
+
+            logger.info(f"  ✅ Found Contact: {contact_name} (ID: {contact_id})")
+
+            # Step 2: Get all Deals for this Contact
+            logger.info(f"Step 2: Searching Deals for Contact ID: {contact_id}")
+            deals = self.crm_client.get_deals_by_contact(contact_id, per_page=10)
+
+            if not deals:
+                logger.info(f"  No deals found for contact {contact_name}")
+                return None
+
+            logger.info(f"  Found {len(deals)} deal(s) for {contact_name}")
+
+            # Step 3: Return the most appropriate deal
+            # Prioritize: Open deals > Recent deals > Any deal
+            open_deals = [d for d in deals if d.get('Stage') not in ['Closed Won', 'Closed Lost']]
+
+            if open_deals:
+                deal = open_deals[0]  # Most recent open deal
+                logger.info(f"  ✅ Returning open deal: {deal.get('Deal_Name')} (Amount: {deal.get('Amount')}€)")
+                return deal
+            else:
+                # No open deals, return most recent closed deal
+                deal = deals[0]
+                logger.info(f"  ✅ Returning closed deal: {deal.get('Deal_Name')} (Amount: {deal.get('Amount')}€)")
+                return deal
 
         except Exception as e:
-            logger.warning(f"Error searching deals by email: {e}")
-
-        return None
+            logger.warning(f"Error in contact email search: {e}")
+            return None
 
     def _find_by_contact_phone(self, ticket: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """

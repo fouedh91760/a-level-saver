@@ -534,3 +534,46 @@ class ZohoCRMClient(ZohoAPIClient):
             }]
         }
         return self._make_request("POST", url, json=data)
+
+    def search_contacts(
+        self,
+        criteria: str,
+        page: int = 1,
+        per_page: int = 200
+    ) -> Dict[str, Any]:
+        """
+        Search for contacts using criteria.
+
+        Example: search_contacts("(Email:equals:john@example.com)")
+        """
+        url = f"{settings.zoho_crm_api_url}/Contacts/search"
+        params = {
+            "criteria": criteria,
+            "page": page,
+            "per_page": per_page
+        }
+        return self._make_request("GET", url, params=params)
+
+    def get_deals_by_contact(
+        self,
+        contact_id: str,
+        per_page: int = 200
+    ) -> List[Dict[str, Any]]:
+        """
+        Get all deals associated with a specific contact.
+
+        Args:
+            contact_id: The Zoho CRM Contact ID
+            per_page: Items per page (max 200)
+
+        Returns:
+            List of deals associated with the contact
+        """
+        try:
+            # Search deals where Contact_Name.id equals the contact_id
+            criteria = f"(Contact_Name:equals:{contact_id})"
+            result = self.search_deals(criteria=criteria, per_page=per_page)
+            return result.get("data", [])
+        except Exception as e:
+            logger.warning(f"Error getting deals for contact {contact_id}: {e}")
+            return []
