@@ -447,20 +447,21 @@ Always respond in JSON format with the following structure:
         # Format: https://crm.zoho.{datacenter}/crm/tab/Potentials/{deal_id}
         deal_url = f"https://crm.zoho.{settings.zoho_datacenter}/crm/tab/Potentials/{deal_id}"
 
-        # Format as HTML clickable link
-        clickable_link = f'<a href="{deal_url}" target="_blank">{deal_name}</a>'
+        # Format as plain text with deal name and URL
+        # Zoho Desk will automatically make the URL clickable in the UI
+        field_value = f"{deal_name} - {deal_url}"
 
         # Update ticket with custom field in the correct format
         # Zoho Desk requires custom fields to be nested under "cf" key
         update_data = {
             "cf": {
-                "cf_opportunite": clickable_link
+                "cf_opportunite": field_value
             }
         }
 
         try:
             self.desk_client.update_ticket(ticket_id, update_data)
-            logger.info(f"Updated ticket {ticket_id} custom field 'cf_opportunite' with clickable link: {deal_name} -> {deal_url}")
+            logger.info(f"Updated ticket {ticket_id} custom field 'cf_opportunite': {deal_name} -> {deal_url}")
         except Exception as e:
             logger.error(f"Failed to update ticket {ticket_id} with deal URL: {e}")
             raise e
