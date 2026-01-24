@@ -102,6 +102,61 @@ class ZohoAPIClient:
 class ZohoDeskClient(ZohoAPIClient):
     """Client for Zoho Desk API operations."""
 
+    def _get_all_pages(
+        self,
+        url: str,
+        params: Optional[Dict[str, Any]] = None,
+        limit_per_page: int = 100
+    ) -> List[Dict[str, Any]]:
+        """
+        Helper method to automatically fetch all pages from a paginated endpoint.
+
+        Args:
+            url: API endpoint URL
+            params: Query parameters
+            limit_per_page: Number of items per page (max 100 for Zoho)
+
+        Returns:
+            List of all items across all pages
+        """
+        all_items = []
+        from_index = 0
+
+        if params is None:
+            params = {}
+
+        while True:
+            # Update pagination parameters
+            params["from"] = from_index
+            params["limit"] = limit_per_page
+
+            logger.info(f"Fetching page starting at index {from_index}")
+
+            response = self._make_request("GET", url, params=params)
+
+            # Get items from response
+            items = response.get("data", [])
+
+            if not items:
+                # No more items, we're done
+                break
+
+            all_items.extend(items)
+
+            # Check if there are more pages
+            # Zoho typically returns less items than limit when it's the last page
+            if len(items) < limit_per_page:
+                # Last page reached
+                break
+
+            # Move to next page
+            from_index += len(items)
+
+            logger.info(f"Retrieved {len(items)} items. Total so far: {len(all_items)}")
+
+        logger.info(f"Pagination complete. Total items retrieved: {len(all_items)}")
+        return all_items
+
     def get_ticket(self, ticket_id: str) -> Dict[str, Any]:
         """Get a specific ticket by ID."""
         url = f"{settings.zoho_desk_api_url}/tickets/{ticket_id}"
@@ -114,7 +169,11 @@ class ZohoDeskClient(ZohoAPIClient):
         limit: int = 50,
         from_index: int = 0
     ) -> Dict[str, Any]:
-        """List tickets with optional filters."""
+        """
+        List tickets with optional filters (single page).
+
+        For fetching ALL tickets, use list_all_tickets() instead.
+        """
         url = f"{settings.zoho_desk_api_url}/tickets"
         params = {
             "orgId": settings.zoho_desk_org_id,
@@ -125,6 +184,31 @@ class ZohoDeskClient(ZohoAPIClient):
             params["status"] = status
 
         return self._make_request("GET", url, params=params)
+
+    def list_all_tickets(
+        self,
+        status: Optional[str] = None,
+        limit_per_page: int = 100
+    ) -> List[Dict[str, Any]]:
+        """
+        List ALL tickets with automatic pagination.
+
+        This method automatically fetches all pages and returns all tickets.
+
+        Args:
+            status: Optional status filter (e.g., "Open", "Pending", "Closed")
+            limit_per_page: Items per page (max 100)
+
+        Returns:
+            List of all tickets
+        """
+        url = f"{settings.zoho_desk_api_url}/tickets"
+        params = {"orgId": settings.zoho_desk_org_id}
+
+        if status:
+            params["status"] = status
+
+        return self._get_all_pages(url, params, limit_per_page)
 
     def update_ticket(
         self,
@@ -358,7 +442,11 @@ class ZohoCRMClient(ZohoAPIClient):
         page: int = 1,
         per_page: int = 200
     ) -> Dict[str, Any]:
-        """Search for deals using criteria."""
+        """
+        Search for deals using criteria (single page).
+
+        For fetching ALL matching deals, use search_all_deals() instead.
+        """
         url = f"{settings.zoho_crm_api_url}/Deals/search"
         params = {
             "criteria": criteria,
@@ -366,6 +454,58 @@ class ZohoCRMClient(ZohoAPIClient):
             "per_page": per_page
         }
         return self._make_request("GET", url, params=params)
+
+    def search_all_deals(
+        self,
+        criteria: str,
+        per_page: int = 200
+    ) -> List[Dict[str, Any]]:
+        """
+        Search for ALL deals matching criteria with automatic pagination.
+
+        This method automatically fetches all pages and returns all matching deals.
+
+        Args:
+            criteria: Zoho CRM search criteria string
+            per_page: Items per page (max 200 for CRM)
+
+        Returns:
+            List of all matching deals
+        """
+        all_deals = []
+        page = 1
+
+        while True:
+            logger.info(f"Searching deals - page {page}")
+
+            response = self.search_deals(
+                criteria=criteria,
+                page=page,
+                per_page=per_page
+            )
+
+            deals = response.get("data", [])
+
+            if not deals:
+                # No more deals
+                break
+
+            all_deals.extend(deals)
+
+            # Check pagination info
+            info = response.get("info", {})
+            more_records = info.get("more_records", False)
+
+            if not more_records:
+                # No more pages
+                break
+
+            page += 1
+
+            logger.info(f"Retrieved {len(deals)} deals. Total so far: {len(all_deals)}")
+
+        logger.info(f"Search complete. Total deals retrieved: {len(all_deals)}")
+        return all_deals
 
     def get_deal_notes(self, deal_id: str) -> Dict[str, Any]:
         """Get notes for a specific deal."""

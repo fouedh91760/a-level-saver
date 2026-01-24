@@ -29,17 +29,20 @@ def list_departments():
     desk_client = ZohoDeskClient()
 
     try:
-        # Récupérer la liste des départements
-        # L'API Zoho Desk : GET /api/v1/departments
+        # Récupérer TOUS les départements avec pagination automatique
         from config import settings
         url = f"{settings.zoho_desk_api_url}/departments"
 
-        print("\n🔍 Récupération des départements...")
+        print("\n🔍 Récupération de TOUS les départements (avec pagination)...")
 
-        departments = desk_client._make_request("GET", url)
+        # Utiliser la pagination automatique
+        dept_list = desk_client._get_all_pages(
+            url=url,
+            params={"orgId": settings.zoho_desk_org_id},
+            limit_per_page=100
+        )
 
-        if departments.get("data"):
-            dept_list = departments["data"]
+        if dept_list:
             print(f"\n✅ {len(dept_list)} département(s) trouvé(s) :\n")
 
             # Afficher sous forme de tableau

@@ -347,12 +347,18 @@ SIGNALS: [comma-separated keywords/patterns that influenced your decision]
     def batch_validate_departments(
         self,
         status: str = "Open",
-        limit: int = 50
+        limit: Optional[int] = None,
+        use_pagination: bool = False
     ) -> Dict[str, Any]:
         """
         Validate department assignments for a batch of tickets.
 
         This is useful for auditing and identifying misrouted tickets.
+
+        Args:
+            status: Ticket status filter (e.g., "Open")
+            limit: Maximum number of tickets to check (None for all if use_pagination=True)
+            use_pagination: If True, fetches ALL tickets with automatic pagination
 
         Returns:
             Dict with:
@@ -361,22 +367,23 @@ SIGNALS: [comma-separated keywords/patterns that influenced your decision]
                 - should_reassign: int
                 - results: list of ticket results
         """
-        logger.info(f"Batch validating departments for {status} tickets (limit: {limit})")
-
-        try:
-            tickets = self.desk_client.list_tickets(status=status, limit=limit)
-        except Exception as e:
-            logger.error(f"Failed to fetch tickets: {e}")
-            return {
-                "success": False,
-                "error": str(e)
-            }
+        if use_pagination:
+            logger.info(f"Batch validating departments for ALL {status} tickets (with pagination)")
+            tickets_data = self.desk_client.list_all_tickets(status=status)
+            # Apply limit after fetching all if specified
+            if limit:
+                tickets_data = tickets_data[:limit]
+        else:
+            limit = limit or 50  # Default to 50 if not specified
+            logger.info(f"Batch validating departments for {status} tickets (limit: {limit})")
+            response = self.desk_client.list_tickets(status=status, limit=limit)
+            tickets_data = response.get("data", [])
 
         results = []
         correct_count = 0
         should_reassign_count = 0
 
-        for ticket in tickets.get("data", []):
+        for ticket in tickets_data:
             ticket_id = ticket.get("id")
 
             # Analyze each ticket
