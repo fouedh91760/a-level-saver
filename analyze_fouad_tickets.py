@@ -1,18 +1,26 @@
 """
 Script pour analyser les tickets traités par Fouad Haddouchi dans le département DOC.
 
+Version avec contenu COMPLET des threads et gestion du rate limiting.
+
 Ce script :
 1. Récupère TOUS les tickets du département DOC (avec pagination)
-2. Pour chaque ticket, récupère les threads complets
+2. Pour chaque ticket, récupère les threads avec CONTENU COMPLET
 3. Filtre les tickets où Fouad a répondu
 4. Limite à 500 tickets maximum
-5. Extrait les questions clients et réponses de Fouad
+5. Extrait les questions clients et réponses complètes de Fouad
 6. Génère une analyse détaillée avec patterns et recommandations
+7. Sauvegarde progressive tous les 50 tickets (protection contre crash)
 
 Résultat sauvegardé dans : fouad_tickets_analysis.json
+Temps estimé : 20-30 minutes
+
+INTERRUPTION : Si le script s'arrête, relancez-le, il reprendra où il s'était arrêté.
 """
 import logging
 import json
+import time
+import os
 from datetime import datetime
 from collections import Counter
 import re
@@ -34,6 +42,35 @@ logger = logging.getLogger(__name__)
 # ID de Fouad Haddouchi
 FOUAD_AGENT_ID = "198709000018519157"
 
+# Fichiers de sauvegarde
+OUTPUT_FILE = "fouad_tickets_analysis.json"
+PROGRESS_FILE = "fouad_tickets_progress.json"
+
+
+def load_progress():
+    """Charge la progression sauvegardée si elle existe."""
+    if os.path.exists(PROGRESS_FILE):
+        try:
+            with open(PROGRESS_FILE, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except Exception as e:
+            logger.warning(f"Impossible de charger la progression : {e}")
+    return {"tickets": [], "last_ticket_index": 0}
+
+
+def save_progress(tickets, last_index):
+    """Sauvegarde la progression."""
+    try:
+        with open(PROGRESS_FILE, 'w', encoding='utf-8') as f:
+            json.dump({
+                "tickets": tickets,
+                "last_ticket_index": last_index,
+                "timestamp": datetime.now().isoformat()
+            }, f, indent=2, ensure_ascii=False)
+        logger.info(f"Progression sauvegardée : {len(tickets)} tickets")
+    except Exception as e:
+        logger.error(f"Erreur sauvegarde progression : {e}")
+
 
 def ticket_has_fouad_response(threads):
     """Vérifie si Fouad a répondu dans les threads."""
@@ -44,15 +81,24 @@ def ticket_has_fouad_response(threads):
     return False
 
 
+def extract_content_from_thread(thread):
+    """Extrait le contenu complet d'un thread (pas juste le summary)."""
+    # Essayer d'abord 'content', sinon 'summary'
+    content = thread.get("content", "")
+    if not content:
+        content = thread.get("summary", "")
+    return content
+
+
 def extract_fouad_responses(threads):
-    """Extrait toutes les réponses de Fouad dans les threads."""
+    """Extrait toutes les réponses de Fouad avec CONTENU COMPLET."""
     fouad_responses = []
 
     for thread in threads:
         author = thread.get("author", {})
         if author.get("id") == FOUAD_AGENT_ID and author.get("type") == "AGENT":
             fouad_responses.append({
-                "content": thread.get("summary", ""),
+                "content": extract_content_from_thread(thread),
                 "created_time": thread.get("createdTime", ""),
                 "response_time": thread.get("respondedIn", "N/A")
             })
@@ -61,7 +107,7 @@ def extract_fouad_responses(threads):
 
 
 def extract_customer_questions(threads):
-    """Extrait les questions/messages des clients."""
+    """Extrait les questions/messages des clients avec CONTENU COMPLET."""
     customer_messages = []
 
     for thread in threads:
@@ -69,7 +115,7 @@ def extract_customer_questions(threads):
         # Messages venant de END_USER ou direction "in"
         if author.get("type") == "END_USER" or thread.get("direction") == "in":
             customer_messages.append({
-                "content": thread.get("summary", ""),
+                "content": extract_content_from_thread(thread),
                 "created_time": thread.get("createdTime", ""),
                 "author_name": author.get("name", "Unknown")
             })
@@ -78,10 +124,20 @@ def extract_customer_questions(threads):
 
 
 def analyze_fouad_tickets():
-    """Récupère et analyse les tickets traités par Fouad."""
+    """Récupère et analyse les tickets traités par Fouad avec contenu complet."""
     print("\n" + "=" * 80)
     print("ANALYSE DES TICKETS TRAITÉS PAR FOUAD HADDOUCHI")
+    print("VERSION AVEC CONTENU COMPLET + GESTION RATE LIMITING")
     print("=" * 80)
+
+    # Charger la progression existante
+    progress = load_progress()
+    fouad_tickets = progress.get("tickets", [])
+    last_index = progress.get("last_ticket_index", 0)
+
+    if fouad_tickets:
+        print(f"\n♻️  Reprise de la progression : {len(fouad_tickets)} tickets déjà traités")
+        print(f"   Dernière position : ticket #{last_index}")
 
     desk_client = ZohoDeskClient()
 
@@ -89,48 +145,80 @@ def analyze_fouad_tickets():
         # ID du département DOC
         doc_department_id = "198709000025523146"
 
-        print(f"\n🔍 Récupération de TOUS les tickets du département DOC...")
-        print("   (Cela peut prendre plusieurs minutes selon le volume)")
+        if last_index == 0:
+            print(f"\n🔍 Récupération de TOUS les tickets du département DOC...")
+            print("   (Cela peut prendre plusieurs minutes selon le volume)")
 
-        # Récupérer TOUS les tickets du département DOC avec pagination
-        url = f"{settings.zoho_desk_api_url}/tickets"
-        base_params = {
-            "orgId": settings.zoho_desk_org_id,
-            "departmentId": doc_department_id,
-            "status": "Closed"  # Tickets fermés pour avoir l'historique complet
-        }
+            # Récupérer TOUS les tickets du département DOC avec pagination
+            url = f"{settings.zoho_desk_api_url}/tickets"
+            base_params = {
+                "orgId": settings.zoho_desk_org_id,
+                "departmentId": doc_department_id,
+                "status": "Closed"  # Tickets fermés pour avoir l'historique complet
+            }
 
-        # Utiliser la pagination automatique
-        all_tickets = desk_client._get_all_pages(url, base_params, limit_per_page=100)
+            # Utiliser la pagination automatique
+            all_tickets = desk_client._get_all_pages(url, base_params, limit_per_page=100)
+            print(f"\n✅ {len(all_tickets)} tickets totaux récupérés")
+        else:
+            print(f"\n⏩ Reprise depuis la position sauvegardée")
+            # Récupérer à nouveau tous les tickets (nécessaire pour continuer)
+            url = f"{settings.zoho_desk_api_url}/tickets"
+            base_params = {
+                "orgId": settings.zoho_desk_org_id,
+                "departmentId": doc_department_id,
+                "status": "Closed"
+            }
+            all_tickets = desk_client._get_all_pages(url, base_params, limit_per_page=100)
 
-        print(f"\n✅ {len(all_tickets)} tickets totaux récupérés")
         print(f"\n🔎 Filtrage des tickets traités par Fouad Haddouchi...")
+        print(f"⏱️  Temps estimé : 20-30 minutes (contenu complet + rate limiting)")
+        print(f"💾 Sauvegarde automatique tous les 50 tickets")
 
-        # Filtrer les tickets où Fouad a répondu
-        fouad_tickets = []
-        tickets_checked = 0
-        tickets_with_fouad = 0
+        tickets_checked = last_index
+        tickets_with_fouad = len(fouad_tickets)
 
-        for ticket in all_tickets:
+        start_time = time.time()
+
+        for i, ticket in enumerate(all_tickets):
+            # Reprendre là où on s'était arrêté
+            if i < last_index:
+                continue
+
             tickets_checked += 1
-
-            if tickets_checked % 50 == 0:
-                print(f"   Analysé {tickets_checked}/{len(all_tickets)} tickets - Trouvés avec Fouad : {tickets_with_fouad}")
-
             ticket_id = ticket.get("id")
 
-            # Récupérer les threads du ticket
+            # Affichage de progression tous les 10 tickets
+            if tickets_checked % 10 == 0:
+                elapsed = time.time() - start_time
+                rate = tickets_checked / elapsed if elapsed > 0 else 0
+                remaining = (len(all_tickets) - tickets_checked) / rate if rate > 0 else 0
+                print(f"   ⏳ Analysé {tickets_checked}/{len(all_tickets)} tickets | "
+                      f"Fouad: {tickets_with_fouad} | "
+                      f"Temps restant: ~{int(remaining/60)}min")
+
+            # Récupérer les threads avec CONTENU COMPLET
             try:
-                threads_url = f"{settings.zoho_desk_api_url}/tickets/{ticket_id}/threads"
-                threads_response = desk_client._make_request(
-                    "GET",
-                    threads_url,
-                    params={"orgId": settings.zoho_desk_org_id}
-                )
-                threads = threads_response.get("data", [])
+                # Utiliser la méthode qui récupère le contenu complet
+                threads = desk_client.get_all_threads_with_full_content(ticket_id)
+
+                # Délai pour éviter le rate limiting (0.3s entre chaque ticket)
+                time.sleep(0.3)
+
             except Exception as e:
-                logger.warning(f"Erreur récupération threads pour ticket {ticket_id}: {e}")
-                threads = []
+                if "429" in str(e) or "Too Many Requests" in str(e):
+                    logger.warning(f"Rate limit atteint, pause de 60 secondes...")
+                    print(f"\n⚠️  Rate limit API atteint - Pause de 60 secondes")
+                    time.sleep(60)
+                    # Réessayer
+                    try:
+                        threads = desk_client.get_all_threads_with_full_content(ticket_id)
+                    except Exception as e2:
+                        logger.error(f"Erreur threads pour ticket {ticket_id} après retry: {e2}")
+                        threads = []
+                else:
+                    logger.warning(f"Erreur récupération threads pour ticket {ticket_id}: {e}")
+                    threads = []
 
             # Vérifier si Fouad a répondu
             if ticket_has_fouad_response(threads):
@@ -150,7 +238,7 @@ def analyze_fouad_tickets():
                     "contact_email": ticket.get("email", ""),
                     "tags": ticket.get("tags", []),
 
-                    # Extraire questions clients et réponses Fouad
+                    # Extraire questions clients et réponses Fouad (CONTENU COMPLET)
                     "customer_questions": extract_customer_questions(threads),
                     "fouad_responses": extract_fouad_responses(threads),
 
@@ -166,6 +254,14 @@ def analyze_fouad_tickets():
                     print(f"\n✅ Limite de 500 tickets atteinte")
                     break
 
+            # Sauvegarde progressive tous les 50 tickets
+            if tickets_checked % 50 == 0:
+                save_progress(fouad_tickets, tickets_checked)
+                print(f"   💾 Sauvegarde automatique effectuée")
+
+        # Sauvegarde finale
+        save_progress(fouad_tickets, tickets_checked)
+
         print(f"\n✅ {len(fouad_tickets)} tickets traités par Fouad trouvés")
 
         if not fouad_tickets:
@@ -176,7 +272,7 @@ def analyze_fouad_tickets():
         print(f"\n📊 Génération de l'analyse...")
         analysis = generate_analysis(fouad_tickets)
 
-        # Sauvegarder le résultat
+        # Sauvegarder le résultat final
         output = {
             "timestamp": datetime.now().isoformat(),
             "agent": {
@@ -192,11 +288,15 @@ def analyze_fouad_tickets():
             "analysis": analysis
         }
 
-        output_file = "fouad_tickets_analysis.json"
-        with open(output_file, 'w', encoding='utf-8') as f:
+        with open(OUTPUT_FILE, 'w', encoding='utf-8') as f:
             json.dump(output, f, indent=2, ensure_ascii=False)
 
-        print(f"\n📄 Résultats sauvegardés dans : {output_file}")
+        print(f"\n📄 Résultats sauvegardés dans : {OUTPUT_FILE}")
+
+        # Nettoyer le fichier de progression
+        if os.path.exists(PROGRESS_FILE):
+            os.remove(PROGRESS_FILE)
+            print(f"   🗑️  Fichier de progression nettoyé")
 
         # Afficher un résumé
         display_summary(output)
@@ -207,6 +307,12 @@ def analyze_fouad_tickets():
         print(f"\n❌ Erreur lors de l'analyse : {e}")
         import traceback
         traceback.print_exc()
+
+        # Sauvegarder la progression même en cas d'erreur
+        if fouad_tickets:
+            save_progress(fouad_tickets, tickets_checked)
+            print(f"\n💾 Progression sauvegardée - Vous pouvez relancer le script pour continuer")
+
         return None
 
     finally:
@@ -226,7 +332,7 @@ def generate_analysis(tickets):
 
     subject_word_counts = Counter(subject_words)
 
-    # Mots-clés dans les réponses de Fouad
+    # Mots-clés dans les réponses de Fouad (CONTENU COMPLET maintenant)
     fouad_words = []
     for ticket in tickets:
         for response in ticket.get("fouad_responses", []):
@@ -235,6 +341,16 @@ def generate_analysis(tickets):
             fouad_words.extend(words)
 
     fouad_word_counts = Counter(fouad_words)
+
+    # Mots-clés dans les questions clients
+    customer_words = []
+    for ticket in tickets:
+        for question in ticket.get("customer_questions", []):
+            content = question.get("content", "").lower()
+            words = re.findall(r'\b\w{4,}\b', content)
+            customer_words.extend(words)
+
+    customer_word_counts = Counter(customer_words)
 
     # Canaux de communication
     channels = Counter(ticket.get("channel", "Unknown") for ticket in tickets)
@@ -257,8 +373,9 @@ def generate_analysis(tickets):
         "total_tickets_analyzed": len(tickets),
         "total_fouad_responses": sum(ticket.get("fouad_response_count", 0) for ticket in tickets),
 
-        "top_subject_keywords": dict(subject_word_counts.most_common(30)),
-        "top_fouad_keywords": dict(fouad_word_counts.most_common(30)),
+        "top_subject_keywords": dict(subject_word_counts.most_common(50)),
+        "top_customer_keywords": dict(customer_word_counts.most_common(50)),
+        "top_fouad_keywords": dict(fouad_word_counts.most_common(50)),
 
         "channels": dict(channels),
         "top_tags": dict(tag_counts.most_common(20)),
@@ -290,6 +407,11 @@ def display_summary(output):
     for word, count in top_subjects:
         print(f"   - {word}: {count}")
 
+    print(f"\n❓ Top 10 mots-clés dans les questions clients :")
+    top_customer = list(analysis.get("top_customer_keywords", {}).items())[:10]
+    for word, count in top_customer:
+        print(f"   - {word}: {count}")
+
     print(f"\n💬 Top 10 mots-clés dans les réponses de Fouad :")
     top_responses = list(analysis.get("top_fouad_keywords", {}).items())[:10]
     for word, count in top_responses:
@@ -310,7 +432,7 @@ def main():
         print("=" * 80)
         print("\n1. Commitez le fichier JSON :")
         print("   git add fouad_tickets_analysis.json")
-        print("   git commit -m 'Add Fouad tickets analysis (500 tickets)'")
+        print("   git commit -m 'Add Fouad tickets analysis with full content (500 tickets)'")
         print("   git push")
         print("\n2. Je vais analyser les patterns pour configurer business_rules.py")
         print("\n3. Nous pourrons ensuite automatiser le routing et le deal linking")
