@@ -1,7 +1,7 @@
 """Agent for automating Zoho Desk ticket responses."""
 import logging
 import json
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 from .base_agent import BaseAgent
 from src.zoho_client import ZohoDeskClient
 from src.utils.text_utils import get_clean_thread_content
