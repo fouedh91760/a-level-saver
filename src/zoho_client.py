@@ -83,6 +83,11 @@ class ZohoAPIClient:
         try:
             response = self._session.request(method, url, headers=headers, **kwargs)
             response.raise_for_status()
+
+            # Handle empty responses (204 No Content or empty body)
+            if response.status_code == 204 or not response.text.strip():
+                return {}
+
             return response.json()
 
         except requests.exceptions.RequestException as e:
