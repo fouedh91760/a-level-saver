@@ -77,7 +77,8 @@ Be precise and consistent in your routing decisions."""
                 - ticket_id: The ticket to analyze
                 - auto_reassign: Whether to automatically reassign (default: False)
                 - force_analysis: Force AI analysis even if routing rules match (default: False)
-                - deal: Optional deal data (if found by DealLinkingAgent)
+                - linking_result: Optional full result from DealLinkingAgent (NEW)
+                - deal: Optional deal data (DEPRECATED - use linking_result instead)
 
         Returns:
             Dict with:
@@ -95,7 +96,8 @@ Be precise and consistent in your routing decisions."""
         ticket_id = data.get("ticket_id")
         auto_reassign = data.get("auto_reassign", False)
         force_analysis = data.get("force_analysis", False)
-        deal = data.get("deal")  # Deal data from DealLinkingAgent
+        linking_result = data.get("linking_result")  # NEW: Full linking result
+        deal = data.get("deal")  # DEPRECATED: For backward compatibility
 
         if not ticket_id:
             raise ValueError("ticket_id is required")
@@ -116,7 +118,42 @@ Be precise and consistent in your routing decisions."""
         current_department = ticket.get("departmentName", "Unknown")
         logger.info(f"Current department: {current_department}")
 
-        # Step 1: Check if deal determines the department (PRIORITY)
+        # Step 1: Check if DealLinkingAgent already determined the department (HIGHEST PRIORITY)
+        if linking_result and not force_analysis:
+            recommended_dept = linking_result.get("recommended_department")
+            if recommended_dept:
+                logger.info(f"Using department from DealLinkingAgent: {recommended_dept}")
+                logger.info(f"Routing explanation: {linking_result.get('routing_explanation', 'N/A')}")
+
+                should_reassign = (recommended_dept != current_department)
+
+                result = {
+                    "success": True,
+                    "ticket_id": ticket_id,
+                    "current_department": current_department,
+                    "recommended_department": recommended_dept,
+                    "should_reassign": should_reassign,
+                    "confidence": 98,  # Very high confidence for deal-based
+                    "method": "deal_linking_agent",
+                    "routing_method": "deal",
+                    "reasoning": linking_result.get("routing_explanation", "Department determined by DealLinkingAgent"),
+                    "signals": [f"Email: {linking_result.get('email', 'N/A')}", f"Deals found: {linking_result.get('deals_found', 0)}"],
+                    "deal_id": linking_result.get("deal_id"),
+                    "deal_name": linking_result.get("selected_deal", {}).get("Deal_Name") if linking_result.get("selected_deal") else None,
+                    "all_deals_count": linking_result.get("deals_found", 0)
+                }
+
+                # Auto-reassign if requested
+                if should_reassign and auto_reassign:
+                    reassign_result = self._reassign_ticket(ticket_id, recommended_dept)
+                    result["reassigned"] = reassign_result
+                else:
+                    result["reassigned"] = False
+
+                return result
+
+        # Step 2: Fallback to old logic if linking_result didn't provide department
+        # Check if deal determines the department (BACKWARD COMPATIBILITY)
         if deal and not force_analysis:
             deal_based_department = BusinessRules.get_department_from_deal(deal)
             if deal_based_department:
@@ -149,7 +186,7 @@ Be precise and consistent in your routing decisions."""
 
                 return result
 
-        # Step 2: Check business rules (keywords) if no deal or deal didn't match
+        # Step 3: Check business rules (keywords) if no deal or deal didn't match
         routing_rules = BusinessRules.get_department_routing_rules()
         rule_based_department = self._check_routing_rules(ticket, routing_rules)
 
@@ -180,7 +217,7 @@ Be precise and consistent in your routing decisions."""
 
             return result
 
-        # Step 3: Use AI analysis if no rule match or forced
+        # Step 4: Use AI analysis if no rule match or forced
         logger.info("Using AI analysis for department routing")
         ai_result = self._analyze_with_ai(ticket)
 

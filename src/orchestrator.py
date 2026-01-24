@@ -163,7 +163,7 @@ class ZohoAutomationOrchestrator:
             dispatch_result = self.dispatcher_agent.process({
                 "ticket_id": ticket_id,
                 "auto_reassign": auto_dispatch,
-                "deal": deal  # Pass deal to dispatcher for routing logic
+                "linking_result": linking_result  # Pass full linking result with recommended_department
             })
             workflow_result["dispatch_result"] = dispatch_result
 

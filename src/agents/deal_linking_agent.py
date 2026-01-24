@@ -1,9 +1,10 @@
 """Agent for automatically linking tickets to deals via custom fields."""
 import logging
+import re
 from typing import Dict, Any, List, Optional
 from .base_agent import BaseAgent
 from src.ticket_deal_linker import TicketDealLinker
-from src.zoho_client import ZohoDeskClient
+from src.zoho_client import ZohoDeskClient, ZohoCRMClient
 
 logger = logging.getLogger(__name__)
 
@@ -79,185 +80,340 @@ Always respond in JSON format with the following structure:
         )
         self.linker = TicketDealLinker()
         self.desk_client = ZohoDeskClient()
+        self.crm_client = None  # Lazy initialization to avoid import issues
+
+    def _get_crm_client(self) -> ZohoCRMClient:
+        """Lazy initialization of CRM client."""
+        if self.crm_client is None:
+            self.crm_client = ZohoCRMClient()
+        return self.crm_client
+
+    def _extract_email_from_thread(self, thread: Dict[str, Any]) -> Optional[str]:
+        """
+        Extract email address from a thread.
+
+        Checks multiple fields: fromEmailAddress, from, author email, etc.
+        """
+        # Try fromEmailAddress first (most reliable)
+        if thread.get("fromEmailAddress"):
+            return thread["fromEmailAddress"].lower().strip()
+
+        # Try "from" field
+        from_field = thread.get("from")
+        if from_field:
+            # Extract email from "Name <email@domain.com>" format
+            email_match = re.search(r'<([^>]+)>', from_field)
+            if email_match:
+                return email_match.group(1).lower().strip()
+            # Or if it's just the email
+            if '@' in from_field:
+                return from_field.lower().strip()
+
+        # Try author field
+        author = thread.get("author")
+        if isinstance(author, dict) and author.get("email"):
+            return author["email"].lower().strip()
+
+        return None
+
+    def _extract_email_from_threads(self, threads: List[Dict[str, Any]]) -> Optional[str]:
+        """
+        Extract email from the LAST thread in the list (most recent).
+
+        Threads are usually ordered chronologically, so the last one is the most recent.
+        We prioritize customer emails over agent responses.
+        """
+        if not threads:
+            return None
+
+        # Try to get email from last thread (most recent)
+        for thread in reversed(threads):
+            # Skip internal notes and agent responses
+            channel = thread.get("channel", "").lower()
+            direction = thread.get("direction", "").lower()
+
+            # Prioritize customer emails (incoming)
+            if direction == "in" or channel in ["email", "web", "phone"]:
+                email = self._extract_email_from_thread(thread)
+                if email:
+                    logger.info(f"Extracted email from thread: {email}")
+                    return email
+
+        # Fallback: try any thread
+        for thread in reversed(threads):
+            email = self._extract_email_from_thread(thread)
+            if email:
+                logger.info(f"Extracted email from thread (fallback): {email}")
+                return email
+
+        return None
+
+    def _search_contacts_by_email(self, email: str) -> List[Dict[str, Any]]:
+        """
+        Search for ALL contacts in CRM with the given email.
+
+        Returns:
+            List of contact records
+        """
+        crm_client = self._get_crm_client()
+
+        try:
+            # Search contacts by email
+            criteria = f"(Email:equals:{email})"
+            url = f"{crm_client._make_request.__self__.__class__.__module__}"  # This is wrong, let me fix
+
+            # Use the CRM API to search contacts
+            from config import settings
+            url = f"{settings.zoho_crm_api_url}/Contacts/search"
+            params = {
+                "criteria": criteria,
+                "per_page": 200
+            }
+
+            response = crm_client._make_request("GET", url, params=params)
+            contacts = response.get("data", [])
+
+            logger.info(f"Found {len(contacts)} contacts with email {email}")
+            return contacts
+
+        except Exception as e:
+            logger.error(f"Failed to search contacts by email {email}: {e}")
+            return []
+
+    def _get_deals_for_contacts(self, contact_ids: List[str]) -> List[Dict[str, Any]]:
+        """
+        Get ALL deals associated with the given contact IDs.
+
+        Args:
+            contact_ids: List of contact IDs
+
+        Returns:
+            List of all deals for these contacts
+        """
+        if not contact_ids:
+            return []
+
+        crm_client = self._get_crm_client()
+        all_deals = []
+
+        try:
+            # Search deals for each contact
+            for contact_id in contact_ids:
+                criteria = f"(Contact_Name:equals:{contact_id})"
+                deals = crm_client.search_all_deals(criteria=criteria)
+                all_deals.extend(deals)
+                logger.info(f"Found {len(deals)} deals for contact {contact_id}")
+
+            logger.info(f"Total deals found: {len(all_deals)}")
+            return all_deals
+
+        except Exception as e:
+            logger.error(f"Failed to get deals for contacts: {e}")
+            return []
 
     def process(self, data: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Process a ticket to link it to a deal.
+        Process a ticket to link it to deals and determine department routing.
+
+        NEW WORKFLOW (as per business requirements):
+        1. Get email from THREAD (not ticket contact)
+        2. Find ALL contacts in CRM with that email
+        3. Get ALL deals for those contacts
+        4. Use BusinessRules.determine_department_from_deals_and_ticket() to route
+        5. Return department determination + deal info for dispatcher
 
         Args:
             data: Dictionary containing:
                 - ticket_id: The Zoho Desk ticket ID
-                - force_update: Update even if cf_deal_id already exists (default: False)
-                - create_deal_if_missing: Create a deal if none found (default: False)
-                - use_ai_validation: Use AI to validate the link (default: False)
-                - strategies: List of strategies to use (default: all)
 
         Returns:
-            Dictionary with linking results
+            Dictionary with:
+                - success: bool
+                - ticket_id: str
+                - email_found: bool
+                - email: str (if found)
+                - contacts_found: int
+                - deals_found: int
+                - all_deals: List[Dict] - ALL deals for the contact(s)
+                - selected_deal: Dict - The deal selected by routing logic (if any)
+                - recommended_department: str - Department from business rules
+                - routing_explanation: str - Why this department was selected
+                - deal_id: str - ID of selected deal (for backward compatibility)
+                - deal: Dict - Selected deal data (for backward compatibility)
         """
         ticket_id = data.get("ticket_id")
         if not ticket_id:
             raise ValueError("ticket_id is required")
 
-        force_update = data.get("force_update", False)
-        create_deal_if_missing = data.get("create_deal_if_missing", False)
-        use_ai_validation = data.get("use_ai_validation", False)
-        strategies = data.get("strategies")
+        logger.info(f"Processing ticket {ticket_id} - NEW WORKFLOW: Thread email → Contacts → Deals → Routing")
 
-        # If no strategies specified, use business rules
-        if not strategies:
-            strategies = BusinessRules.get_preferred_linking_strategies()
-            logger.info(f"Using business rules strategies: {strategies}")
+        result = {
+            "success": False,
+            "ticket_id": ticket_id,
+            "email_found": False,
+            "email": None,
+            "contacts_found": 0,
+            "deals_found": 0,
+            "all_deals": [],
+            "selected_deal": None,
+            "recommended_department": None,
+            "routing_explanation": "",
+            "deal_id": None,
+            "deal": None,
+            "deal_found": False
+        }
 
-        logger.info(f"Processing ticket {ticket_id} for deal linking")
-
-        # Get ticket details
+        # Step 1: Get ticket details
         try:
             ticket = self.desk_client.get_ticket(ticket_id)
         except Exception as e:
             logger.error(f"Could not fetch ticket {ticket_id}: {e}")
-            return {
-                "success": False,
-                "error": f"Could not fetch ticket: {e}",
-                "ticket_id": ticket_id
-            }
+            result["error"] = f"Could not fetch ticket: {e}"
+            return result
 
-        # Check if already linked
-        existing_deal_id = ticket.get("cf_deal_id") or ticket.get("cf_zoho_crm_deal_id")
-        if existing_deal_id and not force_update:
-            logger.info(f"Ticket {ticket_id} already linked to deal {existing_deal_id}")
-
-            # Fetch the deal to return full data for routing
-            try:
-                existing_deal = self.crm_client.get_deal(existing_deal_id)
-                return {
-                    "success": True,
-                    "already_linked": True,
-                    "ticket_id": ticket_id,
-                    "deal_id": existing_deal_id,
-                    "deal": existing_deal,  # Return full deal for department routing
-                    "deal_found": True,
-                    "action": "skipped"
-                }
-            except Exception as e:
-                logger.warning(f"Could not fetch existing deal {existing_deal_id}: {e}")
-                return {
-                    "success": True,
-                    "already_linked": True,
-                    "ticket_id": ticket_id,
-                    "deal_id": existing_deal_id,
-                    "deal_found": True,
-                    "action": "skipped"
-                }
-
-        # Find the deal
-        logger.info(f"Searching for deal for ticket {ticket_id}")
-        deal = self.linker.find_deal_for_ticket(ticket_id, strategies=strategies)
-
-        if not deal:
-            logger.warning(f"No deal found for ticket {ticket_id}")
-
-            # Check business rules if we should create a deal
-            if create_deal_if_missing:
-                should_create = BusinessRules.should_create_deal_for_ticket(ticket)
-
-                if should_create:
-                    logger.info(f"Business rules allow deal creation for ticket {ticket_id}")
-                    # TODO: Implement deal creation using BusinessRules.get_deal_data_from_ticket(ticket)
-                    logger.info("Deal creation not yet implemented")
-                    return {
-                        "success": False,
-                        "deal_found": False,
-                        "ticket_id": ticket_id,
-                        "action": "no_deal_found",
-                        "create_deal_needed": True,
-                        "business_rule_allows_creation": True
-                    }
-                else:
-                    logger.info(f"Business rules do NOT allow deal creation for ticket {ticket_id}")
-                    return {
-                        "success": False,
-                        "deal_found": False,
-                        "ticket_id": ticket_id,
-                        "action": "no_deal_found",
-                        "business_rule_allows_creation": False
-                    }
-            else:
-                return {
-                    "success": False,
-                    "deal_found": False,
-                    "ticket_id": ticket_id,
-                    "action": "no_deal_found"
-                }
-
-        deal_id = deal.get("id")
-        logger.info(f"Found deal {deal_id} for ticket {ticket_id}")
-
-        # Business rules validation
-        should_link = BusinessRules.should_link_ticket_to_deal(ticket, deal)
-        if not should_link:
-            logger.warning(f"Business rules do NOT allow linking ticket {ticket_id} to deal {deal_id}")
-            return {
-                "success": False,
-                "deal_found": True,
-                "deal_id": deal_id,
-                "ticket_id": ticket_id,
-                "action": "business_rule_rejected",
-                "reason": "Business rules validation failed"
-            }
-
-        # AI validation if requested
-        if use_ai_validation:
-            validation = self._validate_link_with_ai(ticket, deal)
-            if not validation.get("should_link", True):
-                logger.warning(f"AI recommends not linking: {validation['reasoning']}")
-                return {
-                    "success": False,
-                    "deal_found": True,
-                    "deal_id": deal_id,
-                    "ticket_id": ticket_id,
-                    "action": "ai_rejected",
-                    "ai_validation": validation
-                }
-
-        # Update the ticket with deal_id
+        # Step 2: Get all threads with FULL content
         try:
-            self.desk_client.update_ticket(ticket_id, {
-                "cf_deal_id": deal_id
-            })
-            logger.info(f"Updated ticket {ticket_id} with deal_id {deal_id}")
+            threads = self.desk_client.get_all_threads_with_full_content(ticket_id)
+            logger.info(f"Retrieved {len(threads)} threads for ticket {ticket_id}")
+        except Exception as e:
+            logger.error(f"Could not fetch threads for ticket {ticket_id}: {e}")
+            threads = []
 
-            # Also create reverse link in CRM
-            try:
-                self.linker.link_ticket_to_deal_bidirectional(
-                    ticket_id, deal_id
+        # Step 3: Extract email from threads (NOT from ticket contact)
+        email = self._extract_email_from_threads(threads)
+        if not email:
+            logger.warning(f"No email found in threads for ticket {ticket_id}")
+            # Fallback: try ticket contact email
+            contact = ticket.get("contact", {})
+            if contact and contact.get("email"):
+                email = contact["email"].lower().strip()
+                logger.info(f"Using fallback: ticket contact email {email}")
+
+        if not email:
+            logger.warning(f"No email found for ticket {ticket_id} (neither in threads nor contact)")
+            result["routing_explanation"] = "No email found - cannot link to CRM deals"
+            result["success"] = True  # Success but no deal found
+            return result
+
+        result["email_found"] = True
+        result["email"] = email
+        logger.info(f"Email extracted: {email}")
+
+        # Step 4: Search ALL contacts with this email
+        contacts = self._search_contacts_by_email(email)
+        result["contacts_found"] = len(contacts)
+
+        if not contacts:
+            logger.info(f"No contacts found in CRM for email {email}")
+            result["routing_explanation"] = f"No CRM contacts found for email {email}"
+            result["success"] = True  # Success but no deal found
+            return result
+
+        contact_ids = [c.get("id") for c in contacts if c.get("id")]
+        logger.info(f"Found {len(contact_ids)} contact(s) for email {email}")
+
+        # Step 5: Get ALL deals for these contacts
+        all_deals = self._get_deals_for_contacts(contact_ids)
+        result["deals_found"] = len(all_deals)
+        result["all_deals"] = all_deals
+
+        if not all_deals:
+            logger.info(f"No deals found for contacts with email {email}")
+            result["routing_explanation"] = f"No CRM deals found for email {email}"
+            result["success"] = True  # Success but no deal found
+            return result
+
+        # Step 6: Get last thread content for document detection
+        last_thread_content = None
+        if threads:
+            last_thread = threads[-1]  # Most recent thread
+            last_thread_content = last_thread.get("content") or last_thread.get("plainText") or ""
+
+        # Step 7: Use BusinessRules to determine department and select deal
+        logger.info(f"Calling BusinessRules.determine_department_from_deals_and_ticket with {len(all_deals)} deals")
+
+        try:
+            recommended_department = BusinessRules.determine_department_from_deals_and_ticket(
+                all_deals=all_deals,
+                ticket=ticket,
+                last_thread_content=last_thread_content
+            )
+
+            result["recommended_department"] = recommended_department
+
+            # Find which deal was selected (if any)
+            # The business logic selects 20€ deals first
+            deals_20 = [d for d in all_deals if d.get("Amount") == 20]
+            deals_20_won = [d for d in deals_20 if d.get("Stage") == "GAGNÉ"]
+
+            if deals_20_won:
+                # Most recent by Closing_Date
+                selected_deal = sorted(deals_20_won, key=lambda d: d.get("Closing_Date", ""), reverse=True)[0]
+                result["selected_deal"] = selected_deal
+                result["deal_id"] = selected_deal.get("id")
+                result["deal"] = selected_deal
+                result["deal_found"] = True
+                result["routing_explanation"] = (
+                    f"Department: {recommended_department} | "
+                    f"Deal: {selected_deal.get('Deal_Name')} (€{selected_deal.get('Amount')}) | "
+                    f"Stage: {selected_deal.get('Stage')} | "
+                    f"Method: Priority 1 - 20€ GAGNÉ (most recent)"
                 )
-                bidirectional = True
-            except Exception as e:
-                logger.warning(f"Could not create bidirectional link: {e}")
-                bidirectional = False
+            else:
+                # Check EN ATTENTE
+                deals_20_pending = [d for d in deals_20 if d.get("Stage") == "EN ATTENTE"]
+                if deals_20_pending:
+                    selected_deal = deals_20_pending[0]
+                    result["selected_deal"] = selected_deal
+                    result["deal_id"] = selected_deal.get("id")
+                    result["deal"] = selected_deal
+                    result["deal_found"] = True
+                    result["routing_explanation"] = (
+                        f"Department: {recommended_department} | "
+                        f"Deal: {selected_deal.get('Deal_Name')} (€{selected_deal.get('Amount')}) | "
+                        f"Stage: {selected_deal.get('Stage')} | "
+                        f"Method: Priority 2 - 20€ EN ATTENTE"
+                    )
+                else:
+                    # Other amounts
+                    other_deals = [d for d in all_deals
+                        if d.get("Amount") != 20 and d.get("Stage") in ["GAGNÉ", "EN ATTENTE"]]
+                    if other_deals:
+                        selected_deal = other_deals[0]
+                        result["selected_deal"] = selected_deal
+                        result["deal_id"] = selected_deal.get("id")
+                        result["deal"] = selected_deal
+                        result["deal_found"] = True
+                        result["routing_explanation"] = (
+                            f"Department: {recommended_department} | "
+                            f"Deal: {selected_deal.get('Deal_Name')} (€{selected_deal.get('Amount')}) | "
+                            f"Stage: {selected_deal.get('Stage')} | "
+                            f"Method: Other amount GAGNÉ/EN ATTENTE"
+                        )
+                    else:
+                        # No specific deal selected, but we have deals
+                        result["routing_explanation"] = (
+                            f"Department: {recommended_department} | "
+                            f"Found {len(all_deals)} deal(s) but none match priority criteria | "
+                            f"Method: Fallback to keywords or AI"
+                        )
 
-            return {
-                "success": True,
-                "deal_found": True,
-                "ticket_id": ticket_id,
-                "deal_id": deal_id,
-                "deal_name": deal.get("Deal_Name"),
-                "deal": deal,  # Return full deal for department routing
-                "action": "linked",
-                "bidirectional_link": bidirectional
-            }
+            if not recommended_department:
+                result["routing_explanation"] = (
+                    f"No department determined by deals - will fallback to keywords | "
+                    f"Found {len(all_deals)} deal(s) for email {email}"
+                )
+
+            logger.info(f"Routing result: {result['routing_explanation']}")
+            result["success"] = True
+            return result
 
         except Exception as e:
-            logger.error(f"Failed to update ticket {ticket_id}: {e}")
-            return {
-                "success": False,
-                "deal_found": True,
-                "deal_id": deal_id,
-                "ticket_id": ticket_id,
-                "action": "update_failed",
-                "error": str(e)
-            }
+            logger.error(f"Error in BusinessRules routing logic: {e}")
+            result["error"] = f"Routing logic error: {e}"
+            result["routing_explanation"] = f"Error in routing logic: {e}"
+            result["success"] = False
+            return result
 
     def _validate_link_with_ai(
         self,
@@ -485,3 +641,5 @@ Respond with a JSON object as specified in the system prompt."""
         """Clean up resources."""
         self.linker.close()
         self.desk_client.close()
+        if self.crm_client:
+            self.crm_client.close()
