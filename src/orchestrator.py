@@ -1,7 +1,7 @@
 """Orchestrator for coordinating multiple agents in automated workflows."""
 import logging
 from typing import Dict, Any, List, Optional
-from src.agents import DeskTicketAgent, CRMOpportunityAgent
+from src.agents import DeskTicketAgent, CRMOpportunityAgent, TicketDispatcherAgent, DealLinkingAgent
 from src.zoho_client import ZohoDeskClient, ZohoCRMClient
 from src.ticket_deal_linker import TicketDealLinker
 
@@ -14,12 +14,21 @@ class ZohoAutomationOrchestrator:
 
     This class coordinates multiple agents to handle complex automation scenarios
     such as:
+    - Routing tickets to correct departments
     - Processing tickets and updating related opportunities
     - Batch processing of tickets with CRM updates
     - Finding and addressing opportunities that need attention
+
+    Workflow order:
+    1. TicketDispatcherAgent - Routes to correct department
+    2. DealLinkingAgent - Links ticket to appropriate deal
+    3. DeskTicketAgent - Processes and responds to ticket
+    4. CRMOpportunityAgent - Updates CRM based on ticket context
     """
 
     def __init__(self):
+        self.dispatcher_agent = TicketDispatcherAgent()
+        self.deal_linking_agent = DealLinkingAgent()
         self.desk_agent = DeskTicketAgent()
         self.crm_agent = CRMOpportunityAgent()
         self.desk_client = ZohoDeskClient()
@@ -86,6 +95,111 @@ class ZohoAutomationOrchestrator:
                 "workflow": "ticket_with_crm_update"
             }
 
+    def process_ticket_complete_workflow(
+        self,
+        ticket_id: str,
+        auto_dispatch: bool = True,
+        auto_link: bool = True,
+        auto_respond: bool = False,
+        auto_update_ticket: bool = False,
+        auto_update_deal: bool = False,
+        auto_add_note: bool = False
+    ) -> Dict[str, Any]:
+        """
+        Complete end-to-end workflow for processing a ticket.
+
+        This is the RECOMMENDED method for full automation. It:
+        1. Routes ticket to correct department (TicketDispatcherAgent)
+        2. Links ticket to appropriate deal (DealLinkingAgent)
+        3. Processes ticket and generates response (DeskTicketAgent)
+        4. Updates CRM deal based on ticket context (CRMOpportunityAgent)
+
+        Args:
+            ticket_id: Zoho Desk ticket ID
+            auto_dispatch: Auto-reassign to correct department if needed
+            auto_link: Auto-link to deal
+            auto_respond: Auto-respond to the ticket
+            auto_update_ticket: Auto-update ticket status
+            auto_update_deal: Auto-update deal fields
+            auto_add_note: Auto-add notes to the deal
+
+        Returns:
+            Combined results from all agents in the workflow
+        """
+        logger.info(f"Starting complete workflow for ticket {ticket_id}")
+
+        workflow_result = {
+            "success": True,
+            "ticket_id": ticket_id,
+            "dispatch_result": None,
+            "linking_result": None,
+            "ticket_result": None,
+            "crm_result": None,
+            "workflow": "complete_workflow"
+        }
+
+        try:
+            # Step 1: Department routing validation
+            logger.info("Step 1: Validating department routing")
+            dispatch_result = self.dispatcher_agent.process({
+                "ticket_id": ticket_id,
+                "auto_reassign": auto_dispatch
+            })
+            workflow_result["dispatch_result"] = dispatch_result
+
+            if dispatch_result.get("should_reassign") and not dispatch_result.get("reassigned"):
+                logger.warning(
+                    f"Ticket {ticket_id} should be in {dispatch_result['recommended_department']} "
+                    f"but is in {dispatch_result['current_department']} (auto_dispatch=False)"
+                )
+
+            # Step 2: Deal linking
+            logger.info("Step 2: Linking ticket to deal")
+            linking_result = self.deal_linking_agent.process({
+                "ticket_id": ticket_id
+            })
+            workflow_result["linking_result"] = linking_result
+
+            deal_id = None
+            if linking_result.get("deal_found"):
+                deal_id = linking_result.get("deal_id")
+                logger.info(f"Linked to deal {deal_id}")
+            else:
+                logger.warning(f"No deal found for ticket {ticket_id}")
+
+            # Step 3: Process ticket
+            logger.info("Step 3: Processing ticket")
+            ticket_result = self.desk_agent.process({
+                "ticket_id": ticket_id,
+                "auto_respond": auto_respond,
+                "auto_update": auto_update_ticket
+            })
+            workflow_result["ticket_result"] = ticket_result
+
+            # Step 4: Update CRM if deal exists
+            if deal_id:
+                logger.info(f"Step 4: Updating CRM deal {deal_id}")
+                crm_result = self.crm_agent.process_with_ticket(
+                    deal_id=deal_id,
+                    ticket_id=ticket_id,
+                    ticket_analysis=ticket_result,
+                    auto_update=auto_update_deal,
+                    auto_add_note=auto_add_note
+                )
+                workflow_result["crm_result"] = crm_result
+            else:
+                logger.info("Step 4: Skipping CRM update (no deal found)")
+                workflow_result["crm_result"] = {"skipped": True, "reason": "no_deal_found"}
+
+            logger.info(f"Complete workflow finished for ticket {ticket_id}")
+            return workflow_result
+
+        except Exception as e:
+            logger.error(f"Error in complete workflow: {e}")
+            workflow_result["success"] = False
+            workflow_result["error"] = str(e)
+            return workflow_result
+
     def process_ticket_with_auto_crm_link(
         self,
         ticket_id: str,
@@ -98,14 +212,14 @@ class ZohoAutomationOrchestrator:
         """
         Process a ticket and AUTOMATICALLY find and update the related deal.
 
+        NOTE: For full automation including department routing, use
+        process_ticket_complete_workflow() instead.
+
         This method:
         1. Processes the ticket
         2. Automatically finds the related deal using multiple strategies
         3. Creates a bidirectional link (optional)
         4. Updates the deal based on ticket context
-
-        This is the RECOMMENDED method for automatic workflows as it doesn't
-        require you to know the deal_id in advance.
 
         Args:
             ticket_id: Zoho Desk ticket ID
@@ -369,6 +483,8 @@ class ZohoAutomationOrchestrator:
 
     def close(self):
         """Clean up all resources."""
+        self.dispatcher_agent.close()
+        self.deal_linking_agent.close()
         self.desk_agent.close()
         self.crm_agent.close()
         self.desk_client.close()

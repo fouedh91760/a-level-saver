@@ -174,5 +174,85 @@ class BusinessRules:
 
         return True
 
+    @staticmethod
+    def get_department_routing_rules() -> Dict[str, Any]:
+        """
+        Get department routing rules for the TicketDispatcherAgent.
+
+        These rules are checked BEFORE AI analysis for faster routing.
+        Rules are deterministic and keyword-based.
+
+        CUSTOMIZE THIS METHOD!
+
+        Returns:
+            Dict mapping department names to routing rules.
+            Each department can have:
+            - keywords: List of keywords to match in subject/description
+            - subject_patterns: List of regex patterns for subject
+            - contact_domains: List of email domains
+
+        Example:
+        {
+            "DOC": {
+                "keywords": ["uber", "a-level", "student", "education"],
+                "contact_domains": ["@university.edu"]
+            },
+            "Sales": {
+                "keywords": ["pricing", "quote", "demo", "purchase", "buy"]
+            }
+        }
+        """
+        return {
+            "DOC": {
+                "keywords": [
+                    "uber",
+                    "a-level",
+                    "student",
+                    "education",
+                    "educational",
+                    "programme",
+                    "course"
+                ],
+                "contact_domains": []  # Add specific domains if needed
+            },
+            "Sales": {
+                "keywords": [
+                    "pricing",
+                    "quote",
+                    "demo",
+                    "purchase",
+                    "buy",
+                    "trial",
+                    "commercial",
+                    "devis"
+                ],
+                "contact_domains": []
+            },
+            "Support": {
+                "keywords": [
+                    "technical",
+                    "error",
+                    "bug",
+                    "issue",
+                    "problem",
+                    "help",
+                    "assistance"
+                ],
+                "contact_domains": []
+            },
+            "Billing": {
+                "keywords": [
+                    "invoice",
+                    "payment",
+                    "billing",
+                    "refund",
+                    "charge",
+                    "facture",
+                    "paiement"
+                ],
+                "contact_domains": []
+            }
+        }
+
 
 # For detailed examples, see business_rules.example.py
