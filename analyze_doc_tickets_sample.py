@@ -42,11 +42,16 @@ def analyze_doc_tickets():
         print(f"\n🔍 Récupération d'un échantillon de 10 tickets du département DOC...")
 
         # Récupérer 10 tickets du département DOC
-        response = desk_client.list_tickets(
-            departmentId=doc_department_id,
-            limit=10,
-            status="Closed"  # Tickets fermés pour avoir l'historique complet
-        )
+        # Utiliser l'API directement avec le filtre departmentId
+        url = f"{settings.zoho_desk_api_url}/tickets"
+        params = {
+            "orgId": settings.zoho_desk_org_id,
+            "departmentId": doc_department_id,
+            "status": "Closed",  # Tickets fermés pour avoir l'historique complet
+            "limit": 10,
+            "from": 0
+        }
+        response = desk_client._make_request("GET", url, params=params)
 
         tickets_data = response.get("data", [])
 
