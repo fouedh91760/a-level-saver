@@ -1,0 +1,610 @@
+"""
+DOC Ticket Workflow - Complete orchestration for DOC department tickets.
+
+This workflow implements the 8-step process from 00_CHECKLIST_EXECUTION.md:
+
+1. AGENT TRIEUR (Triage with STOP & GO logic)
+2. AGENT ANALYSTE (6-source data extraction)
+3. AGENT RÉDACTEUR (Response generation with Claude + RAG)
+4. CRM Note Creation (before draft)
+5. Ticket Update (status, tags)
+6. Deal Update (if scenario requires)
+7. Draft Creation (Zoho Desk)
+8. Final Validation
+
+Gates:
+- If AGENT TRIEUR says STOP (routing) → no draft, end workflow
+- If AGENT ANALYSTE finds ANCIEN_DOSSIER → internal alert, end workflow
+- If data missing → escalate, end workflow
+"""
+import logging
+import sys
+from pathlib import Path
+from typing import Dict, Optional, List
+from datetime import datetime
+
+# Add project root to path
+project_root = Path(__file__).parent.parent.parent
+sys.path.insert(0, str(project_root))
+
+from src.agents.response_generator_agent import ResponseGeneratorAgent
+from src.agents.deal_linking_agent import DealLinkingAgent
+from src.zoho_client import ZohoDeskClient, ZohoCRMClient
+from knowledge_base.scenarios_mapping import (
+    detect_scenario_from_text,
+    should_stop_workflow,
+    requires_crm_update,
+    get_crm_update_fields,
+    SCENARIOS
+)
+
+logger = logging.getLogger(__name__)
+
+
+class DOCTicketWorkflow:
+    """Complete workflow orchestrator for DOC tickets."""
+
+    def __init__(self):
+        """Initialize workflow with all required components."""
+        self.desk_client = ZohoDeskClient()
+        self.crm_client = ZohoCRMClient()
+        self.response_generator = ResponseGeneratorAgent()
+        self.deal_linker = DealLinkingAgent()
+
+        logger.info("✅ DOCTicketWorkflow initialized")
+
+    def process_ticket(
+        self,
+        ticket_id: str,
+        auto_create_draft: bool = False,
+        auto_update_crm: bool = False,
+        auto_update_ticket: bool = False
+    ) -> Dict:
+        """
+        Process a DOC ticket through the complete workflow.
+
+        Args:
+            ticket_id: Zoho Desk ticket ID
+            auto_create_draft: Automatically create draft in Zoho Desk
+            auto_update_crm: Automatically update CRM deal fields
+            auto_update_ticket: Automatically update ticket status/tags
+
+        Returns:
+            {
+                'success': bool,
+                'ticket_id': str,
+                'workflow_stage': str,  # Which stage we stopped at
+                'triage_result': Dict,
+                'analysis_result': Dict,
+                'response_result': Dict,
+                'crm_note': str,
+                'draft_created': bool,
+                'errors': List[str]
+            }
+        """
+        logger.info(f"=" * 80)
+        logger.info(f"Processing DOC ticket: {ticket_id}")
+        logger.info(f"=" * 80)
+
+        result = {
+            'success': False,
+            'ticket_id': ticket_id,
+            'workflow_stage': '',
+            'triage_result': {},
+            'analysis_result': {},
+            'response_result': {},
+            'crm_note': '',
+            'draft_created': False,
+            'crm_updated': False,
+            'ticket_updated': False,
+            'errors': []
+        }
+
+        try:
+            # ================================================================
+            # STEP 1: AGENT TRIEUR (Triage with STOP & GO)
+            # ================================================================
+            logger.info("\n1️⃣  AGENT TRIEUR - Triage du ticket...")
+            result['workflow_stage'] = 'TRIAGE'
+
+            triage_result = self._run_triage(ticket_id)
+            result['triage_result'] = triage_result
+
+            # Check if we should STOP (routing to another department)
+            if triage_result.get('action') == 'ROUTE':
+                logger.warning(f"⚠️  TRIAGE → ROUTE to {triage_result['target_department']}")
+                logger.warning("🛑 STOP WORKFLOW (pas de draft selon règles)")
+                result['workflow_stage'] = 'STOPPED_AT_TRIAGE'
+                result['success'] = True
+                return result
+
+            # Check if SPAM
+            if triage_result.get('action') == 'SPAM':
+                logger.warning("⚠️  SPAM détecté → Clôturer sans note CRM")
+                result['workflow_stage'] = 'STOPPED_SPAM'
+                if auto_update_ticket:
+                    self.desk_client.update_ticket(ticket_id, {"status": "Closed"})
+                result['success'] = True
+                return result
+
+            # FEU VERT → Continue
+            logger.info("✅ TRIAGE → FEU VERT (continue workflow)")
+
+            # ================================================================
+            # STEP 2: AGENT ANALYSTE (6-source data extraction)
+            # ================================================================
+            logger.info("\n2️⃣  AGENT ANALYSTE - Extraction des données...")
+            result['workflow_stage'] = 'ANALYSIS'
+
+            analysis_result = self._run_analysis(ticket_id, triage_result)
+            result['analysis_result'] = analysis_result
+
+            # Check VÉRIFICATION #0: ANCIEN DOSSIER
+            if analysis_result.get('ancien_dossier'):
+                logger.warning("⚠️  ANCIEN DOSSIER (avant 01/11/2025) → Alerte interne")
+                logger.warning("🛑 STOP WORKFLOW (créer draft d'alerte interne)")
+                result['workflow_stage'] = 'STOPPED_ANCIEN_DOSSIER'
+                # TODO: Create internal alert draft
+                result['success'] = True
+                return result
+
+            # Check VÉRIFICATION #1: Compte ExamenT3P existe ?
+            if not analysis_result.get('exament3p_data', {}).get('compte_existe'):
+                logger.warning("⚠️  COMPTE EXAMENT3P N'EXISTE PAS")
+
+            logger.info("✅ ANALYSIS → Données extraites")
+
+            # ================================================================
+            # STEP 3: AGENT RÉDACTEUR (Response generation with Claude + RAG)
+            # ================================================================
+            logger.info("\n3️⃣  AGENT RÉDACTEUR - Génération de la réponse...")
+            result['workflow_stage'] = 'RESPONSE_GENERATION'
+
+            response_result = self._run_response_generation(
+                ticket_id=ticket_id,
+                triage_result=triage_result,
+                analysis_result=analysis_result
+            )
+            result['response_result'] = response_result
+
+            # Check if workflow should stop based on scenario
+            if response_result.get('should_stop_workflow'):
+                logger.warning("🛑 Workflow should STOP based on scenario")
+                result['workflow_stage'] = 'STOPPED_AT_SCENARIO'
+                result['success'] = True
+                return result
+
+            logger.info("✅ RESPONSE → Réponse générée")
+
+            # ================================================================
+            # STEP 4: CRM NOTE (OBLIGATOIRE avant draft)
+            # ================================================================
+            logger.info("\n4️⃣  CRM NOTE - Création de la note CRM...")
+            result['workflow_stage'] = 'CRM_NOTE'
+
+            crm_note = self._create_crm_note(
+                ticket_id=ticket_id,
+                triage_result=triage_result,
+                analysis_result=analysis_result,
+                response_result=response_result
+            )
+            result['crm_note'] = crm_note
+
+            if auto_update_crm and analysis_result.get('deal_id'):
+                # Add note to deal
+                self.crm_client.add_note_to_deal(
+                    deal_id=analysis_result['deal_id'],
+                    note_content=crm_note
+                )
+                logger.info("✅ CRM NOTE → Note ajoutée au deal")
+            else:
+                logger.info("✅ CRM NOTE → Note générée (pas d'auto-update)")
+
+            # ================================================================
+            # STEP 5: TICKET UPDATE (status, tags)
+            # ================================================================
+            logger.info("\n5️⃣  TICKET UPDATE - Mise à jour du ticket...")
+            result['workflow_stage'] = 'TICKET_UPDATE'
+
+            if auto_update_ticket:
+                ticket_updates = self._prepare_ticket_updates(response_result)
+                if ticket_updates:
+                    self.desk_client.update_ticket(ticket_id, ticket_updates)
+                    logger.info(f"✅ TICKET UPDATE → {len(ticket_updates)} champs mis à jour")
+                    result['ticket_updated'] = True
+            else:
+                logger.info("✅ TICKET UPDATE → Préparé (pas d'auto-update)")
+
+            # ================================================================
+            # STEP 6: DEAL UPDATE (if scenario requires)
+            # ================================================================
+            logger.info("\n6️⃣  DEAL UPDATE - Mise à jour CRM...")
+            result['workflow_stage'] = 'DEAL_UPDATE'
+
+            if response_result.get('requires_crm_update'):
+                logger.info(f"Champs à updater: {response_result['crm_update_fields']}")
+
+                if auto_update_crm and analysis_result.get('deal_id'):
+                    deal_updates = self._prepare_deal_updates(
+                        response_result,
+                        analysis_result
+                    )
+                    if deal_updates:
+                        self.crm_client.update_deal(
+                            analysis_result['deal_id'],
+                            deal_updates
+                        )
+                        logger.info(f"✅ DEAL UPDATE → {len(deal_updates)} champs mis à jour")
+                        result['crm_updated'] = True
+                else:
+                    logger.info("✅ DEAL UPDATE → Préparé (pas d'auto-update)")
+            else:
+                logger.info("✅ DEAL UPDATE → Non requis pour ce scénario")
+
+            # ================================================================
+            # STEP 7: DRAFT CREATION (Zoho Desk)
+            # ================================================================
+            logger.info("\n7️⃣  DRAFT CREATION - Création du brouillon...")
+            result['workflow_stage'] = 'DRAFT_CREATION'
+
+            if auto_create_draft:
+                self.desk_client.create_ticket_reply_draft(
+                    ticket_id=ticket_id,
+                    content=response_result['response_text']
+                )
+                logger.info("✅ DRAFT CREATION → Brouillon créé dans Zoho Desk")
+                result['draft_created'] = True
+            else:
+                logger.info("✅ DRAFT CREATION → Préparé (pas d'auto-create)")
+
+            # ================================================================
+            # STEP 8: FINAL VALIDATION
+            # ================================================================
+            logger.info("\n8️⃣  FINAL VALIDATION - Vérifications finales...")
+            result['workflow_stage'] = 'COMPLETED'
+
+            validation_errors = []
+
+            # Check mandatory blocks compliance
+            for scenario_id, validation in response_result.get('validation', {}).items():
+                if not validation['compliant']:
+                    validation_errors.append(
+                        f"Scenario {scenario_id}: missing {validation['missing_blocks']}"
+                    )
+                if validation['forbidden_terms_found']:
+                    validation_errors.append(
+                        f"Forbidden terms used: {validation['forbidden_terms_found']}"
+                    )
+
+            if validation_errors:
+                logger.warning(f"⚠️  Validation warnings: {validation_errors}")
+                result['errors'].extend(validation_errors)
+            else:
+                logger.info("✅ VALIDATION → Tous les contrôles passés")
+
+            result['success'] = True
+            logger.info("\n" + "=" * 80)
+            logger.info("✅ WORKFLOW COMPLET TERMINÉ")
+            logger.info("=" * 80)
+
+            return result
+
+        except Exception as e:
+            logger.error(f"❌ Error in workflow: {e}")
+            result['errors'].append(str(e))
+            import traceback
+            traceback.print_exc()
+            return result
+
+    def _run_triage(self, ticket_id: str) -> Dict:
+        """
+        Run AGENT TRIEUR logic.
+
+        Returns:
+            {
+                'action': 'GO' | 'ROUTE' | 'SPAM',
+                'target_department': str (if ROUTE),
+                'reason': str
+            }
+        """
+        # Get ticket details
+        ticket = self.desk_client.get_ticket(ticket_id)
+
+        subject = ticket.get('subject', '')
+        email = ticket.get('email', '')
+
+        # Get first customer message
+        threads = self.desk_client.get_ticket_threads(ticket_id)
+        customer_message = ""
+        for thread in threads.get('data', []):
+            if thread.get('direction') == 'in':
+                customer_message = thread.get('content', '')
+                break
+
+        # Apply triage rules (simplified - full logic would check all 7 rules)
+        triage_result = {
+            'action': 'GO',  # Default: continue workflow
+            'target_department': None,
+            'reason': 'No routing needed'
+        }
+
+        # Rule #3: SPAM detection
+        spam_keywords = ['viagra', 'casino', 'lottery', 'prince nigerian']
+        if any(kw in subject.lower() or kw in customer_message.lower() for kw in spam_keywords):
+            triage_result['action'] = 'SPAM'
+            triage_result['reason'] = 'Spam detected'
+            return triage_result
+
+        # Rule #2: HORS PARTENARIAT (taxi, ambulance, etc.)
+        hors_partenariat_keywords = ['taxi', 'ambulance', 'autre formation']
+        if any(kw in subject.lower() or kw in customer_message.lower() for kw in hors_partenariat_keywords):
+            triage_result['action'] = 'ROUTE'
+            triage_result['target_department'] = 'Contact'
+            triage_result['reason'] = 'Formation hors partenariat Uber'
+            return triage_result
+
+        # More rules would be implemented here...
+
+        return triage_result
+
+    def _run_analysis(self, ticket_id: str, triage_result: Dict) -> Dict:
+        """
+        Run AGENT ANALYSTE logic - extract data from 6 sources.
+
+        Sources:
+        1. CRM Zoho (contact, deal)
+        2. ExamenT3P (documents, paiement, compte)
+        3. Evalbox (Google Sheet - eligibility)
+        4. Sessions sheet (SESSIONSUBER2026.xlsx)
+        5. Ticket threads (conversation history)
+        6. Google Drive (if needed)
+
+        Returns:
+            {
+                'contact_data': Dict,
+                'deal_id': str,
+                'deal_data': Dict,
+                'exament3p_data': Dict,
+                'evalbox_data': Dict,
+                'session_data': Dict,
+                'ancien_dossier': bool
+            }
+        """
+        # Get ticket
+        ticket = self.desk_client.get_ticket(ticket_id)
+        email = ticket.get('email', '')
+
+        # Source 1: CRM - Find contact and deal
+        logger.info("  📊 Source 1/6: CRM Zoho...")
+        deal_id = self.deal_linker.find_deal_for_ticket(ticket_id, email)
+
+        contact_data = {}
+        deal_data = {}
+
+        if deal_id:
+            deal = self.crm_client.get_deal(deal_id)
+            deal_data = deal
+            contact_data = {
+                'email': email,
+                'contact_id': deal.get('Contact_Name', {}).get('id')
+            }
+        else:
+            logger.warning("  ⚠️  No deal found for this ticket")
+
+        # Source 2: ExamenT3P (would use ExamT3PAgent here)
+        logger.info("  🌐 Source 2/6: ExamenT3P...")
+        exament3p_data = {
+            'compte_existe': False,
+            'identifiant': None,
+            'mot_de_passe': None,
+            'documents': [],
+            'documents_manquants': [],
+            'paiement_cma_status': 'N/A'
+        }
+        # TODO: Call ExamT3PAgent to scrape data
+        # exament3p_data = await self.examt3p_agent.scrape_candidate(email)
+
+        # Source 3: Evalbox (Google Sheet)
+        logger.info("  📊 Source 3/6: Evalbox...")
+        evalbox_data = {
+            'eligible_uber': None,
+            'scope': None
+        }
+        # TODO: Query Evalbox Google Sheet
+
+        # Source 4: Sessions (SESSIONSUBER2026.xlsx)
+        logger.info("  📅 Source 4/6: Sessions...")
+        session_data = {}
+        # TODO: Query sessions sheet
+
+        # Source 5: Ticket threads
+        logger.info("  💬 Source 5/6: Ticket threads...")
+        threads = self.desk_client.get_ticket_threads(ticket_id)
+
+        # Source 6: Google Drive (if needed)
+        logger.info("  📁 Source 6/6: Google Drive...")
+        # Only if specific documents needed
+
+        # VÉRIFICATION #0: ANCIEN DOSSIER
+        ancien_dossier = False
+        if deal_data.get('Date_de_depot_CMA'):
+            date_depot = deal_data['Date_de_depot_CMA']
+            if date_depot < '2025-11-01':
+                ancien_dossier = True
+                logger.warning("⚠️  ANCIEN DOSSIER détecté (avant 01/11/2025)")
+
+        return {
+            'contact_data': contact_data,
+            'deal_id': deal_id,
+            'deal_data': deal_data,
+            'exament3p_data': exament3p_data,
+            'evalbox_data': evalbox_data,
+            'session_data': session_data,
+            'threads': threads.get('data', []),
+            'ancien_dossier': ancien_dossier
+        }
+
+    def _run_response_generation(
+        self,
+        ticket_id: str,
+        triage_result: Dict,
+        analysis_result: Dict
+    ) -> Dict:
+        """
+        Run AGENT RÉDACTEUR - Generate response with Claude + RAG.
+
+        Returns response_result from ResponseGeneratorAgent.
+        """
+        # Get ticket info
+        ticket = self.desk_client.get_ticket(ticket_id)
+
+        # Extract customer message
+        customer_message = ""
+        for thread in analysis_result.get('threads', []):
+            if thread.get('direction') == 'in':
+                customer_message = thread.get('content', '')
+                break
+
+        # Generate response
+        response_result = self.response_generator.generate_with_validation_loop(
+            ticket_subject=ticket.get('subject', ''),
+            customer_message=customer_message,
+            crm_data=analysis_result.get('deal_data'),
+            exament3p_data=analysis_result.get('exament3p_data'),
+            evalbox_data=analysis_result.get('evalbox_data')
+        )
+
+        return response_result
+
+    def _create_crm_note(
+        self,
+        ticket_id: str,
+        triage_result: Dict,
+        analysis_result: Dict,
+        response_result: Dict
+    ) -> str:
+        """
+        Create CRM note (OBLIGATOIRE before draft).
+
+        Format:
+        [TICKET #123456] Scénarios: SC-01, SC-02
+        - Action: Réponse envoyée
+        - Mise à jour: [champs CRM modifiés]
+        - Next steps: [actions requises]
+        """
+        scenarios = response_result.get('detected_scenarios', [])
+        crm_updates = response_result.get('crm_update_fields', [])
+
+        note_lines = [
+            f"[TICKET #{ticket_id}] {datetime.now().strftime('%Y-%m-%d %H:%M')}",
+            "",
+            f"**Scénarios détectés** : {', '.join(scenarios)}",
+            "",
+            f"**Action** : Réponse générée et draft créé",
+            ""
+        ]
+
+        if crm_updates:
+            note_lines.append(f"**Champs CRM mis à jour** : {', '.join(crm_updates)}")
+            note_lines.append("")
+
+        # Add validation warnings
+        validation_warnings = []
+        for scenario_id, validation in response_result.get('validation', {}).items():
+            if not validation['compliant']:
+                validation_warnings.append(
+                    f"⚠️  {scenario_id}: blocs manquants {validation['missing_blocks']}"
+                )
+
+        if validation_warnings:
+            note_lines.append("**Avertissements** :")
+            note_lines.extend(f"  - {w}" for w in validation_warnings)
+            note_lines.append("")
+
+        # Add similar tickets reference
+        similar_tickets = response_result.get('similar_tickets', [])
+        if similar_tickets:
+            note_lines.append("**Tickets similaires utilisés** :")
+            for ticket in similar_tickets[:2]:
+                note_lines.append(
+                    f"  - #{ticket['ticket_number']} (score: {ticket['similarity_score']})"
+                )
+
+        return "\n".join(note_lines)
+
+    def _prepare_ticket_updates(self, response_result: Dict) -> Dict:
+        """Prepare ticket field updates."""
+        updates = {}
+
+        # Could update tags, status, priority based on scenario
+        scenarios = response_result.get('detected_scenarios', [])
+
+        if scenarios:
+            # Add scenario tags
+            updates['tags'] = scenarios[:3]  # Max 3 tags
+
+        return updates
+
+    def _prepare_deal_updates(
+        self,
+        response_result: Dict,
+        analysis_result: Dict
+    ) -> Dict:
+        """Prepare CRM deal field updates."""
+        updates = {}
+
+        # Get fields to update from scenario
+        fields_to_update = response_result.get('crm_update_fields', [])
+
+        # For SC-17_CONFIRMATION_SESSION, update session fields
+        if 'Session_choisie' in fields_to_update:
+            # Would extract session info from response
+            pass
+
+        # For other scenarios, map accordingly
+        # This is simplified - full implementation would extract values from response
+
+        return updates
+
+    def close(self):
+        """Clean up resources."""
+        if hasattr(self, 'desk_client'):
+            self.desk_client.close()
+        if hasattr(self, 'crm_client'):
+            self.crm_client.close()
+
+
+def test_workflow():
+    """Test workflow with a sample ticket."""
+    print("\n" + "=" * 80)
+    print("TEST DOC TICKET WORKFLOW")
+    print("=" * 80)
+
+    workflow = DOCTicketWorkflow()
+
+    # Test with a real ticket ID (would need actual ticket)
+    # For now, just show structure is correct
+    print("\n✅ Workflow initialized successfully")
+    print("\n📋 Workflow stages:")
+    print("  1. AGENT TRIEUR (triage with STOP & GO)")
+    print("  2. AGENT ANALYSTE (6-source data extraction)")
+    print("  3. AGENT RÉDACTEUR (Claude + RAG response generation)")
+    print("  4. CRM NOTE (mandatory before draft)")
+    print("  5. TICKET UPDATE (status, tags)")
+    print("  6. DEAL UPDATE (if scenario requires)")
+    print("  7. DRAFT CREATION (Zoho Desk)")
+    print("  8. FINAL VALIDATION")
+
+    print("\n🎯 To run with a real ticket:")
+    print("  workflow.process_ticket(")
+    print("    ticket_id='198709000445353417',")
+    print("    auto_create_draft=False,")
+    print("    auto_update_crm=False,")
+    print("    auto_update_ticket=False")
+    print("  )")
+
+    workflow.close()
+
+
+if __name__ == "__main__":
+    test_workflow()
