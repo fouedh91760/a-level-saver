@@ -69,11 +69,15 @@ Be precise and consistent in your routing decisions."""
         """
         Analyze a ticket and determine correct department routing.
 
+        IMPORTANT: This method should be called AFTER deal linking,
+        because the deal determines the department (priority over keywords).
+
         Args:
             data: Dict with:
                 - ticket_id: The ticket to analyze
                 - auto_reassign: Whether to automatically reassign (default: False)
                 - force_analysis: Force AI analysis even if routing rules match (default: False)
+                - deal: Optional deal data (if found by DealLinkingAgent)
 
         Returns:
             Dict with:
@@ -86,10 +90,12 @@ Be precise and consistent in your routing decisions."""
                 - confidence: int (0-100)
                 - reasoning: str
                 - signals: list of keywords/patterns found
+                - routing_method: "deal" | "business_rules" | "ai_analysis"
         """
         ticket_id = data.get("ticket_id")
         auto_reassign = data.get("auto_reassign", False)
         force_analysis = data.get("force_analysis", False)
+        deal = data.get("deal")  # Deal data from DealLinkingAgent
 
         if not ticket_id:
             raise ValueError("ticket_id is required")
@@ -110,7 +116,40 @@ Be precise and consistent in your routing decisions."""
         current_department = ticket.get("departmentName", "Unknown")
         logger.info(f"Current department: {current_department}")
 
-        # Step 1: Check business rules first (faster, deterministic)
+        # Step 1: Check if deal determines the department (PRIORITY)
+        if deal and not force_analysis:
+            deal_based_department = BusinessRules.get_department_from_deal(deal)
+            if deal_based_department:
+                logger.info(f"Deal-based routing determined: {deal_based_department}")
+                logger.info(f"Deal: {deal.get('Deal_Name', 'Unknown')} (Stage: {deal.get('Stage', 'Unknown')})")
+
+                should_reassign = (deal_based_department != current_department)
+
+                result = {
+                    "success": True,
+                    "ticket_id": ticket_id,
+                    "current_department": current_department,
+                    "recommended_department": deal_based_department,
+                    "should_reassign": should_reassign,
+                    "confidence": 98,  # Very high confidence for deal-based
+                    "method": "deal_based_routing",
+                    "routing_method": "deal",
+                    "reasoning": f"Routed based on CRM deal: {deal.get('Deal_Name', 'Unknown')} (Stage: {deal.get('Stage', 'Unknown')})",
+                    "signals": [f"Deal: {deal.get('Deal_Name', 'Unknown')}", f"Stage: {deal.get('Stage', 'Unknown')}"],
+                    "deal_id": deal.get("id"),
+                    "deal_name": deal.get("Deal_Name")
+                }
+
+                # Auto-reassign if requested
+                if should_reassign and auto_reassign:
+                    reassign_result = self._reassign_ticket(ticket_id, deal_based_department)
+                    result["reassigned"] = reassign_result
+                else:
+                    result["reassigned"] = False
+
+                return result
+
+        # Step 2: Check business rules (keywords) if no deal or deal didn't match
         routing_rules = BusinessRules.get_department_routing_rules()
         rule_based_department = self._check_routing_rules(ticket, routing_rules)
 
@@ -127,6 +166,7 @@ Be precise and consistent in your routing decisions."""
                 "should_reassign": should_reassign,
                 "confidence": 95,  # High confidence for rule-based
                 "method": "business_rules",
+                "routing_method": "business_rules",
                 "reasoning": f"Matched business rule for {rule_based_department} department",
                 "signals": self._extract_signals(ticket)
             }
@@ -140,7 +180,7 @@ Be precise and consistent in your routing decisions."""
 
             return result
 
-        # Step 2: Use AI analysis if no rule match or forced
+        # Step 3: Use AI analysis if no rule match or forced
         logger.info("Using AI analysis for department routing")
         ai_result = self._analyze_with_ai(ticket)
 
@@ -155,6 +195,7 @@ Be precise and consistent in your routing decisions."""
             "should_reassign": should_reassign,
             "confidence": ai_result.get("confidence", 50),
             "method": "ai_analysis",
+            "routing_method": "ai_analysis",
             "reasoning": ai_result.get("reasoning", ""),
             "signals": ai_result.get("signals", [])
         }

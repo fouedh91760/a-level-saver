@@ -126,13 +126,29 @@ Always respond in JSON format with the following structure:
         existing_deal_id = ticket.get("cf_deal_id") or ticket.get("cf_zoho_crm_deal_id")
         if existing_deal_id and not force_update:
             logger.info(f"Ticket {ticket_id} already linked to deal {existing_deal_id}")
-            return {
-                "success": True,
-                "already_linked": True,
-                "ticket_id": ticket_id,
-                "deal_id": existing_deal_id,
-                "action": "skipped"
-            }
+
+            # Fetch the deal to return full data for routing
+            try:
+                existing_deal = self.crm_client.get_deal(existing_deal_id)
+                return {
+                    "success": True,
+                    "already_linked": True,
+                    "ticket_id": ticket_id,
+                    "deal_id": existing_deal_id,
+                    "deal": existing_deal,  # Return full deal for department routing
+                    "deal_found": True,
+                    "action": "skipped"
+                }
+            except Exception as e:
+                logger.warning(f"Could not fetch existing deal {existing_deal_id}: {e}")
+                return {
+                    "success": True,
+                    "already_linked": True,
+                    "ticket_id": ticket_id,
+                    "deal_id": existing_deal_id,
+                    "deal_found": True,
+                    "action": "skipped"
+                }
 
         # Find the deal
         logger.info(f"Searching for deal for ticket {ticket_id}")
@@ -227,6 +243,7 @@ Always respond in JSON format with the following structure:
                 "ticket_id": ticket_id,
                 "deal_id": deal_id,
                 "deal_name": deal.get("Deal_Name"),
+                "deal": deal,  # Return full deal for department routing
                 "action": "linked",
                 "bidirectional_link": bidirectional
             }

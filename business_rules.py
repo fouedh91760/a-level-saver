@@ -234,6 +234,64 @@ class BusinessRules:
         return True
 
     @staticmethod
+    def get_department_from_deal(deal: Dict[str, Any]) -> Optional[str]:
+        """
+        Détermine le département basé sur le deal CRM (PRIORITAIRE sur keywords).
+
+        WORKFLOW CORRECT:
+        1. Deal Linking Agent trouve le deal
+        2. Cette méthode détermine le département depuis le deal
+        3. Si pas de match → fallback sur keywords (get_department_routing_rules)
+
+        CUSTOMIZE THIS METHOD!
+
+        Args:
+            deal: Le deal CRM trouvé
+
+        Returns:
+            Nom du département ou None (fallback sur keywords)
+
+        Logique:
+        - Uber €20 deals → DOC
+        - CAB/Capacité deals → DOCS CAB
+        - CMA Closed Lost → Refus CMA
+        - CMA autres stages → Inscription CMA
+        - Deal trouvé sans règle spécifique → Contact
+        """
+        if not deal:
+            return None
+
+        deal_name = deal.get("Deal_Name", "").lower()
+        stage = deal.get("Stage", "")
+        amount = deal.get("Amount", 0)
+
+        # ===== RÈGLES BASÉES SUR LE DEAL =====
+
+        # Uber €20 deals → DOC (formation VTC)
+        if "uber" in deal_name and amount == 20:
+            return "DOC"
+
+        # CAB / Capacité deals → DOCS CAB
+        if "cab" in deal_name or "capacité" in deal_name or "capacite" in deal_name:
+            return "DOCS CAB"
+
+        # CMA deals : routing selon le stage
+        if "cma" in deal_name:
+            if stage == "Closed Lost":
+                return "Refus CMA"  # Deal refusé
+            elif stage in ["Qualification", "Needs Analysis", "Proposal"]:
+                return "Inscription CMA"  # En cours d'inscription
+            else:
+                return "Contact"  # CMA mais stage inconnu
+
+        # A-Level / Educational deals → DOC
+        if "a-level" in deal_name or "formation" in deal_name or "vtc" in deal_name:
+            return "DOC"
+
+        # Deal trouvé mais pas de règle spécifique → Contact (département généraliste)
+        return "Contact"
+
+    @staticmethod
     def get_department_routing_rules() -> Dict[str, Any]:
         """
         Get department routing rules for the TicketDispatcherAgent.

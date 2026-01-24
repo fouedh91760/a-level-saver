@@ -109,10 +109,13 @@ class ZohoAutomationOrchestrator:
         Complete end-to-end workflow for processing a ticket.
 
         This is the RECOMMENDED method for full automation. It:
-        1. Routes ticket to correct department (TicketDispatcherAgent)
-        2. Links ticket to appropriate deal (DealLinkingAgent)
+        1. Links ticket to appropriate deal FIRST (DealLinkingAgent)
+        2. Routes ticket to correct department based on DEAL + keywords (TicketDispatcherAgent)
         3. Processes ticket and generates response (DeskTicketAgent)
         4. Updates CRM deal based on ticket context (CRMOpportunityAgent)
+
+        IMPORTANT: Deal linking MUST come before routing because the deal
+        determines the department (e.g., Uber €20 → DOC, CMA Closed Lost → Refus CMA).
 
         Args:
             ticket_id: Zoho Desk ticket ID
@@ -131,19 +134,36 @@ class ZohoAutomationOrchestrator:
         workflow_result = {
             "success": True,
             "ticket_id": ticket_id,
-            "dispatch_result": None,
             "linking_result": None,
+            "dispatch_result": None,
             "ticket_result": None,
             "crm_result": None,
             "workflow": "complete_workflow"
         }
 
         try:
-            # Step 1: Department routing validation
-            logger.info("Step 1: Validating department routing")
+            # Step 1: Deal linking FIRST (determines department)
+            logger.info("Step 1: Linking ticket to deal")
+            linking_result = self.deal_linking_agent.process({
+                "ticket_id": ticket_id
+            })
+            workflow_result["linking_result"] = linking_result
+
+            deal_id = None
+            deal = None
+            if linking_result.get("deal_found"):
+                deal_id = linking_result.get("deal_id")
+                deal = linking_result.get("deal")  # Get full deal data
+                logger.info(f"Linked to deal {deal_id}: {deal.get('Deal_Name', 'Unknown')}")
+            else:
+                logger.warning(f"No deal found for ticket {ticket_id}")
+
+            # Step 2: Department routing validation (uses deal if available)
+            logger.info("Step 2: Validating department routing (with deal context)")
             dispatch_result = self.dispatcher_agent.process({
                 "ticket_id": ticket_id,
-                "auto_reassign": auto_dispatch
+                "auto_reassign": auto_dispatch,
+                "deal": deal  # Pass deal to dispatcher for routing logic
             })
             workflow_result["dispatch_result"] = dispatch_result
 
@@ -152,20 +172,6 @@ class ZohoAutomationOrchestrator:
                     f"Ticket {ticket_id} should be in {dispatch_result['recommended_department']} "
                     f"but is in {dispatch_result['current_department']} (auto_dispatch=False)"
                 )
-
-            # Step 2: Deal linking
-            logger.info("Step 2: Linking ticket to deal")
-            linking_result = self.deal_linking_agent.process({
-                "ticket_id": ticket_id
-            })
-            workflow_result["linking_result"] = linking_result
-
-            deal_id = None
-            if linking_result.get("deal_found"):
-                deal_id = linking_result.get("deal_id")
-                logger.info(f"Linked to deal {deal_id}")
-            else:
-                logger.warning(f"No deal found for ticket {ticket_id}")
 
             # Step 3: Process ticket
             logger.info("Step 3: Processing ticket")
