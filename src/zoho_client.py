@@ -16,6 +16,8 @@ class ZohoAPIClient:
         self.access_token: Optional[str] = None
         self.token_expires_at: Optional[datetime] = None
         self._session = requests.Session()
+        # Disable proxy for Zoho API calls
+        self._session.proxies = {"http": None, "https": None}
 
     def _is_token_expired(self) -> bool:
         """Check if the current access token is expired."""
@@ -40,7 +42,8 @@ class ZohoAPIClient:
         }
 
         try:
-            response = requests.post(url, params=params)
+            # Explicitly disable proxy for Zoho API calls
+            response = requests.post(url, params=params, proxies={"http": None, "https": None})
             response.raise_for_status()
             data = response.json()
 
@@ -405,7 +408,8 @@ class ZohoCRMClient(ZohoAPIClient):
         }
 
         try:
-            response = requests.post(url, params=params)
+            # Explicitly disable proxy for Zoho API calls
+            response = requests.post(url, params=params, proxies={"http": None, "https": None})
             response.raise_for_status()
             data = response.json()
 
