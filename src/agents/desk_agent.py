@@ -4,6 +4,7 @@ import json
 from typing import Dict, Any, Optional
 from .base_agent import BaseAgent
 from src.zoho_client import ZohoDeskClient
+from src.utils.text_utils import get_clean_thread_content
 
 logger = logging.getLogger(__name__)
 
@@ -98,7 +99,7 @@ Always respond in JSON format with the following structure:
                     "From": thread.get("from", {}).get("emailId", "N/A") if isinstance(thread.get("from"), dict) else thread.get("from", "N/A"),
                     "To": thread.get("to", "N/A"),
                     "Subject": thread.get("subject", "N/A"),
-                    "Content": thread.get("content", thread.get("plainText", "N/A")),  # Full content, not summary
+                    "Content": get_clean_thread_content(thread),  # Clean text (plainText or cleaned HTML)
                     "Created Time": thread.get("createdTime", "N/A"),
                     "Is Forward": thread.get("isForward", False),
                     "Is Reply": thread.get("isReply", False)

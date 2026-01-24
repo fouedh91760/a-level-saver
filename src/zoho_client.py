@@ -1,6 +1,6 @@
 """Zoho API client with OAuth2 authentication."""
 import logging
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 import requests
 from datetime import datetime, timedelta
 from tenacity import retry, stop_after_attempt, wait_exponential
@@ -149,11 +149,82 @@ class ZohoDeskClient(ZohoAPIClient):
     def get_ticket_threads(self, ticket_id: str) -> Dict[str, Any]:
         """
         Get all threads (emails, replies) for a ticket.
-        This returns the complete conversation history including full email content.
+        This returns the list of threads.
+
+        WARNING: This may return summaries only. Use get_all_threads_with_full_content()
+        to ensure you get the complete email body for each thread.
         """
         url = f"{settings.zoho_desk_api_url}/tickets/{ticket_id}/threads"
         params = {"orgId": settings.zoho_desk_org_id}
         return self._make_request("GET", url, params=params)
+
+    def get_thread_details(self, ticket_id: str, thread_id: str) -> Dict[str, Any]:
+        """
+        Get the complete details of a specific thread including full content.
+
+        This endpoint retrieves the full email body for a single thread,
+        not just a summary.
+
+        Args:
+            ticket_id: The ticket ID
+            thread_id: The thread ID to fetch
+
+        Returns:
+            Complete thread data with full content
+        """
+        url = f"{settings.zoho_desk_api_url}/tickets/{ticket_id}/threads/{thread_id}"
+        params = {"orgId": settings.zoho_desk_org_id}
+        return self._make_request("GET", url, params=params)
+
+    def get_all_threads_with_full_content(self, ticket_id: str) -> List[Dict[str, Any]]:
+        """
+        Get all threads for a ticket with FULL content for each thread.
+
+        This method ensures you get complete email bodies, not summaries:
+        1. Gets the list of threads
+        2. Fetches full details for each thread individually
+        3. Returns complete thread data with full email content
+
+        This is the recommended method to use when you need the complete
+        email conversation history.
+
+        Args:
+            ticket_id: The ticket ID
+
+        Returns:
+            List of threads with full content
+        """
+        logger.info(f"Fetching all threads with full content for ticket {ticket_id}")
+
+        # Get list of threads
+        threads_response = self.get_ticket_threads(ticket_id)
+        threads_list = threads_response.get("data", [])
+
+        if not threads_list:
+            logger.info(f"No threads found for ticket {ticket_id}")
+            return []
+
+        # Fetch full details for each thread
+        full_threads = []
+        for idx, thread in enumerate(threads_list, 1):
+            thread_id = thread.get("id")
+            if thread_id:
+                try:
+                    # Get full thread details with complete content
+                    full_thread = self.get_thread_details(ticket_id, thread_id)
+                    full_threads.append(full_thread)
+                    logger.debug(f"Fetched full content for thread {thread_id} ({idx}/{len(threads_list)})")
+                except Exception as e:
+                    logger.warning(f"Could not fetch full details for thread {thread_id}: {e}")
+                    # Fallback to the summary data from the list
+                    logger.warning(f"Using summary data for thread {thread_id} (may be incomplete)")
+                    full_threads.append(thread)
+            else:
+                logger.warning(f"Thread without ID found, using as-is")
+                full_threads.append(thread)
+
+        logger.info(f"Fetched {len(full_threads)} threads with full content for ticket {ticket_id}")
+        return full_threads
 
     def get_ticket_conversations(self, ticket_id: str) -> Dict[str, Any]:
         """
@@ -177,43 +248,48 @@ class ZohoDeskClient(ZohoAPIClient):
         """
         Get complete context for a ticket including:
         - Basic ticket information
-        - Full thread history (emails, replies)
-        - Conversations
-        - History of changes
+        - Full thread history with COMPLETE email content (not summaries)
+        - All conversations
+        - Complete modification history
 
         This provides the most comprehensive view of a ticket for AI analysis.
+
+        IMPORTANT: This method fetches each thread individually to ensure
+        we get the full email body content, not just summaries.
         """
         logger.info(f"Fetching complete context for ticket {ticket_id}")
 
         # Get basic ticket info
         ticket = self.get_ticket(ticket_id)
 
-        # Get all threads (full email content)
+        # Get all threads with FULL content (fetches each thread individually)
         try:
-            threads = self.get_ticket_threads(ticket_id)
+            threads = self.get_all_threads_with_full_content(ticket_id)
         except Exception as e:
             logger.warning(f"Could not fetch threads for ticket {ticket_id}: {e}")
-            threads = {"data": []}
+            threads = []
 
         # Get conversations
         try:
-            conversations = self.get_ticket_conversations(ticket_id)
+            conversations_response = self.get_ticket_conversations(ticket_id)
+            conversations = conversations_response.get("data", [])
         except Exception as e:
             logger.warning(f"Could not fetch conversations for ticket {ticket_id}: {e}")
-            conversations = {"data": []}
+            conversations = []
 
         # Get history
         try:
-            history = self.get_ticket_history(ticket_id)
+            history_response = self.get_ticket_history(ticket_id)
+            history = history_response.get("data", [])
         except Exception as e:
             logger.warning(f"Could not fetch history for ticket {ticket_id}: {e}")
-            history = {"data": []}
+            history = []
 
         return {
             "ticket": ticket,
-            "threads": threads.get("data", []),
-            "conversations": conversations.get("data", []),
-            "history": history.get("data", [])
+            "threads": threads,  # Now contains full content for each thread
+            "conversations": conversations,
+            "history": history
         }
 
 
