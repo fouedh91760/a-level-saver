@@ -1,0 +1,329 @@
+{
+  "timestamp": "2026-01-24T17:01:03.812174",
+  "source_analysis": "fouad_tickets_analysis.json",
+  "recommendations": {
+    "department_routing_rules": {
+      "DOC": {
+        "recommended_keywords": [
+          "examen",
+          "inscription",
+          "formation",
+          "convocation",
+          "service",
+          "client",
+          "dossier",
+          "test",
+          "rappel",
+          "demande",
+          "sélection",
+          "admissibilité",
+          "épreuve",
+          "récapitulatif",
+          "réussi",
+          "janvier",
+          "uber",
+          "form",
+          "submission",
+          "from"
+        ],
+        "rationale": "Basé sur l'analyse de 100 tickets traités par Fouad"
+      }
+    },
+    "common_patterns": {
+      "subject_keywords": {
+        "examen": 42,
+        "votre": 32,
+        "inscription": 22,
+        "formation": 13,
+        "convocation": 12,
+        "service": 11,
+        "client": 11,
+        "dossier": 11,
+        "test": 10,
+        "rappel": 10,
+        "demande": 10,
+        "sélection": 9,
+        "admissibilité": 8,
+        "épreuve": 7,
+        "récapitulatif": 7,
+        "réussi": 6,
+        "janvier": 6,
+        "uber": 6,
+        "form": 5,
+        "submission": 5,
+        "from": 5,
+        "assistance": 5,
+        "2026": 5,
+        "confirmation": 5,
+        "offre": 5,
+        "vous": 5,
+        "paiement": 4,
+        "pour": 4,
+        "accès": 3,
+        "exament3p": 3
+      },
+      "customer_keywords": {
+        "font": 49749,
+        "style": 45762,
+        "sans": 25308,
+        "serif": 23848,
+        "helvetica": 22600,
+        "arial": 21726,
+        "family": 21526,
+        "margin": 16443,
+        "padding": 15404,
+        "size": 14989,
+        "color": 14779,
+        "span": 12291,
+        "border": 12248,
+        "quot": 11480,
+        "width": 10909,
+        "nbsp": 10883,
+        "text": 7027,
+        "left": 6333,
+        "table": 6024,
+        "none": 5608,
+        "vous": 5436,
+        "class": 5373,
+        "normal": 5169,
+        "noreferrer": 4720,
+        "auto": 4701,
+        "target": 4698,
+        "_blank": 4698,
+        "href": 4696,
+        "votre": 4646,
+        "13px": 4572
+      },
+      "fouad_keywords": {
+        "style": 12007,
+        "font": 11989,
+        "sans": 5970,
+        "serif": 5736,
+        "family": 5399,
+        "helvetica": 5332,
+        "arial": 5244,
+        "margin": 4536,
+        "padding": 4317,
+        "color": 3968,
+        "border": 3938,
+        "quot": 3934,
+        "size": 3848,
+        "width": 3627,
+        "span": 3235,
+        "nbsp": 2673,
+        "table": 2148,
+        "left": 1660,
+        "class": 1576,
+        "tbody": 1569,
+        "vous": 1481,
+        "text": 1434,
+        "align": 1426,
+        "none": 1322,
+        "background": 1283,
+        "height": 1253,
+        "collapse": 1200,
+        "noreferrer": 1128,
+        "target": 1126,
+        "_blank": 1126
+      },
+      "subject_categories": {
+        "Uber / Livraison": 6,
+        "Documents / Certificats": 0,
+        "Formation / Cours": 15,
+        "Inscription / Registration": 16,
+        "CAB / Capacité": 0,
+        "CMA": 3,
+        "Questions générales": 2,
+        "Problèmes techniques": 4,
+        "Autre": 54
+      },
+      "question_patterns": {
+        "top_question_starters": [
+          {
+            "starter": "<meta content=\"text/html; charset=utf-8\"><div",
+            "count": 50
+          },
+          {
+            "starter": "<meta content=\"text/html; charset=utf-8\">",
+            "count": 40
+          },
+          {
+            "starter": "<meta content=\"text/html; charset=windows-1252\">",
+            "count": 17
+          },
+          {
+            "starter": "<div> <div style=\"font-family:",
+            "count": 15
+          },
+          {
+            "starter": "<div><div dir=\"auto\">bonjour,&nbsp;</div><div dir=\"auto\"><br/></div><div",
+            "count": 9
+          },
+          {
+            "starter": "<div style='margin:15px; font-family:arial,",
+            "count": 7
+          },
+          {
+            "starter": "<meta content=\"text/html; charset=iso-8859-1\">",
+            "count": 7
+          },
+          {
+            "starter": "<div><div dir=\"auto\">bonjour,</div><div dir=\"auto\"><br/></div><div",
+            "count": 6
+          },
+          {
+            "starter": "<div><div dir=\"auto\">bonjour,</div><div dir=\"auto\"><br></div><div",
+            "count": 6
+          },
+          {
+            "starter": "<div> <div dir=\"ltr\">",
+            "count": 6
+          },
+          {
+            "starter": "<div><div dir=\"auto\">bonjour&nbsp;<div dir=\"auto\"><br></div><div",
+            "count": 5
+          },
+          {
+            "starter": "<div><div dir=\"auto\">bonjour je",
+            "count": 4
+          },
+          {
+            "starter": "<div><div dir=\"ltr\"><div><br></div><div><div dir=\"ltr\"",
+            "count": 4
+          },
+          {
+            "starter": "<table width=\"100%\" cellspacing=\"0\"",
+            "count": 4
+          },
+          {
+            "starter": "<div><div dir=\"auto\">bonjour,&nbsp;</div><div dir=\"auto\"><br></div><div",
+            "count": 3
+          },
+          {
+            "starter": "<div> <div dir=\"ltr\"",
+            "count": 3
+          },
+          {
+            "starter": "<div><div dir=\"auto\">bonjour,<div dir=\"auto\"><br></div><div",
+            "count": 3
+          },
+          {
+            "starter": "<div> <div dir=\"auto\"",
+            "count": 3
+          },
+          {
+            "starter": "<div><div dir=\"auto\">bonjour,<div dir=\"auto\"><br/></div><div",
+            "count": 3
+          },
+          {
+            "starter": "<div><div dir=\"auto\">merci beaucoup",
+            "count": 2
+          }
+        ],
+        "top_question_keywords": {
+          "style": 45762,
+          "serif": 23848,
+          "helvetica": 22600,
+          "arial": 21726,
+          "family": 21526,
+          "margin": 16443,
+          "padding": 15404,
+          "color": 14779,
+          "border": 12248,
+          "width": 10909,
+          "table": 6024,
+          "class": 5373,
+          "normal": 5169,
+          "noreferrer": 4720,
+          "target": 4698,
+          "_blank": 4698,
+          "votre": 4646,
+          "height": 4484,
+          "align": 4447,
+          "formations": 4328,
+          "tbody": 4263,
+          "blockquote": 4082,
+          "spacing": 3828,
+          "background": 3669,
+          "collapse": 3388,
+          "https": 3183,
+          "noopener": 2874,
+          "mailto": 2724,
+          "trebuchet": 2618,
+          "letter": 2328
+        }
+      },
+      "response_patterns": {
+        "top_opening_phrases": {
+          "<div><div style=\"direction: ltr; font-size: 13px; font-family: arial, helvetica, sans-serif\"><div>non comme précisé, soit le 24/02 soit le 31/03 selon les délais de la cma, nous ne choisissons pas": 1,
+          "<meta content=\"text/html;charset=utf-8\"><div><div style=\"font-family: arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px\"><p>bonjour amine,</p><p>merci pour votre message": 1,
+          "<meta content=\"text/html;charset=utf-8\"><div><div style=\"font-family: arial, sans-serif; line-height: 1": 1,
+          "<div><div style=\"direction: ltr; font-size: 13px; font-family: arial, helvetica, sans-serif\"><div>bonjour,&nbsp;<br/></div><div><br/></div><div>oui le 27 janvier prochain": 1,
+          "<div>bonjour cindy, merci pour votre message et pour votre confirmation concernant la formation": 1,
+          "<meta content=\"text/html;charset=utf-8\"><div><div style=\"direction: ltr; font-size: 13px; font-family: arial, helvetica, sans-serif\"><div style=\"font-family: arial, sans-serif; line-height: 1": 1,
+          "<meta content=\"text/html;charset=utf-8\"><div><div style=\"font-family: arial, sans-serif; font-size: 14px; color: rgb(51, 51, 51)\"><p>bonjour gokan,</p><p>merci pour votre message": 1,
+          "<meta content=\"text/html;charset=utf-8\"><div><p>bonjour ophélie,</p><p>merci pour votre message": 1
+        },
+        "top_closing_phrases": {
+          "327230a/mk9265b360-d766-11f0-8c55-963d1902c9da_hk158823f98df3f10844339b1bde0be0080cc5658c710b4ca09f02d0b6fc01f8c6": 6,
+          "327230a/mk7abc9610-f85a-11f0-8391-fae9afc80e45_hkdd565fa3d7906df7d6dea1d3888aed78f7578dfaffc7bb47449d39cd2bba9781": 3,
+          "327230a/mkb70f5db0-b899-11f0-ab35-5254001dc20d_hked9542785cd74527e87674789180e6083133c4a647e16c0464f1edb019de8320": 3,
+          "327230a/mk7d56b730-f881-11f0-b303-765e7256bde4_hk91175f3aac96a9a949680bcebd097619eef01eba7e4177402313d51c80c528e5": 2,
+          "327230a/mk9c672d50-8c82-11f0-9c96-fae9afc80e45_hkfe88be6f44740a05e79100d86152ca087ef83ee347c512a0d306fad615ac22b2": 2,
+          "327230a/mkc0b658e0-cbaa-11f0-a3dd-525400c95d3d_hk7ba0d4af84cded04de14adb88e13f7680c6d58840b72f608e50154c6fc50730f": 2,
+          "je vous en remercie d’avance": 1,
+          "327230a/mkd38c0c40-c7ee-11f0-aaf4-525400a229b1_hkeb4370a1e24c4e54702a4345752062adccb3d28c99b2eed9e06a3623779e699d": 1,
+          "327230a/mk2cdf8880-c7f4-11f0-bf20-525400114fe6_hk9509d5d8359a4c4a2f0a7f294c82103790585b168bb34330291d1eb1d231f7f4": 1,
+          "327230a/mkc1c0a040-f889-11f0-ae8b-1ae16fad91d9_hk691e1b44fb71cbbe712f771e37e0a780e8d8f0cbb5a0a5057c4309ed1a133892": 1,
+          "327230a/mk94a02170-f880-11f0-8391-fae9afc80e45_hk4673f1f0ca40ab308ee0516b40fce65bba96173b969094ed2d034fabaabf1017": 1,
+          "327230a/mk69dbd8d0-da80-11f0-83cb-1ae16fad91d9_hkd3145fb2ae072229a29a5af09550ce7beb52f3432f3a017e475bb94337c0541d": 1,
+          "327230a/mkdce71840-f875-11f0-bea5-525400d4bb1c_hke1aa10d4aba48fe4cddc95a8a075f491db1c8a0824e8a9f339bc0c3e5fd8fa95": 1,
+          "327230a/mkcda610c0-f875-11f0-8673-525400a229b1_hk7cb76f2b8e0727dcf8ed95363f5787af6e5ea42758321900997d22f21f61a9db": 1,
+          "327230a/mk67ee56e0-f85f-11f0-8391-fae9afc80e45_hk6ec2ee180b60433dc843d98b978732c4a40bcf5069aee87c31c107b37e7971ae": 1
+        },
+        "top_response_keywords": {
+          "style": 12007,
+          "serif": 5736,
+          "family": 5399,
+          "helvetica": 5332,
+          "arial": 5244,
+          "margin": 4536,
+          "padding": 4317,
+          "color": 3968,
+          "border": 3938,
+          "width": 3627,
+          "table": 2148,
+          "class": 1576,
+          "tbody": 1569,
+          "align": 1426,
+          "background": 1283,
+          "height": 1253,
+          "collapse": 1200,
+          "noreferrer": 1128,
+          "target": 1126,
+          "_blank": 1126,
+          "votre": 1125,
+          "blockquote": 1010,
+          "formations": 1006,
+          "https": 896,
+          "direction": 895,
+          "normal": 827,
+          "cellspacing": 774,
+          "cellpadding": 767,
+          "spacing": 740,
+          "examen": 719
+        }
+      },
+      "channels": {
+        "Email": 96,
+        "Chat": 4
+      },
+      "top_tags": {},
+      "stats": {
+        "total_tickets": 100,
+        "total_responses": 137,
+        "avg_responses_per_ticket": 1.37
+      }
+    }
+  }
+}

@@ -266,15 +266,27 @@ class BusinessRules:
 
             "DOC": {
                 "keywords": [
-                    "uber",
-                    "a-level",
-                    "document",
-                    "documents",
-                    "educational",
-                    "formation",
-                    "programme",
-                    "cours",
-                    "course"
+                    # Mots-clés basés sur l'analyse de 100 tickets réels de Fouad (01/11/2025)
+                    # Top occurrences dans les sujets de tickets
+                    "examen",           # 42 occurrences - #1
+                    "inscription",      # 22 occurrences - #2
+                    "formation",        # 13 occurrences - #4
+                    "convocation",      # 12 occurrences - #5
+                    "dossier",          # 11 occurrences
+                    "test",             # 10 occurrences
+                    "rappel",           # 10 occurrences
+                    "demande",          # 10 occurrences
+                    "sélection",        # 9 occurrences
+                    "admissibilité",    # 8 occurrences
+                    "épreuve",          # 7 occurrences
+                    "récapitulatif",    # 7 occurrences
+                    "uber",             # Historique
+                    "a-level",          # Historique
+                    "vtc",              # VTC exams
+                    "passage",          # Passage d'examen
+                    "réussi",           # Test réussi
+                    "théorique",        # Examen théorique
+                    "pratique"          # Examen pratique
                 ],
                 "contact_domains": []
             },
