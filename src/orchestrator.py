@@ -3,6 +3,7 @@ import logging
 from typing import Dict, Any, List, Optional
 from src.agents import DeskTicketAgent, CRMOpportunityAgent
 from src.zoho_client import ZohoDeskClient, ZohoCRMClient
+from src.ticket_deal_linker import TicketDealLinker
 
 logger = logging.getLogger(__name__)
 
@@ -23,6 +24,7 @@ class ZohoAutomationOrchestrator:
         self.crm_agent = CRMOpportunityAgent()
         self.desk_client = ZohoDeskClient()
         self.crm_client = ZohoCRMClient()
+        self.ticket_deal_linker = TicketDealLinker()
 
     def process_ticket_with_crm_update(
         self,
@@ -82,6 +84,98 @@ class ZohoAutomationOrchestrator:
                 "success": False,
                 "error": str(e),
                 "workflow": "ticket_with_crm_update"
+            }
+
+    def process_ticket_with_auto_crm_link(
+        self,
+        ticket_id: str,
+        auto_respond: bool = False,
+        auto_update_ticket: bool = False,
+        auto_update_deal: bool = False,
+        auto_add_note: bool = False,
+        create_bidirectional_link: bool = True
+    ) -> Dict[str, Any]:
+        """
+        Process a ticket and AUTOMATICALLY find and update the related deal.
+
+        This method:
+        1. Processes the ticket
+        2. Automatically finds the related deal using multiple strategies
+        3. Creates a bidirectional link (optional)
+        4. Updates the deal based on ticket context
+
+        This is the RECOMMENDED method for automatic workflows as it doesn't
+        require you to know the deal_id in advance.
+
+        Args:
+            ticket_id: Zoho Desk ticket ID
+            auto_respond: Auto-respond to the ticket
+            auto_update_ticket: Auto-update ticket status
+            auto_update_deal: Auto-update deal fields
+            auto_add_note: Auto-add notes to the deal
+            create_bidirectional_link: Update custom fields to link ticket and deal
+
+        Returns:
+            Combined results including deal linking information
+        """
+        logger.info(f"Processing ticket {ticket_id} with automatic CRM linking")
+
+        try:
+            # Step 1: Process the ticket
+            ticket_result = self.desk_agent.process({
+                "ticket_id": ticket_id,
+                "auto_respond": auto_respond,
+                "auto_update": auto_update_ticket
+            })
+
+            # Step 2: Find the related deal automatically
+            deal = self.ticket_deal_linker.find_deal_for_ticket(ticket_id)
+
+            if not deal:
+                logger.warning(f"No deal found for ticket {ticket_id}")
+                return {
+                    "success": True,
+                    "ticket_result": ticket_result,
+                    "deal_found": False,
+                    "crm_result": None,
+                    "workflow": "ticket_with_auto_crm_link"
+                }
+
+            deal_id = deal.get("id")
+            logger.info(f"Found deal {deal_id} for ticket {ticket_id}")
+
+            # Step 3: Create bidirectional link if requested
+            if create_bidirectional_link:
+                link_result = self.ticket_deal_linker.link_ticket_to_deal_bidirectional(
+                    ticket_id, deal_id
+                )
+                logger.info(f"Bidirectional link result: {link_result}")
+
+            # Step 4: Update the CRM opportunity based on ticket context
+            crm_result = self.crm_agent.process_with_ticket(
+                deal_id=deal_id,
+                ticket_id=ticket_id,
+                ticket_analysis=ticket_result,
+                auto_update=auto_update_deal,
+                auto_add_note=auto_add_note
+            )
+
+            return {
+                "success": True,
+                "ticket_result": ticket_result,
+                "deal_found": True,
+                "deal_id": deal_id,
+                "deal_name": deal.get("Deal_Name"),
+                "crm_result": crm_result,
+                "workflow": "ticket_with_auto_crm_link"
+            }
+
+        except Exception as e:
+            logger.error(f"Error in auto-linking workflow: {e}")
+            return {
+                "success": False,
+                "error": str(e),
+                "workflow": "ticket_with_auto_crm_link"
             }
 
     def batch_process_tickets(
@@ -279,3 +373,4 @@ class ZohoAutomationOrchestrator:
         self.crm_agent.close()
         self.desk_client.close()
         self.crm_client.close()
+        self.ticket_deal_linker.close()

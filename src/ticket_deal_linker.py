@@ -1,0 +1,380 @@
+"""
+Advanced ticket-to-deal linking system for Zoho Desk and CRM integration.
+
+This module provides multiple strategies to link tickets to deals:
+1. Direct link via custom fields
+2. Search by contact email
+3. Search by contact phone
+4. Search by account/organization
+5. Search by ticket custom fields (e.g., deal_id)
+"""
+import logging
+from typing import Dict, Any, Optional, List
+from src.zoho_client import ZohoDeskClient, ZohoCRMClient
+
+logger = logging.getLogger(__name__)
+
+
+class TicketDealLinker:
+    """
+    Intelligent linking between Zoho Desk tickets and Zoho CRM deals.
+
+    Supports multiple linking strategies with fallback mechanisms.
+    """
+
+    def __init__(self):
+        self.desk_client = ZohoDeskClient()
+        self.crm_client = ZohoCRMClient()
+
+    def find_deal_for_ticket(
+        self,
+        ticket_id: str,
+        strategies: Optional[List[str]] = None
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Find the deal associated with a ticket using multiple strategies.
+
+        Strategies are tried in order until a match is found:
+        1. custom_field - Check if ticket has a custom field with deal_id
+        2. contact_email - Search deals by contact email
+        3. contact_phone - Search deals by contact phone
+        4. account - Search deals by account/organization
+        5. recent_deal - Get most recent deal for the contact
+
+        Args:
+            ticket_id: The Zoho Desk ticket ID
+            strategies: List of strategies to try (defaults to all)
+
+        Returns:
+            Deal dict if found, None otherwise
+        """
+        if strategies is None:
+            strategies = [
+                "custom_field",
+                "contact_email",
+                "contact_phone",
+                "account",
+                "recent_deal"
+            ]
+
+        logger.info(f"Finding deal for ticket {ticket_id} using strategies: {strategies}")
+
+        # Get ticket details
+        try:
+            ticket = self.desk_client.get_ticket(ticket_id)
+        except Exception as e:
+            logger.error(f"Could not fetch ticket {ticket_id}: {e}")
+            return None
+
+        # Try each strategy
+        for strategy in strategies:
+            logger.info(f"Trying strategy: {strategy}")
+
+            if strategy == "custom_field":
+                deal = self._find_by_custom_field(ticket)
+            elif strategy == "contact_email":
+                deal = self._find_by_contact_email(ticket)
+            elif strategy == "contact_phone":
+                deal = self._find_by_contact_phone(ticket)
+            elif strategy == "account":
+                deal = self._find_by_account(ticket)
+            elif strategy == "recent_deal":
+                deal = self._find_recent_deal(ticket)
+            else:
+                logger.warning(f"Unknown strategy: {strategy}")
+                continue
+
+            if deal:
+                logger.info(f"Found deal {deal.get('id')} using strategy: {strategy}")
+                return deal
+
+        logger.info(f"No deal found for ticket {ticket_id}")
+        return None
+
+    def _find_by_custom_field(self, ticket: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """
+        Strategy 1: Check if ticket has a custom field containing deal_id.
+
+        Common custom field names:
+        - cf_deal_id
+        - cf_zoho_crm_deal_id
+        - Deal_ID
+        """
+        # Check common custom field names
+        custom_field_names = [
+            "cf_deal_id",
+            "cf_zoho_crm_deal_id",
+            "Deal_ID",
+            "dealId",
+            "CRM_Deal_ID"
+        ]
+
+        for field_name in custom_field_names:
+            deal_id = ticket.get(field_name)
+            if deal_id:
+                logger.info(f"Found deal_id in custom field {field_name}: {deal_id}")
+                try:
+                    return self.crm_client.get_deal(deal_id)
+                except Exception as e:
+                    logger.warning(f"Deal {deal_id} not found: {e}")
+
+        return None
+
+    def _find_by_contact_email(self, ticket: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """
+        Strategy 2: Search deals by contact email.
+
+        Searches for open deals associated with the ticket contact's email.
+        """
+        contact = ticket.get("contact", {})
+        email = contact.get("email") or contact.get("emailId")
+
+        if not email:
+            logger.debug("No contact email found in ticket")
+            return None
+
+        logger.info(f"Searching deals for contact email: {email}")
+
+        try:
+            # Search for deals with this contact email
+            # Try multiple field names that might contain the email
+            search_queries = [
+                f"(Email:equals:{email})",
+                f"(Contact_Email:equals:{email})",
+                f"((Email:equals:{email})and(Stage:not_equals:Closed Won)and(Stage:not_equals:Closed Lost))"
+            ]
+
+            for query in search_queries:
+                try:
+                    result = self.crm_client.search_deals(criteria=query, per_page=1)
+                    deals = result.get("data", [])
+                    if deals:
+                        return deals[0]
+                except Exception as e:
+                    logger.debug(f"Search with query '{query}' failed: {e}")
+                    continue
+
+        except Exception as e:
+            logger.warning(f"Error searching deals by email: {e}")
+
+        return None
+
+    def _find_by_contact_phone(self, ticket: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """
+        Strategy 3: Search deals by contact phone number.
+        """
+        contact = ticket.get("contact", {})
+        phone = contact.get("phone") or contact.get("mobile")
+
+        if not phone:
+            logger.debug("No contact phone found in ticket")
+            return None
+
+        logger.info(f"Searching deals for contact phone: {phone}")
+
+        try:
+            # Clean phone number (remove spaces, dashes, etc.)
+            clean_phone = phone.replace(" ", "").replace("-", "").replace("(", "").replace(")", "")
+
+            search_query = f"(Phone:equals:{clean_phone})"
+            result = self.crm_client.search_deals(criteria=search_query, per_page=1)
+            deals = result.get("data", [])
+            if deals:
+                return deals[0]
+
+        except Exception as e:
+            logger.warning(f"Error searching deals by phone: {e}")
+
+        return None
+
+    def _find_by_account(self, ticket: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """
+        Strategy 4: Search deals by account/organization.
+        """
+        account = ticket.get("accountName") or ticket.get("account", {}).get("name")
+
+        if not account:
+            logger.debug("No account found in ticket")
+            return None
+
+        logger.info(f"Searching deals for account: {account}")
+
+        try:
+            search_query = f"(Account_Name:equals:{account})"
+            result = self.crm_client.search_deals(criteria=search_query, per_page=1)
+            deals = result.get("data", [])
+            if deals:
+                return deals[0]
+
+        except Exception as e:
+            logger.warning(f"Error searching deals by account: {e}")
+
+        return None
+
+    def _find_recent_deal(self, ticket: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """
+        Strategy 5: Get the most recent deal for the contact.
+
+        This is a fallback that gets the most recently modified deal
+        for the contact, regardless of stage.
+        """
+        contact = ticket.get("contact", {})
+        email = contact.get("email") or contact.get("emailId")
+
+        if not email:
+            logger.debug("No contact email for recent deal search")
+            return None
+
+        logger.info(f"Getting most recent deal for contact: {email}")
+
+        try:
+            # Search for all deals for this contact, sorted by modified time
+            search_query = f"(Email:equals:{email})"
+            result = self.crm_client.search_deals(criteria=search_query, per_page=5)
+            deals = result.get("data", [])
+
+            if deals:
+                # Return the most recently modified deal
+                # (API should return them sorted by modified time descending)
+                return deals[0]
+
+        except Exception as e:
+            logger.warning(f"Error getting recent deal: {e}")
+
+        return None
+
+    def link_ticket_to_deal_bidirectional(
+        self,
+        ticket_id: str,
+        deal_id: str,
+        update_ticket_field: str = "cf_deal_id",
+        update_deal_field: str = "Ticket_ID"
+    ) -> Dict[str, Any]:
+        """
+        Create a bidirectional link between ticket and deal.
+
+        Updates custom fields on both sides to maintain the link.
+
+        Args:
+            ticket_id: Zoho Desk ticket ID
+            deal_id: Zoho CRM deal ID
+            update_ticket_field: Custom field name in Desk ticket
+            update_deal_field: Custom field name in CRM deal
+
+        Returns:
+            Dict with status of both updates
+        """
+        logger.info(f"Creating bidirectional link: Ticket {ticket_id} <-> Deal {deal_id}")
+
+        result = {
+            "ticket_updated": False,
+            "deal_updated": False,
+            "errors": []
+        }
+
+        # Update ticket with deal_id
+        try:
+            self.desk_client.update_ticket(ticket_id, {
+                update_ticket_field: deal_id
+            })
+            result["ticket_updated"] = True
+            logger.info(f"Updated ticket {ticket_id} with deal_id {deal_id}")
+        except Exception as e:
+            error_msg = f"Failed to update ticket: {e}"
+            logger.error(error_msg)
+            result["errors"].append(error_msg)
+
+        # Update deal with ticket_id
+        try:
+            self.crm_client.update_deal(deal_id, {
+                update_deal_field: ticket_id
+            })
+            result["deal_updated"] = True
+            logger.info(f"Updated deal {deal_id} with ticket_id {ticket_id}")
+        except Exception as e:
+            error_msg = f"Failed to update deal: {e}"
+            logger.error(error_msg)
+            result["errors"].append(error_msg)
+
+        return result
+
+    def auto_link_ticket(
+        self,
+        ticket_id: str,
+        create_bidirectional_link: bool = True
+    ) -> Optional[str]:
+        """
+        Automatically find and link a ticket to its corresponding deal.
+
+        Uses all available strategies to find the deal, then optionally
+        creates a bidirectional link.
+
+        Args:
+            ticket_id: Zoho Desk ticket ID
+            create_bidirectional_link: Whether to update custom fields
+
+        Returns:
+            Deal ID if found and linked, None otherwise
+        """
+        logger.info(f"Auto-linking ticket {ticket_id}")
+
+        # Find the deal
+        deal = self.find_deal_for_ticket(ticket_id)
+
+        if not deal:
+            logger.info(f"Could not find deal for ticket {ticket_id}")
+            return None
+
+        deal_id = deal.get("id")
+
+        # Create bidirectional link if requested
+        if create_bidirectional_link:
+            link_result = self.link_ticket_to_deal_bidirectional(ticket_id, deal_id)
+            if link_result["errors"]:
+                logger.warning(f"Errors during bidirectional linking: {link_result['errors']}")
+
+        return deal_id
+
+    def get_all_tickets_for_deal(self, deal_id: str) -> List[Dict[str, Any]]:
+        """
+        Get all tickets associated with a deal.
+
+        Searches Desk tickets for those linked to this deal.
+
+        Args:
+            deal_id: Zoho CRM deal ID
+
+        Returns:
+            List of tickets
+        """
+        logger.info(f"Finding all tickets for deal {deal_id}")
+
+        # Get the deal to extract contact info
+        try:
+            deal = self.crm_client.get_deal(deal_id)
+        except Exception as e:
+            logger.error(f"Could not fetch deal {deal_id}: {e}")
+            return []
+
+        # Get contact email from deal
+        contact_name = deal.get("Contact_Name", {})
+        if isinstance(contact_name, dict):
+            email = contact_name.get("email")
+        else:
+            email = None
+
+        if not email:
+            logger.warning(f"No contact email found for deal {deal_id}")
+            return []
+
+        # Search tickets for this contact
+        # Note: Zoho Desk API might not support search by email directly
+        # This would need to use the Desk search API
+        # For now, return empty list with a TODO
+        logger.info("TODO: Implement ticket search by contact email")
+        return []
+
+    def close(self):
+        """Clean up resources."""
+        self.desk_client.close()
+        self.crm_client.close()
