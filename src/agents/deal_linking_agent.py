@@ -405,6 +405,15 @@ Always respond in JSON format with the following structure:
                 )
 
             logger.info(f"Routing result: {result['routing_explanation']}")
+
+            # Step 8: Update ticket with deal URL in custom field (if deal was selected)
+            if result.get("deal_id"):
+                try:
+                    self._update_ticket_with_deal_url(ticket_id, result["deal_id"])
+                    logger.info(f"Updated ticket {ticket_id} with deal URL")
+                except Exception as e:
+                    logger.warning(f"Could not update ticket with deal URL: {e}")
+
             result["success"] = True
             return result
 
@@ -414,6 +423,43 @@ Always respond in JSON format with the following structure:
             result["routing_explanation"] = f"Error in routing logic: {e}"
             result["success"] = False
             return result
+
+    def _update_ticket_with_deal_url(self, ticket_id: str, deal_id: str) -> None:
+        """
+        Update ticket's custom field with the deal URL.
+
+        Args:
+            ticket_id: Zoho Desk ticket ID
+            deal_id: Zoho CRM deal ID
+        """
+        from config import settings
+
+        # Construct deal URL
+        # Format: https://crm.zoho.{datacenter}/crm/tab/Potentials/{deal_id}
+        deal_url = f"https://crm.zoho.{settings.zoho_datacenter}/crm/tab/Potentials/{deal_id}"
+
+        # Update ticket with custom field
+        # Common field names: cf_opportunite, cf_opportunité, cf_deal_url
+        update_data = {
+            "cf_opportunite": deal_url  # Change this if your field name is different
+        }
+
+        try:
+            self.desk_client.update_ticket(ticket_id, update_data)
+            logger.info(f"Updated ticket {ticket_id} custom field 'cf_opportunite' with deal URL: {deal_url}")
+        except Exception as e:
+            # Try alternate field names
+            alternate_fields = ["cf_opportunité", "cf_deal_url", "cf_deal_link"]
+            for field_name in alternate_fields:
+                try:
+                    self.desk_client.update_ticket(ticket_id, {field_name: deal_url})
+                    logger.info(f"Updated ticket {ticket_id} custom field '{field_name}' with deal URL: {deal_url}")
+                    return
+                except Exception:
+                    continue
+
+            # If all attempts failed, raise the original error
+            raise e
 
     def _validate_link_with_ai(
         self,
