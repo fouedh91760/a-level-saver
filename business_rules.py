@@ -127,9 +127,29 @@ class BusinessRules:
                 return "Refus CMA"
 
             # Condition D: Evalbox OK mais envoi de documents
-            if evalbox not in ["Refusé CMA", "Documents refusés", "Documents manquants"]:
-                if last_thread_content and BusinessRules.is_document_submission(last_thread_content):
-                    return "Refus CMA"
+            # Vérifier PLUSIEURS sources pour détecter l'envoi de documents:
+            # 1. Contenu du dernier thread
+            # 2. Sujet du ticket
+            # 3. Présence de pièces jointes
+
+            document_detected = False
+
+            # Vérifier le contenu du dernier thread
+            if last_thread_content and BusinessRules.is_document_submission(last_thread_content):
+                document_detected = True
+
+            # Vérifier le sujet du ticket
+            ticket_subject = ticket.get("subject", "")
+            if ticket_subject and BusinessRules.is_document_submission(ticket_subject):
+                document_detected = True
+
+            # Vérifier la présence de pièces jointes
+            attachment_count = ticket.get("attachmentCount", 0)
+            if attachment_count > 0:
+                document_detected = True
+
+            if document_detected:
+                return "Refus CMA"
 
             # Sinon → DOC
             return "DOC"
