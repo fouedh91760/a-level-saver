@@ -82,11 +82,12 @@ def enrich_tickets_with_crm():
             try:
                 logger.info(f"Ticket {i}/{len(tickets)}: {ticket_id} ({email})")
 
-                deal_id = deal_linker.find_deal_for_ticket(ticket_id, email)
+                # find_deal_for_ticket returns the full deal dict, not just the ID
+                deal = deal_linker.find_deal_for_ticket(ticket_id)
 
-                if deal_id:
-                    # Get deal data
-                    deal = crm_client.get_deal(deal_id)
+                if deal:
+                    # Extract deal_id from the deal
+                    deal_id = deal.get('id')
 
                     crm_data = {
                         'deal_id': deal_id,
@@ -156,9 +157,12 @@ def enrich_tickets_with_crm():
         print(f"   Sans deal : {stats['without_deal']}")
         print(f"   Erreurs : {stats['errors']}")
         print(f"\n💰 Distribution des montants (Amount) :")
-        print(f"   20€ (Uber) : {stats['amount_20']} ({stats['amount_20']/stats['with_deal']*100:.1f}% des deals)")
-        print(f"   Autre montant : {stats['amount_other']} ({stats['amount_other']/stats['with_deal']*100:.1f}%)")
-        print(f"   0€ (non défini) : {stats['amount_zero']}")
+        if stats['with_deal'] > 0:
+            print(f"   20€ (Uber) : {stats['amount_20']} ({stats['amount_20']/stats['with_deal']*100:.1f}% des deals)")
+            print(f"   Autre montant : {stats['amount_other']} ({stats['amount_other']/stats['with_deal']*100:.1f}%)")
+            print(f"   0€ (non défini) : {stats['amount_zero']}")
+        else:
+            print(f"   ⚠️  Aucun deal trouvé - impossible de calculer la distribution")
 
         return enriched_data
 
