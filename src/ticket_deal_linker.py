@@ -3,16 +3,25 @@ Advanced ticket-to-deal linking system for Zoho Desk and CRM integration.
 
 This module provides multiple strategies to link tickets to deals:
 1. Direct link via custom fields
-2. Search by contact email
-3. Search by contact phone
-4. Search by account/organization
-5. Search by ticket custom fields (e.g., deal_id)
+2. Department-specific logic (from business rules)
+3. Search by contact email
+4. Search by contact phone
+5. Search by account/organization
+6. Recent deal fallback
 """
 import logging
 from typing import Dict, Any, Optional, List
 from src.zoho_client import ZohoDeskClient, ZohoCRMClient
 
 logger = logging.getLogger(__name__)
+
+# Try to import business rules for department-specific logic
+try:
+    from business_rules import BusinessRules
+    BUSINESS_RULES_AVAILABLE = True
+except ImportError:
+    BUSINESS_RULES_AVAILABLE = False
+    logger.warning("business_rules.py not available. Department-specific logic disabled.")
 
 
 class TicketDealLinker:
@@ -36,10 +45,11 @@ class TicketDealLinker:
 
         Strategies are tried in order until a match is found:
         1. custom_field - Check if ticket has a custom field with deal_id
-        2. contact_email - Search deals by contact email
-        3. contact_phone - Search deals by contact phone
-        4. account - Search deals by account/organization
-        5. recent_deal - Get most recent deal for the contact
+        2. department_specific - Use department-specific business rules (if configured)
+        3. contact_email - Search deals by contact email
+        4. contact_phone - Search deals by contact phone
+        5. account - Search deals by account/organization
+        6. recent_deal - Get most recent deal for the contact
 
         Args:
             ticket_id: The Zoho Desk ticket ID
@@ -51,6 +61,7 @@ class TicketDealLinker:
         if strategies is None:
             strategies = [
                 "custom_field",
+                "department_specific",  # New: Department-specific logic
                 "contact_email",
                 "contact_phone",
                 "account",
@@ -72,6 +83,8 @@ class TicketDealLinker:
 
             if strategy == "custom_field":
                 deal = self._find_by_custom_field(ticket)
+            elif strategy == "department_specific":
+                deal = self._find_by_department_logic(ticket)
             elif strategy == "contact_email":
                 deal = self._find_by_contact_email(ticket)
             elif strategy == "contact_phone":
@@ -120,9 +133,81 @@ class TicketDealLinker:
 
         return None
 
+    def _find_by_department_logic(self, ticket: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """
+        Strategy 2: Department-specific search logic from business rules.
+
+        Uses custom search criteria defined in BusinessRules.get_deal_search_criteria_for_department()
+        This allows department-specific logic with fallback criteria.
+
+        Example for DOC department:
+        1. Search Uber €20 deals in "Won" status
+        2. If not found, search in "Pending" status
+        3. If not found, search in "Lost" status
+        """
+        if not BUSINESS_RULES_AVAILABLE:
+            logger.debug("Business rules not available, skipping department_specific strategy")
+            return None
+
+        department = ticket.get("departmentName", "")
+        if not department:
+            logger.debug("No department in ticket, skipping department_specific strategy")
+            return None
+
+        contact = ticket.get("contact", {})
+        email = contact.get("email") or contact.get("emailId")
+
+        if not email:
+            logger.debug("No contact email, skipping department_specific strategy")
+            return None
+
+        # Get department-specific search criteria
+        search_criteria_list = BusinessRules.get_deal_search_criteria_for_department(
+            department=department,
+            contact_email=email,
+            ticket=ticket
+        )
+
+        if not search_criteria_list:
+            logger.debug(f"No department-specific criteria for department: {department}")
+            return None
+
+        logger.info(f"Using department-specific logic for department: {department}")
+        logger.info(f"Will try {len(search_criteria_list)} search criteria in order")
+
+        # Try each search criteria in order (fallback mechanism)
+        for idx, search_config in enumerate(search_criteria_list, 1):
+            criteria = search_config.get("criteria")
+            description = search_config.get("description", "N/A")
+            max_results = search_config.get("max_results", 1)
+
+            logger.info(f"  [{idx}/{len(search_criteria_list)}] Trying: {description}")
+            logger.debug(f"  Criteria: {criteria}")
+
+            try:
+                result = self.crm_client.search_deals(
+                    criteria=criteria,
+                    per_page=max_results
+                )
+                deals = result.get("data", [])
+
+                if deals:
+                    deal = deals[0]  # Take the first (most recent if sorted)
+                    logger.info(f"  ✅ Found deal via {description}: {deal.get('Deal_Name')} (ID: {deal.get('id')})")
+                    return deal
+                else:
+                    logger.info(f"  ❌ No deal found with: {description}")
+
+            except Exception as e:
+                logger.warning(f"  ❌ Search failed for {description}: {e}")
+                continue
+
+        logger.info(f"No deal found using any department-specific criteria for {department}")
+        return None
+
     def _find_by_contact_email(self, ticket: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """
-        Strategy 2: Search deals by contact email.
+        Strategy 3: Search deals by contact email.
 
         Searches for open deals associated with the ticket contact's email.
         """
@@ -161,7 +246,7 @@ class TicketDealLinker:
 
     def _find_by_contact_phone(self, ticket: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """
-        Strategy 3: Search deals by contact phone number.
+        Strategy 4: Search deals by contact phone number.
         """
         contact = ticket.get("contact", {})
         phone = contact.get("phone") or contact.get("mobile")
@@ -189,7 +274,7 @@ class TicketDealLinker:
 
     def _find_by_account(self, ticket: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """
-        Strategy 4: Search deals by account/organization.
+        Strategy 5: Search deals by account/organization.
         """
         account = ticket.get("accountName") or ticket.get("account", {}).get("name")
 
@@ -213,7 +298,7 @@ class TicketDealLinker:
 
     def _find_recent_deal(self, ticket: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """
-        Strategy 5: Get the most recent deal for the contact.
+        Strategy 6: Get the most recent deal for the contact.
 
         This is a fallback that gets the most recently modified deal
         for the contact, regardless of stage.
