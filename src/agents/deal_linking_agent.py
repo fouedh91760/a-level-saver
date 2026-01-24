@@ -95,8 +95,15 @@ Always respond in JSON format with the following structure:
         Checks multiple fields: fromEmailAddress, from, author email, etc.
         """
         # Try fromEmailAddress first (most reliable)
-        if thread.get("fromEmailAddress"):
-            return thread["fromEmailAddress"].lower().strip()
+        from_email = thread.get("fromEmailAddress")
+        if from_email:
+            # Extract email from "Name <email@domain.com>" format
+            email_match = re.search(r'<([^>]+)>', from_email)
+            if email_match:
+                return email_match.group(1).lower().strip()
+            # Or if it's just the email
+            if '@' in from_email:
+                return from_email.lower().strip()
 
         # Try "from" field
         from_field = thread.get("from")

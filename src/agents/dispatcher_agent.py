@@ -62,7 +62,7 @@ You must provide:
 
 Be precise and consistent in your routing decisions."""
 
-        super().__init__(system_prompt=system_prompt)
+        super().__init__(name="TicketDispatcherAgent", system_prompt=system_prompt)
         self.desk_client = ZohoDeskClient()
 
     def process(self, data: Dict[str, Any]) -> Dict[str, Any]:
