@@ -106,6 +106,8 @@ class BusinessRules:
             {"criteria": "(Stage:equals:Pending)", "description": "Pending deals", "max_results": 1}
         ]
         """
+        # ===== DÉPARTEMENTS PRIORITAIRES =====
+
         # DOC department: Specific Uber deal logic
         if department == "DOC":
             return [
@@ -113,7 +115,7 @@ class BusinessRules:
                     "criteria": f"((Email:equals:{contact_email})and(Deal_Name:contains:Uber)and(Amount:equals:20)and(Stage:equals:Closed Won))",
                     "description": "Uber €20 deals - WON",
                     "max_results": 1,
-                    "sort_by": "Modified_Time",  # Most recent
+                    "sort_by": "Modified_Time",
                     "sort_order": "desc"
                 },
                 {
@@ -132,27 +134,84 @@ class BusinessRules:
                 }
             ]
 
-        # SALES department: Example of different logic
-        elif department == "Sales":
+        # DOCS CAB: Search for CAB-related deals
+        elif department == "DOCS CAB":
             return [
                 {
-                    "criteria": f"((Email:equals:{contact_email})and(Stage:not_equals:Closed Lost)and(Stage:not_equals:Closed Won))",
-                    "description": "Open sales deals",
+                    "criteria": f"((Email:equals:{contact_email})and(Deal_Name:contains:CAB)and(Stage:not_equals:Closed Lost))",
+                    "description": "Active CAB deals",
+                    "max_results": 1,
+                    "sort_by": "Modified_Time",
+                    "sort_order": "desc"
+                },
+                {
+                    "criteria": f"((Email:equals:{contact_email})and(Deal_Name:contains:Capacité)and(Stage:not_equals:Closed Lost))",
+                    "description": "Active Capacité deals",
                     "max_results": 1,
                     "sort_by": "Modified_Time",
                     "sort_order": "desc"
                 }
             ]
 
-        # SUPPORT department: Example
-        elif department == "Support":
+        # Inscription CMA: Search for CMA registration deals
+        elif department == "Inscription CMA":
             return [
                 {
-                    "criteria": f"((Email:equals:{contact_email})and(Type:equals:Renewal))",
-                    "description": "Renewal deals",
+                    "criteria": f"((Email:equals:{contact_email})and(Deal_Name:contains:CMA)and(Stage:equals:Qualification))",
+                    "description": "CMA deals in qualification",
                     "max_results": 1,
-                    "sort_by": "Closing_Date",
-                    "sort_order": "asc"
+                    "sort_by": "Modified_Time",
+                    "sort_order": "desc"
+                },
+                {
+                    "criteria": f"((Email:equals:{contact_email})and(Deal_Name:contains:CMA)and(Stage:not_equals:Closed Lost))",
+                    "description": "Any active CMA deals",
+                    "max_results": 1,
+                    "sort_by": "Modified_Time",
+                    "sort_order": "desc"
+                }
+            ]
+
+        # Refus CMA: Search for rejected CMA deals
+        elif department == "Refus CMA":
+            return [
+                {
+                    "criteria": f"((Email:equals:{contact_email})and(Deal_Name:contains:CMA)and(Stage:equals:Closed Lost))",
+                    "description": "Rejected CMA deals",
+                    "max_results": 1,
+                    "sort_by": "Modified_Time",
+                    "sort_order": "desc"
+                }
+            ]
+
+        # Contact: General contact deals (any recent deal)
+        elif department == "Contact":
+            return [
+                {
+                    "criteria": f"((Email:equals:{contact_email})and(Stage:not_equals:Closed Lost)and(Stage:not_equals:Closed Won))",
+                    "description": "Any open deals",
+                    "max_results": 1,
+                    "sort_by": "Modified_Time",
+                    "sort_order": "desc"
+                },
+                {
+                    "criteria": f"((Email:equals:{contact_email}))",
+                    "description": "Most recent deal (any stage)",
+                    "max_results": 1,
+                    "sort_by": "Modified_Time",
+                    "sort_order": "desc"
+                }
+            ]
+
+        # Uber department: Similar to DOC but dedicated
+        elif department == "Uber":
+            return [
+                {
+                    "criteria": f"((Email:equals:{contact_email})and(Deal_Name:contains:Uber)and(Stage:not_equals:Closed Lost))",
+                    "description": "Active Uber deals",
+                    "max_results": 1,
+                    "sort_by": "Modified_Time",
+                    "sort_order": "desc"
                 }
             ]
 
@@ -203,52 +262,132 @@ class BusinessRules:
         }
         """
         return {
+            # ===== DÉPARTEMENTS PRIORITAIRES =====
+
             "DOC": {
                 "keywords": [
                     "uber",
                     "a-level",
-                    "student",
-                    "education",
+                    "document",
+                    "documents",
                     "educational",
+                    "formation",
                     "programme",
+                    "cours",
                     "course"
                 ],
-                "contact_domains": []  # Add specific domains if needed
+                "contact_domains": []
             },
-            "Sales": {
+
+            "DOCS CAB": {
                 "keywords": [
-                    "pricing",
-                    "quote",
-                    "demo",
-                    "purchase",
-                    "buy",
-                    "trial",
-                    "commercial",
-                    "devis"
+                    "cab",
+                    "capacité",
+                    "capacite",
+                    "candidat",
+                    "candidate",
+                    "dossier cab",
+                    "dossier de candidat",
+                    "certificat",
+                    "attestation"
                 ],
                 "contact_domains": []
             },
-            "Support": {
+
+            "Contact": {
                 "keywords": [
-                    "technical",
-                    "error",
-                    "bug",
-                    "issue",
-                    "problem",
-                    "help",
-                    "assistance"
+                    "contact",
+                    "renseignement",
+                    "information",
+                    "question",
+                    "demande",
+                    "inquiry",
+                    "general",
+                    "assistance",
+                    "help"
                 ],
                 "contact_domains": []
             },
-            "Billing": {
+
+            "Inscription CMA": {
                 "keywords": [
+                    "inscription",
+                    "inscription cma",
+                    "cma",
+                    "registration",
+                    "enregistrement",
+                    "register",
+                    "s'inscrire",
+                    "adhésion",
+                    "membership"
+                ],
+                "contact_domains": []
+            },
+
+            "Refus CMA": {
+                "keywords": [
+                    "refus",
+                    "refus cma",
+                    "rejet",
+                    "declined",
+                    "rejection",
+                    "denied",
+                    "refuse",
+                    "non accepté",
+                    "non-accepté"
+                ],
+                "contact_domains": []
+            },
+
+            # ===== AUTRES DÉPARTEMENTS =====
+
+            "FACTURATION": {
+                "keywords": [
+                    "facture",
+                    "facturation",
                     "invoice",
                     "payment",
+                    "paiement",
                     "billing",
                     "refund",
-                    "charge",
-                    "facture",
-                    "paiement"
+                    "remboursement"
+                ],
+                "contact_domains": []
+            },
+
+            "Comptabilité": {
+                "keywords": [
+                    "comptabilité",
+                    "comptable",
+                    "accounting",
+                    "financial",
+                    "finance",
+                    "trésorerie"
+                ],
+                "contact_domains": []
+            },
+
+            "Pédagogie": {
+                "keywords": [
+                    "pédagogie",
+                    "pedagogie",
+                    "enseignement",
+                    "teaching",
+                    "formation",
+                    "training",
+                    "learning"
+                ],
+                "contact_domains": []
+            },
+
+            "Uber": {
+                "keywords": [
+                    "uber",
+                    "uber eats",
+                    "livraison",
+                    "delivery",
+                    "chauffeur",
+                    "driver"
                 ],
                 "contact_domains": []
             }
