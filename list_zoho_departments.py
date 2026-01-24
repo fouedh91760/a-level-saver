@@ -3,8 +3,11 @@ Script pour lister tous les départements Zoho Desk.
 
 Ce script récupère la liste complète des départements avec leurs IDs et noms
 pour configurer correctement business_rules.py.
+Les résultats sont sauvegardés dans departments_list.json pour analyse automatique.
 """
 import logging
+import json
+from datetime import datetime
 from dotenv import load_dotenv
 from src.zoho_client import ZohoDeskClient
 
@@ -93,6 +96,26 @@ def list_departments():
                 print(f'        }}')
                 print(f'    ]')
                 print()
+
+            # Sauvegarder dans un fichier JSON
+            output_file = "departments_list.json"
+            output_data = {
+                "timestamp": datetime.now().isoformat(),
+                "total_count": len(dept_list),
+                "departments": [
+                    {
+                        "id": dept.get("id"),
+                        "name": dept.get("name"),
+                        "description": dept.get("description", "")
+                    }
+                    for dept in dept_list
+                ]
+            }
+
+            with open(output_file, 'w', encoding='utf-8') as f:
+                json.dump(output_data, f, indent=2, ensure_ascii=False)
+
+            print(f"\n📄 Résultats sauvegardés dans : {output_file}")
 
             return dept_list
 
