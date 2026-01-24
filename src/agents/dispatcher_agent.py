@@ -115,7 +115,14 @@ Be precise and consistent in your routing decisions."""
                 "ticket_id": ticket_id
             }
 
-        current_department = ticket.get("departmentName", "Unknown")
+        # Extract current department name from layoutDetails or departmentName
+        current_department = "Unknown"
+        layout_details = ticket.get("layoutDetails")
+        if layout_details and isinstance(layout_details, dict):
+            current_department = layout_details.get("layoutName", "Unknown")
+        elif ticket.get("departmentName"):
+            current_department = ticket.get("departmentName")
+
         logger.info(f"Current department: {current_department}")
 
         # Step 1: Check if DealLinkingAgent already determined the department (HIGHEST PRIORITY)

@@ -414,9 +414,10 @@ Always respond in JSON format with the following structure:
             logger.info(f"Routing result: {result['routing_explanation']}")
 
             # Step 8: Update ticket with deal URL in custom field (if deal was selected)
-            if result.get("deal_id"):
+            if result.get("deal_id") and result.get("selected_deal"):
                 try:
-                    self._update_ticket_with_deal_url(ticket_id, result["deal_id"])
+                    deal_name = result["selected_deal"].get("Deal_Name", "Opportunité")
+                    self._update_ticket_with_deal_url(ticket_id, result["deal_id"], deal_name)
                     logger.info(f"Updated ticket {ticket_id} with deal URL")
                 except Exception as e:
                     logger.warning(f"Could not update ticket with deal URL: {e}")
@@ -431,13 +432,14 @@ Always respond in JSON format with the following structure:
             result["success"] = False
             return result
 
-    def _update_ticket_with_deal_url(self, ticket_id: str, deal_id: str) -> None:
+    def _update_ticket_with_deal_url(self, ticket_id: str, deal_id: str, deal_name: str = "Opportunité") -> None:
         """
-        Update ticket's custom field with the deal URL.
+        Update ticket's custom field with a clickable link to the deal.
 
         Args:
             ticket_id: Zoho Desk ticket ID
             deal_id: Zoho CRM deal ID
+            deal_name: Deal name to display as link text (default: "Opportunité")
         """
         from config import settings
 
@@ -445,17 +447,20 @@ Always respond in JSON format with the following structure:
         # Format: https://crm.zoho.{datacenter}/crm/tab/Potentials/{deal_id}
         deal_url = f"https://crm.zoho.{settings.zoho_datacenter}/crm/tab/Potentials/{deal_id}"
 
+        # Format as HTML clickable link
+        clickable_link = f'<a href="{deal_url}" target="_blank">{deal_name}</a>'
+
         # Update ticket with custom field in the correct format
         # Zoho Desk requires custom fields to be nested under "cf" key
         update_data = {
             "cf": {
-                "cf_opportunite": deal_url
+                "cf_opportunite": clickable_link
             }
         }
 
         try:
             self.desk_client.update_ticket(ticket_id, update_data)
-            logger.info(f"Updated ticket {ticket_id} custom field 'cf_opportunite' with deal URL: {deal_url}")
+            logger.info(f"Updated ticket {ticket_id} custom field 'cf_opportunite' with clickable link: {deal_name} -> {deal_url}")
         except Exception as e:
             logger.error(f"Failed to update ticket {ticket_id} with deal URL: {e}")
             raise e
