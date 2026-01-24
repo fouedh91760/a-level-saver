@@ -151,21 +151,39 @@ def analyze_fouad_tickets():
         doc_department_id = "198709000025523146"
 
         if last_index == 0:
-            print(f"\n🔍 Récupération des tickets DOC fermés après le 01/11/2025...")
-            print("   (Filtrage pour optimiser la recherche)")
+            print(f"\n🔍 Récupération de TOUS les tickets DOC fermés...")
+            print("   (Filtrage par date sera fait après)")
 
-            # Récupérer les tickets récents du département DOC avec pagination
+            # Récupérer TOUS les tickets fermés du département DOC
             url = f"{settings.zoho_desk_api_url}/tickets"
             base_params = {
                 "orgId": settings.zoho_desk_org_id,
                 "departmentId": doc_department_id,
-                "status": "Closed",  # Tickets fermés
-                "closedTimeRange": "2025-11-01T00:00:00Z,2026-12-31T23:59:59Z"  # Depuis le 01/11/2025
+                "status": "Closed"  # Tickets fermés
             }
 
             # Utiliser la pagination automatique
-            all_tickets = desk_client._get_all_pages(url, base_params, limit_per_page=100)
-            print(f"\n✅ {len(all_tickets)} tickets totaux récupérés")
+            all_tickets_raw = desk_client._get_all_pages(url, base_params, limit_per_page=100)
+            print(f"\n✅ {len(all_tickets_raw)} tickets totaux récupérés")
+
+            # Filtrer par date (tickets fermés après le 01/11/2025)
+            print(f"\n📅 Filtrage des tickets fermés après le 01/11/2025...")
+            cutoff_date = datetime(2025, 11, 1)
+
+            all_tickets = []
+            for ticket in all_tickets_raw:
+                closed_time_str = ticket.get("closedTime", "")
+                if closed_time_str:
+                    try:
+                        # Format: "2026-01-23T22:53:12.000Z"
+                        closed_time = datetime.strptime(closed_time_str.split('.')[0], "%Y-%m-%dT%H:%M:%S")
+                        if closed_time >= cutoff_date:
+                            all_tickets.append(ticket)
+                    except:
+                        # Si erreur de parsing, on garde le ticket par sécurité
+                        all_tickets.append(ticket)
+
+            print(f"✅ {len(all_tickets)} tickets après le 01/11/2025 (sur {len(all_tickets_raw)} totaux)")
         else:
             print(f"\n⏩ Reprise depuis la position sauvegardée")
             # Récupérer à nouveau tous les tickets (nécessaire pour continuer)
@@ -173,16 +191,29 @@ def analyze_fouad_tickets():
             base_params = {
                 "orgId": settings.zoho_desk_org_id,
                 "departmentId": doc_department_id,
-                "status": "Closed",
-                "closedTimeRange": "2025-11-01T00:00:00Z,2026-12-31T23:59:59Z"  # Depuis le 01/11/2025
+                "status": "Closed"
             }
-            all_tickets = desk_client._get_all_pages(url, base_params, limit_per_page=100)
+            all_tickets_raw = desk_client._get_all_pages(url, base_params, limit_per_page=100)
 
-        print(f"\n🔎 Filtrage des tickets traités par Fouad Haddouchi...")
-        print(f"📅 Période : tickets fermés depuis le 01/11/2025")
+            # Filtrer par date (tickets fermés après le 01/11/2025)
+            cutoff_date = datetime(2025, 11, 1)
+
+            all_tickets = []
+            for ticket in all_tickets_raw:
+                closed_time_str = ticket.get("closedTime", "")
+                if closed_time_str:
+                    try:
+                        closed_time = datetime.strptime(closed_time_str.split('.')[0], "%Y-%m-%dT%H:%M:%S")
+                        if closed_time >= cutoff_date:
+                            all_tickets.append(ticket)
+                    except:
+                        all_tickets.append(ticket)
+
+        print(f"\n🔎 Analyse des tickets traités par Fouad Haddouchi...")
+        print(f"📅 Période : tickets fermés depuis le 01/11/2025 ({len(all_tickets)} tickets)")
         print(f"🎯 Objectif : 100 tickets (suffisant pour analyse robuste)")
         print(f"🚀 Stratégie : Pré-filtrage léger → Contenu complet uniquement si Fouad (4x plus rapide)")
-        print(f"⏱️  Temps estimé : 5-10 minutes")
+        print(f"⏱️  Temps estimé : 10-15 minutes")
         print(f"💾 Sauvegarde automatique tous les 50 tickets")
 
         tickets_checked = last_index
