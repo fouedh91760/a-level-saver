@@ -296,6 +296,41 @@ class ZohoDeskClient(ZohoAPIClient):
 class ZohoCRMClient(ZohoAPIClient):
     """Client for Zoho CRM API operations."""
 
+    def __init__(self):
+        super().__init__()
+        # Use separate CRM credentials if available, otherwise use Desk credentials
+        self.client_id = settings.zoho_crm_client_id or settings.zoho_client_id
+        self.client_secret = settings.zoho_crm_client_secret or settings.zoho_client_secret
+        self.refresh_token = settings.zoho_crm_refresh_token or settings.zoho_refresh_token
+
+    def _refresh_access_token(self) -> None:
+        """Refresh the OAuth2 access token using CRM credentials."""
+        logger.info("Refreshing Zoho CRM access token")
+
+        url = f"{settings.zoho_accounts_url}/oauth/v2/token"
+        params = {
+            "refresh_token": self.refresh_token,
+            "client_id": self.client_id,
+            "client_secret": self.client_secret,
+            "grant_type": "refresh_token"
+        }
+
+        try:
+            response = requests.post(url, params=params)
+            response.raise_for_status()
+            data = response.json()
+
+            self.access_token = data["access_token"]
+            # Set expiration time (default 1 hour, with 5 min buffer)
+            expires_in = data.get("expires_in", 3600)
+            self.token_expires_at = datetime.now() + timedelta(seconds=expires_in - 300)
+
+            logger.info("CRM access token refreshed successfully")
+
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Failed to refresh CRM access token: {e}")
+            raise
+
     def get_deal(self, deal_id: str) -> Dict[str, Any]:
         """Get a specific deal/opportunity by ID."""
         url = f"{settings.zoho_crm_api_url}/Deals/{deal_id}"

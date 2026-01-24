@@ -12,7 +12,7 @@ class Settings(BaseSettings):
         case_sensitive=False
     )
 
-    # Zoho API
+    # Zoho API (Desk)
     zoho_client_id: str
     zoho_client_secret: str
     zoho_refresh_token: str
@@ -20,6 +20,11 @@ class Settings(BaseSettings):
 
     # Zoho Desk
     zoho_desk_org_id: str
+
+    # Zoho CRM (credentials séparées si nécessaire)
+    zoho_crm_client_id: Optional[str] = None
+    zoho_crm_client_secret: Optional[str] = None
+    zoho_crm_refresh_token: Optional[str] = None
 
     # Anthropic
     anthropic_api_key: str
