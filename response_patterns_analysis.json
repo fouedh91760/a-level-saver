@@ -1,0 +1,324 @@
+{
+  "metadata": {
+    "total_responses_analyzed": 137,
+    "total_tickets": 100,
+    "analysis_date": "2026-01-24T16:34:20.179488",
+    "agent": {
+      "name": "Fouad Haddouchi",
+      "id": "198709000018519157",
+      "email": "fouad@cab-formations.fr"
+    }
+  },
+  "structural_patterns": {
+    "greetings": {
+      "Bonjour,": 57,
+      "Bonjour ": 28,
+      "Bonsoir": 8,
+      "Bonjour ": 6,
+      "Bonjour Mr Talbi": 1,
+      "Bonjour Mr Moussaoui": 1,
+      "Bonjour Mr Ghelila": 1,
+      "Bonjour Mr Batehri": 1
+    },
+    "closings": {
+      "Bien cordialement,": 78,
+      "Cordialement,": 17,
+      "Cordialement": 12,
+      "Merci": 5,
+      "Bien cordialement": 4,
+      "cordialement": 3,
+      "merci": 2,
+      "bien cordialement": 2,
+      "bien cordialement,": 2,
+      "Bien cOrdialement,": 1
+    },
+    "signatures": {
+      "L'équipe Cab Formations": 94,
+      "CAB Formations": 8,
+      "Cab Formations": 6,
+      "L'équipe CAB Formations": 3,
+      "Fouad Haddouchi": 1
+    },
+    "most_common_greeting": "Bonjour,",
+    "most_common_closing": "Bien cordialement,",
+    "most_common_signature": "L'équipe Cab Formations"
+  },
+  "tone_analysis": {
+    "tone_distribution": {
+      "professional": 121,
+      "directive": 80,
+      "reassuring": 30,
+      "apologetic": 15,
+      "neutral": 7,
+      "empathetic": 4
+    },
+    "dominant_tones": [
+      "professional",
+      "directive",
+      "reassuring"
+    ],
+    "tone_diversity": 6
+  },
+  "scenario_detection": {
+    "scenario_distribution": {
+      "SC-VTC_HORS_PARTENARIAT": 102,
+      "SC-20_RESULTAT_POSITIF": 77,
+      "SC-01_IDENTIFIANTS_EXAMENT3P": 74,
+      "SC-02_CONFIRMATION_PAIEMENT": 44,
+      "SC-04_DOCUMENT_MANQUANT": 30,
+      "SC-15a_REPORT_SANS_DOSSIER": 20,
+      "SC-15b_REPORT_AVANT_CLOTURE": 20,
+      "SC-15c_REPORT_APRES_CLOTURE": 20,
+      "SC-HORS_PARTENARIAT": 17,
+      "SC-17_CONFIRMATION_SESSION": 14,
+      "SC-21_RESULTAT_NEGATIF": 12,
+      "SC-25_RECLAMATION": 9,
+      "GENERAL": 9,
+      "SC-REINSCRIPTION": 8,
+      "SC-06_STATUT_DOSSIER": 5,
+      "SC-00_NOUVEAU_CANDIDAT": 2,
+      "SC-03_PAIEMENT_EN_ATTENTE": 1
+    },
+    "top_scenarios": [
+      "SC-VTC_HORS_PARTENARIAT",
+      "SC-20_RESULTAT_POSITIF",
+      "SC-01_IDENTIFIANTS_EXAMENT3P",
+      "SC-02_CONFIRMATION_PAIEMENT",
+      "SC-04_DOCUMENT_MANQUANT"
+    ],
+    "scenario_coverage": 17
+  },
+  "length_statistics": {
+    "avg_characters": 2434.61,
+    "avg_words": 370.62,
+    "avg_sentences": 24.85,
+    "min_words": 34,
+    "max_words": 2299,
+    "median_words": 302
+  },
+  "common_phrases": {
+    "top_50_phrases": [
+      {
+        "phrase": "<doc@cab-formations.fr> a écrit",
+        "count": 119
+      },
+      {
+        "phrase": "cab formations---- le",
+        "count": 99
+      },
+      {
+        "phrase": "doc <doc@cab-formations.fr> a",
+        "count": 95
+      },
+      {
+        "phrase": "doc <doc@cab-formations.fr> a écrit",
+        "count": 95
+      },
+      {
+        "phrase": "cordialement, l'équipe cab",
+        "count": 93
+      },
+      {
+        "phrase": "23 jan 2026",
+        "count": 79
+      },
+      {
+        "phrase": "ven, 23 jan",
+        "count": 78
+      },
+      {
+        "phrase": "ven, 23 jan 2026",
+        "count": 78
+      },
+      {
+        "phrase": "le ven, 23",
+        "count": 77
+      },
+      {
+        "phrase": "le ven, 23 jan",
+        "count": 77
+      },
+      {
+        "phrase": "janv. 2026 à",
+        "count": 77
+      },
+      {
+        "phrase": "---- le ven,",
+        "count": 69
+      },
+      {
+        "phrase": "l'équipe cab formations----",
+        "count": 69
+      },
+      {
+        "phrase": "l'équipe cab formations---- le",
+        "count": 69
+      },
+      {
+        "phrase": "bien cordialement, l'équipe",
+        "count": 68
+      },
+      {
+        "phrase": "mot de passe",
+        "count": 68
+      },
+      {
+        "phrase": "bien cordialement, l'équipe cab",
+        "count": 67
+      },
+      {
+        "phrase": "écrit ---- bonjour,",
+        "count": 67
+      },
+      {
+        "phrase": "sur le site",
+        "count": 65
+      },
+      {
+        "phrase": "de votre inscription",
+        "count": 64
+      },
+      {
+        "phrase": "le test de",
+        "count": 63
+      },
+      {
+        "phrase": "l'équipe cab formations",
+        "count": 62
+      },
+      {
+        "phrase": "cab formations ----",
+        "count": 58
+      },
+      {
+        "phrase": "formations ---- le",
+        "count": 58
+      },
+      {
+        "phrase": "cab formations ---- le",
+        "count": 58
+      },
+      {
+        "phrase": "test de sélection",
+        "count": 54
+      },
+      {
+        "phrase": "a écrit :bonjour",
+        "count": 52
+      },
+      {
+        "phrase": "cordialement, l'équipe cab formations----",
+        "count": 50
+      },
+      {
+        "phrase": "cours du soir",
+        "count": 50
+      },
+      {
+        "phrase": "l'équipe cab formations ----",
+        "count": 49
+      },
+      {
+        "phrase": "---- le ven, 23",
+        "count": 49
+      },
+      {
+        "phrase": "de la cma",
+        "count": 47
+      },
+      {
+        "phrase": "à partir de",
+        "count": 47
+      },
+      {
+        "phrase": "cdt, ---- le",
+        "count": 46
+      },
+      {
+        "phrase": "envoyé à partir",
+        "count": 46
+      },
+      {
+        "phrase": "partir de outlook",
+        "count": 45
+      },
+      {
+        "phrase": "de outlook pour",
+        "count": 45
+      },
+      {
+        "phrase": "envoyé à partir de",
+        "count": 45
+      },
+      {
+        "phrase": "à partir de outlook",
+        "count": 45
+      },
+      {
+        "phrase": "partir de outlook pour",
+        "count": 45
+      },
+      {
+        "phrase": "<doc@cab-formations.fr> a écrit :bonjour",
+        "count": 44
+      },
+      {
+        "phrase": "écrit ---- bonjour",
+        "count": 44
+      },
+      {
+        "phrase": "- examen vtc",
+        "count": 44
+      },
+      {
+        "phrase": "cordialement, l'équipe cab formations",
+        "count": 43
+      },
+      {
+        "phrase": "formations - examen",
+        "count": 43
+      },
+      {
+        "phrase": "le site de",
+        "count": 43
+      },
+      {
+        "phrase": "cab formations -",
+        "count": 42
+      },
+      {
+        "phrase": "cab formations - examen",
+        "count": 42
+      },
+      {
+        "phrase": "formations - examen vtc",
+        "count": 41
+      },
+      {
+        "phrase": "de votre dossier",
+        "count": 41
+      }
+    ]
+  },
+  "mandatory_elements": {
+    "compliance_rates": {
+      "identifiants": "54.0%",
+      "password_warning": "0.7%",
+      "elearning_link": "51.1%",
+      "spam_warning": "25.5%"
+    },
+    "raw_rates": {
+      "identifiants_rate": 0.5401459854014599,
+      "password_warning_rate": 0.0072992700729927005,
+      "elearning_link_rate": 0.5109489051094891,
+      "spam_warning_rate": 0.25547445255474455
+    }
+  },
+  "recommendations": [
+    "Use 'professional' tone as primary style (appears in 121 responses)",
+    "Most common scenario: SC-VTC_HORS_PARTENARIAT (102 occurrences)",
+    "Responses can be detailed (avg: 150-250 words)",
+    "Frequently include identifiants ExamenT3P in responses (30%+ of cases)",
+    "Often remind to check spam folder (20%+ of cases)"
+  ]
+}
