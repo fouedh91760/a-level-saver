@@ -1,0 +1,206 @@
+"""Zoho API client with OAuth2 authentication."""
+import logging
+from typing import Dict, Any, Optional
+import requests
+from datetime import datetime, timedelta
+from tenacity import retry, stop_after_attempt, wait_exponential
+from config import settings
+
+logger = logging.getLogger(__name__)
+
+
+class ZohoAPIClient:
+    """Base client for Zoho API interactions with OAuth2 authentication."""
+
+    def __init__(self):
+        self.access_token: Optional[str] = None
+        self.token_expires_at: Optional[datetime] = None
+        self._session = requests.Session()
+
+    def _is_token_expired(self) -> bool:
+        """Check if the current access token is expired."""
+        if not self.access_token or not self.token_expires_at:
+            return True
+        return datetime.now() >= self.token_expires_at
+
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=2, max=10)
+    )
+    def _refresh_access_token(self) -> None:
+        """Refresh the OAuth2 access token using the refresh token."""
+        logger.info("Refreshing Zoho access token")
+
+        url = f"{settings.zoho_accounts_url}/oauth/v2/token"
+        params = {
+            "refresh_token": settings.zoho_refresh_token,
+            "client_id": settings.zoho_client_id,
+            "client_secret": settings.zoho_client_secret,
+            "grant_type": "refresh_token"
+        }
+
+        try:
+            response = requests.post(url, params=params)
+            response.raise_for_status()
+            data = response.json()
+
+            self.access_token = data["access_token"]
+            # Set expiration time (default 1 hour, with 5 min buffer)
+            expires_in = data.get("expires_in", 3600)
+            self.token_expires_at = datetime.now() + timedelta(seconds=expires_in - 300)
+
+            logger.info("Access token refreshed successfully")
+
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Failed to refresh access token: {e}")
+            raise
+
+    def _ensure_valid_token(self) -> None:
+        """Ensure we have a valid access token before making API calls."""
+        if self._is_token_expired():
+            self._refresh_access_token()
+
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=2, max=10)
+    )
+    def _make_request(
+        self,
+        method: str,
+        url: str,
+        headers: Optional[Dict[str, str]] = None,
+        **kwargs
+    ) -> Dict[str, Any]:
+        """Make an authenticated API request to Zoho."""
+        self._ensure_valid_token()
+
+        if headers is None:
+            headers = {}
+
+        headers["Authorization"] = f"Zoho-oauthtoken {self.access_token}"
+        headers["Content-Type"] = "application/json"
+
+        try:
+            response = self._session.request(method, url, headers=headers, **kwargs)
+            response.raise_for_status()
+            return response.json()
+
+        except requests.exceptions.RequestException as e:
+            logger.error(f"API request failed: {method} {url} - {e}")
+            raise
+
+    def close(self) -> None:
+        """Close the session."""
+        self._session.close()
+
+
+class ZohoDeskClient(ZohoAPIClient):
+    """Client for Zoho Desk API operations."""
+
+    def get_ticket(self, ticket_id: str) -> Dict[str, Any]:
+        """Get a specific ticket by ID."""
+        url = f"{settings.zoho_desk_api_url}/tickets/{ticket_id}"
+        params = {"orgId": settings.zoho_desk_org_id}
+        return self._make_request("GET", url, params=params)
+
+    def list_tickets(
+        self,
+        status: Optional[str] = None,
+        limit: int = 50,
+        from_index: int = 0
+    ) -> Dict[str, Any]:
+        """List tickets with optional filters."""
+        url = f"{settings.zoho_desk_api_url}/tickets"
+        params = {
+            "orgId": settings.zoho_desk_org_id,
+            "limit": limit,
+            "from": from_index
+        }
+        if status:
+            params["status"] = status
+
+        return self._make_request("GET", url, params=params)
+
+    def update_ticket(
+        self,
+        ticket_id: str,
+        data: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """Update a ticket."""
+        url = f"{settings.zoho_desk_api_url}/tickets/{ticket_id}"
+        params = {"orgId": settings.zoho_desk_org_id}
+        return self._make_request("PATCH", url, params=params, json=data)
+
+    def add_ticket_comment(
+        self,
+        ticket_id: str,
+        content: str,
+        is_public: bool = True
+    ) -> Dict[str, Any]:
+        """Add a comment to a ticket."""
+        url = f"{settings.zoho_desk_api_url}/tickets/{ticket_id}/comments"
+        params = {"orgId": settings.zoho_desk_org_id}
+        data = {
+            "content": content,
+            "isPublic": is_public
+        }
+        return self._make_request("POST", url, params=params, json=data)
+
+
+class ZohoCRMClient(ZohoAPIClient):
+    """Client for Zoho CRM API operations."""
+
+    def get_deal(self, deal_id: str) -> Dict[str, Any]:
+        """Get a specific deal/opportunity by ID."""
+        url = f"{settings.zoho_crm_api_url}/Deals/{deal_id}"
+        response = self._make_request("GET", url)
+        return response.get("data", [{}])[0] if response.get("data") else {}
+
+    def update_deal(
+        self,
+        deal_id: str,
+        data: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """Update a deal/opportunity."""
+        url = f"{settings.zoho_crm_api_url}/Deals/{deal_id}"
+        payload = {"data": [data]}
+        return self._make_request("PUT", url, json=payload)
+
+    def search_deals(
+        self,
+        criteria: str,
+        page: int = 1,
+        per_page: int = 200
+    ) -> Dict[str, Any]:
+        """Search for deals using criteria."""
+        url = f"{settings.zoho_crm_api_url}/Deals/search"
+        params = {
+            "criteria": criteria,
+            "page": page,
+            "per_page": per_page
+        }
+        return self._make_request("GET", url, params=params)
+
+    def get_deal_notes(self, deal_id: str) -> Dict[str, Any]:
+        """Get notes for a specific deal."""
+        url = f"{settings.zoho_crm_api_url}/Deals/{deal_id}/Notes"
+        return self._make_request("GET", url)
+
+    def add_deal_note(
+        self,
+        deal_id: str,
+        note_title: str,
+        note_content: str
+    ) -> Dict[str, Any]:
+        """Add a note to a deal."""
+        url = f"{settings.zoho_crm_api_url}/Deals/{deal_id}/Notes"
+        data = {
+            "data": [{
+                "Note_Title": note_title,
+                "Note_Content": note_content,
+                "Parent_Id": {
+                    "id": deal_id
+                }
+            }]
+        }
+        return self._make_request("POST", url, json=data)
