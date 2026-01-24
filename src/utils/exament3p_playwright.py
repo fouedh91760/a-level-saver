@@ -340,28 +340,410 @@ class ExamenT3PPlaywright:
 
     async def _extract_overview(self):
         """Extraction des données de la Vue d'ensemble."""
-        # Implementation provided by user (content too long, keeping stub)
-        pass
+        # S'assurer qu'on est sur Vue d'ensemble
+        clicked = await self._safe_click('a:has-text("Vue d\'ensemble")')
+        if not clicked:
+            # Peut-être déjà sur la page
+            pass
+        await asyncio.sleep(ACTION_DELAY)
+
+        text_content = await self._safe_get_text()
+
+        # === INFORMATIONS CANDIDAT ===
+        match = re.search(r'Bienvenue\s+([A-Za-zÀ-ÿ\s]+)\s+-', text_content)
+        if match:
+            self.data['nom_candidat'] = match.group(1).strip()
+
+        # Numéro de dossier
+        match = re.search(r'N°\s*Dossier[:\s]*(\d+)', text_content)
+        if match:
+            self.data['num_dossier'] = match.group(1)
+        else:
+            match = re.search(r'(\d{8})\s*-\s*VTC', text_content)
+            if match:
+                self.data['num_dossier'] = match.group(1)
+
+        # Type d'examen et département
+        match = re.search(r'-\s*(VTC|Taxi|VMDTR)\s*-\s*(Complète|Réinscription|Mobilité)?\s*-?\s*(\d{2,3})?', text_content)
+        if match:
+            self.data['type_examen'] = match.group(1)
+            if match.group(2):
+                self.data['type_epreuve'] = match.group(2)
+            if match.group(3):
+                self.data['departement'] = match.group(3)
+
+        # === STATUT DU DOSSIER ===
+        statuts_possibles = [
+            'En attente d\'instruction des pièces',
+            'En cours d\'instruction',
+            'Valide',
+            'Incomplet',
+            'En attente du paiement',
+            'Dossier validé',
+            'En cours de composition'
+        ]
+        for statut in statuts_possibles:
+            if statut.lower() in text_content.lower():
+                self.data['statut_dossier'] = statut
+                break
+
+        # Date de réception du dossier
+        match = re.search(r'Dossier reçu le\s+(\d{2}/\d{2}/\d{4})', text_content)
+        if match:
+            self.data['date_reception_dossier'] = match.group(1)
+
+        # === PROCHAINE SESSION ===
+        match = re.search(r'À partir du\s+(\d{1,2}\s+\w+\s+\d{4})', text_content)
+        if match:
+            self.data['date_examen'] = match.group(1)
+
+        # Type d'épreuve de la session
+        match = re.search(r'Examen\s+(vtc|taxi|vmdtr)\s*-\s*Épreuve\s+(écrite|pratique)', text_content, re.IGNORECASE)
+        if match:
+            self.data['epreuve_session'] = match.group(2).capitalize()
+
+        # === PROGRESSION DU DOSSIER ===
+        self.data['progression'] = {}
+
+        # Convocation d'examen
+        if re.search(r'Convocation d\'examen.*?EN ATTENTE', text_content, re.DOTALL | re.IGNORECASE):
+            self.data['progression']['convocation'] = 'EN ATTENTE'
+        elif re.search(r'Convocation d\'examen.*?VALIDÉ', text_content, re.DOTALL | re.IGNORECASE):
+            self.data['progression']['convocation'] = 'VALIDÉ'
+
+        # Documents justificatifs
+        if re.search(r'Documents justificatifs.*?À VALIDER', text_content, re.DOTALL | re.IGNORECASE):
+            self.data['progression']['documents'] = 'À VALIDER'
+        elif re.search(r'Documents justificatifs.*?VALIDÉ', text_content, re.DOTALL | re.IGNORECASE):
+            self.data['progression']['documents'] = 'VALIDÉ'
+        elif re.search(r'Documents justificatifs.*?EN ATTENTE', text_content, re.DOTALL | re.IGNORECASE):
+            self.data['progression']['documents'] = 'EN ATTENTE'
+
+        # Paiement
+        paiement_match = re.search(r'Paiement\s*\n\s*(\d{2}/\d{2}/\d{4})\s*\n\s*(\d+[.,]\d{2})\s*€\s*-\s*Paiement par\s*(\w+)\s*\n\s*(VALIDÉ|EN ATTENTE|REFUSÉ)', text_content, re.IGNORECASE)
+        if paiement_match:
+            self.data['paiement_cma'] = {
+                'date': paiement_match.group(1),
+                'montant': float(paiement_match.group(2).replace(',', '.')),
+                'mode': paiement_match.group(3),
+                'statut': paiement_match.group(4).upper()
+            }
+            self.data['progression']['paiement'] = paiement_match.group(4).upper()
+        else:
+            if re.search(r'Paiement.*?VALIDÉ', text_content, re.DOTALL | re.IGNORECASE):
+                self.data['progression']['paiement'] = 'VALIDÉ'
+                match = re.search(r'(\d+[.,]\d{2})\s*€', text_content)
+                if match:
+                    self.data['paiement_cma'] = {'montant': float(match.group(1).replace(',', '.')), 'statut': 'VALIDÉ'}
+
+        # Informations personnelles
+        if re.search(r'Informations personnelles.*?À VALIDER', text_content, re.DOTALL | re.IGNORECASE):
+            self.data['progression']['infos_perso'] = 'À VALIDER'
+        elif re.search(r'Informations personnelles.*?VALIDÉ', text_content, re.DOTALL | re.IGNORECASE):
+            self.data['progression']['infos_perso'] = 'VALIDÉ'
+
+        # Choix département/session
+        match = re.search(r'Choix du département.*?(\d{2,3})\s*-\s*([A-Za-zÀ-ÿ\-\s]+).*?(À VALIDER|VALIDÉ)', text_content, re.DOTALL | re.IGNORECASE)
+        if match:
+            self.data['departement'] = match.group(1)
+            self.data['region'] = match.group(2).strip()
+            self.data['progression']['choix_session'] = match.group(3).upper()
+
+        # Type d'examen sélectionné
+        match = re.search(r'Type d\'examen sélectionné.*?(VTC|Taxi|VMDTR).*?(À VALIDER|VALIDÉ)', text_content, re.DOTALL | re.IGNORECASE)
+        if match:
+            self.data['progression']['type_examen'] = match.group(2).upper()
+
+        # === ACTIONS REQUISES ===
+        self.data['actions_requises'] = []
+
+        if 'Reçu de paiement disponible' in text_content:
+            self.data['actions_requises'].append({
+                'type': 'recu_disponible',
+                'description': 'Reçu de paiement disponible'
+            })
+
+        if 'Photo non conforme' in text_content or ('photo' in text_content.lower() and 'à valider' in text_content.lower()):
+            self.data['actions_requises'].append({
+                'type': 'photo_requise',
+                'description': 'Photo d\'identité à mettre à jour'
+            })
+
+        # === HISTORIQUE DES ÉTAPES ===
+        self.data['historique_etapes'] = []
+        etapes = [
+            'En cours de composition',
+            'En attente du paiement',
+            'En attente d\'instruction des pièces',
+            'Incomplet',
+            'Valide'
+        ]
+        for etape in etapes:
+            if etape.lower() in text_content.lower():
+                self.data['historique_etapes'].append(etape)
+
+        # Convocation
+        self.data['convocation'] = self.data['progression'].get('convocation', 'EN ATTENTE')
 
     async def _extract_examens(self):
         """Extraction des données de Mes Examens."""
-        pass
+        await self._safe_click('a:has-text("Mes Examens")')
+        await asyncio.sleep(ACTION_DELAY)
+
+        text_content = await self._safe_get_text()
+
+        self.data['examens'] = {}
+
+        # Date d'examen
+        match = re.search(r'Date\s*:\s*(\d{2}/\d{2}/\d{4})', text_content)
+        if match:
+            self.data['examens']['date'] = match.group(1)
+
+        # Lieu d'examen
+        match = re.search(r'Lieu\s*:\s*([^\n]+)', text_content)
+        if match:
+            self.data['examens']['lieu'] = match.group(1).strip()
+
+        # Statut convocation
+        if 'Convocation disponible' in text_content or 'Télécharger la convocation' in text_content:
+            self.data['examens']['convocation_disponible'] = True
+            self.data['convocation'] = 'DISPONIBLE'
+        else:
+            self.data['examens']['convocation_disponible'] = False
+
+        # Résultats si disponibles
+        if 'Résultat' in text_content:
+            match = re.search(r'Résultat\s*:\s*(Admis|Ajourné|En attente)', text_content, re.IGNORECASE)
+            if match:
+                self.data['examens']['resultat'] = match.group(1)
 
     async def _extract_documents(self):
         """Extraction du statut des documents."""
-        pass
+        await self._safe_click('a:has-text("Mes Documents")')
+        await asyncio.sleep(ACTION_DELAY)
+
+        text_content = await self._safe_get_text()
+
+        # Liste des documents à extraire avec patterns améliorés
+        # Patterns multiples pour gérer différents formats de page
+        documents_config = [
+            {'nom': "Pièce d'identité", 'patterns': [
+                r"Pièce d'identité[^\n]*\n[^\n]*\n[^\n]*(VALIDÉ|VALIDE|À VALIDER|A VALIDER|REFUSÉ|REFUSE)",
+                r"Pièce d'identité.*?(VALIDÉ|VALIDE|À VALIDER|A VALIDER|REFUSÉ|REFUSE)",
+                r"Carte.*?identité.*?(VALIDÉ|VALIDE|À VALIDER|A VALIDER|REFUSÉ|REFUSE)"
+            ]},
+            {'nom': "Photo d'identité", 'patterns': [
+                r"Photo d'identité[^\n]*\n[^\n]*\n[^\n]*(VALIDÉ|VALIDE|À VALIDER|A VALIDER|REFUSÉ|REFUSE)",
+                r"Photo d'identité.*?(VALIDÉ|VALIDE|À VALIDER|A VALIDER|REFUSÉ|REFUSE)",
+                r"Photo.*?récente.*?(VALIDÉ|VALIDE|À VALIDER|A VALIDER|REFUSÉ|REFUSE)"
+            ]},
+            {'nom': "Signature", 'patterns': [
+                r"Signature[^\n]*\n[^\n]*\n[^\n]*(VALIDÉ|VALIDE|À VALIDER|A VALIDER|REFUSÉ|REFUSE)",
+                r"Signature.*?(VALIDÉ|VALIDE|À VALIDER|A VALIDER|REFUSÉ|REFUSE)",
+                r"Signature.*?manuscrite.*?(VALIDÉ|VALIDE|À VALIDER|A VALIDER|REFUSÉ|REFUSE)"
+            ]},
+            {'nom': "Justificatif de domicile", 'patterns': [
+                r"Justificatif de domicile[^\n]*\n[^\n]*\n[^\n]*(VALIDÉ|VALIDE|À VALIDER|A VALIDER|REFUSÉ|REFUSE)",
+                r"Justificatif de domicile.*?(VALIDÉ|VALIDE|À VALIDER|A VALIDER|REFUSÉ|REFUSE)",
+                r"JDD.*?(VALIDÉ|VALIDE|À VALIDER|A VALIDER|REFUSÉ|REFUSE)"
+            ]},
+            {'nom': "Permis de conduire", 'patterns': [
+                r"Permis de conduire[^\n]*\n[^\n]*\n[^\n]*(VALIDÉ|VALIDE|À VALIDER|A VALIDER|REFUSÉ|REFUSE)",
+                r"Permis de conduire.*?(VALIDÉ|VALIDE|À VALIDER|A VALIDER|REFUSÉ|REFUSE)",
+                r"Permis.*?en cours.*?(VALIDÉ|VALIDE|À VALIDER|A VALIDER|REFUSÉ|REFUSE)"
+            ]},
+        ]
+
+        self.data['documents'] = []
+
+        for doc_config in documents_config:
+            doc_info = {'nom': doc_config['nom'], 'statut': 'INCONNU'}
+
+            # Essayer chaque pattern jusqu'à trouver un match
+            for pattern in doc_config['patterns']:
+                match = re.search(pattern, text_content, re.IGNORECASE | re.DOTALL)
+                if match:
+                    statut = match.group(1).upper()
+                    # Normaliser les statuts
+                    if statut in ['VALIDÉ', 'VALIDE']:
+                        doc_info['statut'] = 'VALIDÉ'
+                    elif statut in ['À VALIDER', 'A VALIDER']:
+                        doc_info['statut'] = 'À VALIDER'
+                    elif statut in ['REFUSÉ', 'REFUSE']:
+                        doc_info['statut'] = 'REFUSÉ'
+                    break
+
+            self.data['documents'].append(doc_info)
+
+        # Documents facultatifs
+        self.data['documents_facultatifs'] = []
+        if 'Pièce d\'identité - Justificatif FACULTATIF' in text_content:
+            self.data['documents_facultatifs'].append({'nom': "Pièce d'identité - Justificatif FACULTATIF", 'statut': 'OPTIONNEL'})
+        if 'Permis de conduire - Justificatif FACULTATIF' in text_content:
+            self.data['documents_facultatifs'].append({'nom': "Permis de conduire - Justificatif FACULTATIF", 'statut': 'OPTIONNEL'})
+
+        # FALLBACK: Si le statut du dossier est "Valide", tous les documents sont validés
+        # Un dossier ne peut pas être "Valide" si des documents sont manquants ou refusés
+        statut_dossier = self.data.get('statut_dossier', '').lower()
+        docs_inconnus = sum(1 for d in self.data['documents'] if d['statut'] == 'INCONNU')
+
+        if statut_dossier == 'valide' and docs_inconnus > 0:
+            # Le dossier est validé par la CMA, donc tous les documents sont forcément validés
+            for doc in self.data['documents']:
+                if doc['statut'] == 'INCONNU':
+                    doc['statut'] = 'VALIDÉ'
+
+        # Calculer le statut global
+        statuts = [d['statut'] for d in self.data['documents']]
+        if all(s == 'VALIDÉ' for s in statuts):
+            self.data['statut_documents'] = 'VALIDÉ'
+        elif any(s == 'REFUSÉ' for s in statuts):
+            self.data['statut_documents'] = 'REFUSÉ'
+        elif any(s == 'À VALIDER' for s in statuts):
+            self.data['statut_documents'] = 'À VALIDER'
+        elif any(s == 'INCONNU' for s in statuts):
+            self.data['statut_documents'] = 'INCONNU'
+        else:
+            self.data['statut_documents'] = 'EN COURS'
+
+        validés = sum(1 for s in statuts if s == 'VALIDÉ')
+        self.data['documents_valides'] = f"{validés}/{len(statuts)}"
+
+        # Identifier les documents en attente et les documents refusés
+        self.data['documents_en_attente'] = []
+        self.data['documents_refuses'] = []
+
+        for doc in self.data['documents']:
+            if doc['statut'] == 'À VALIDER':
+                # Document uploadé, en attente de validation CMA (pas d'action requise)
+                self.data['documents_en_attente'].append(doc['nom'])
+            elif doc['statut'] == 'REFUSÉ':
+                # Document refusé, action requise du candidat
+                self.data['documents_refuses'].append(doc['nom'])
+                if 'document_problematique' not in self.data:
+                    self.data['document_problematique'] = doc['nom']
+                    self.data['document_problematique_statut'] = 'REFUSÉ'
+
+        # Indicateur si action requise du candidat
+        self.data['action_candidat_requise'] = len(self.data['documents_refuses']) > 0
 
     async def _extract_compte(self):
         """Extraction des informations du compte."""
-        pass
+        await self._safe_click('a:has-text("Mon Compte")')
+        await asyncio.sleep(ACTION_DELAY)
+
+        text_content = await self._safe_get_text()
+
+        self.data['compte'] = {}
+
+        # Genre
+        if 'Homme' in text_content:
+            self.data['compte']['genre'] = 'Homme'
+        elif 'Femme' in text_content:
+            self.data['compte']['genre'] = 'Femme'
+
+        # Prénom
+        match = re.search(r'Prénom\(?s?\)?\s*\n\s*([A-Za-zÀ-ÿ\s\-]+)', text_content)
+        if match:
+            self.data['compte']['prenom'] = match.group(1).strip()
+
+        # Nom
+        match = re.search(r'Nom\s*\n\s*([A-Za-zÀ-ÿ\s\-]+)', text_content)
+        if match:
+            self.data['compte']['nom'] = match.group(1).strip()
+
+        # Date de naissance
+        match = re.search(r'Date de naissance\s*\n\s*(\d{2}/\d{2}/\d{4})', text_content)
+        if match:
+            self.data['compte']['date_naissance'] = match.group(1)
+
+        # Lieu de naissance
+        match = re.search(r'Lieu de naissance\s*\n\s*([A-Za-zÀ-ÿ\s\-]+)', text_content)
+        if match:
+            self.data['compte']['lieu_naissance'] = match.group(1).strip()
+
+        # Adresse
+        match = re.search(r'Adresse de domicile\s*\n\s*([^\n]+)', text_content)
+        if match:
+            self.data['compte']['adresse'] = match.group(1).strip()
+
+        # Code postal et ville
+        match = re.search(r'Code postal\s*\n\s*(\d{5})', text_content)
+        if match:
+            self.data['compte']['code_postal'] = match.group(1)
+
+        match = re.search(r'Ville\s*\n\s*([A-Za-zÀ-ÿ\s\-]+)', text_content)
+        if match:
+            self.data['compte']['ville'] = match.group(1).strip()
+
+        # Email
+        match = re.search(r'Email\s*\n\s*([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})', text_content)
+        if match:
+            self.data['compte']['email'] = match.group(1)
+
+        # Téléphone
+        match = re.search(r'Téléphone\s*\n\s*([0-9\s\+]+)', text_content)
+        if match:
+            self.data['compte']['telephone'] = match.group(1).strip()
 
     async def _extract_paiements(self):
         """Extraction de l'historique des paiements."""
-        pass
+        await self._safe_click('a:has-text("Mes Paiements")')
+        await asyncio.sleep(ACTION_DELAY)
+
+        text_content = await self._safe_get_text()
+
+        self.data['historique_paiements'] = []
+
+        # Chercher les lignes de paiement dans le tableau
+        pattern = r'(\d{8})\s+(\d{2}/\d{2}/\d{4})\s+([^\n]+?)\s+(\d+[.,]\d{2})\s*€\s+(VALIDÉ|REFUSÉ|EN ATTENTE)'
+        matches = re.findall(pattern, text_content, re.IGNORECASE)
+
+        for match in matches:
+            self.data['historique_paiements'].append({
+                'num_dossier': match[0],
+                'date': match[1],
+                'description': match[2].strip(),
+                'montant': float(match[3].replace(',', '.')),
+                'statut': match[4].upper()
+            })
+
+        # Si pas de match, essayer d'extraire au moins le montant total
+        if not self.data['historique_paiements']:
+            match = re.search(r'(\d+[.,]\d{2})\s*€', text_content)
+            if match:
+                self.data['historique_paiements'].append({
+                    'montant': float(match.group(1).replace(',', '.')),
+                    'statut': 'VALIDÉ' if 'VALIDÉ' in text_content else 'INCONNU'
+                })
 
     async def _extract_messages(self):
         """Extraction des messages avec la CMA."""
-        pass
+        await self._safe_click('a:has-text("Messages")')
+        await asyncio.sleep(ACTION_DELAY)
+
+        text_content = await self._safe_get_text()
+
+        self.data['messages'] = {
+            'nombre': 0,
+            'liste': []
+        }
+
+        # Compter les nouveaux messages
+        match = re.search(r'(\d+)\s*nouveau[sx]?', text_content, re.IGNORECASE)
+        if match:
+            self.data['messages']['nombre'] = int(match.group(1))
+
+        # Extraire les messages si présents
+        messages_pattern = r'(\d{2}/\d{2}/\d{4}\s+\d{2}:\d{2})\s*\n\s*(CMA|Candidat)\s*\n\s*([^\n]+)'
+        matches = re.findall(messages_pattern, text_content, re.IGNORECASE)
+
+        for match in matches:
+            self.data['messages']['liste'].append({
+                'date': match[0],
+                'expediteur': match[1],
+                'contenu': match[2].strip()
+            })
 
     async def _safe_logout(self):
         """Déconnexion sécurisée (non bloquante)."""
