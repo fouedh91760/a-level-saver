@@ -1,0 +1,136 @@
+{
+  "timestamp": "2026-01-24T14:24:12.953034",
+  "total_count": 26,
+  "departments": [
+    {
+      "id": "198709000000006907",
+      "name": "NA PAS UTILISER",
+      "description": ""
+    },
+    {
+      "id": "198709000025160121",
+      "name": "BO",
+      "description": ""
+    },
+    {
+      "id": "198709000025221397",
+      "name": "FACTURATION",
+      "description": ""
+    },
+    {
+      "id": "198709000025227670",
+      "name": "Contact",
+      "description": ""
+    },
+    {
+      "id": "198709000025233943",
+      "name": "PUB ET SPAM",
+      "description": ""
+    },
+    {
+      "id": "198709000025523146",
+      "name": "DOC",
+      "description": ""
+    },
+    {
+      "id": "198709000025558419",
+      "name": "Comptabilité",
+      "description": ""
+    },
+    {
+      "id": "198709000025742482",
+      "name": "Pédagogie",
+      "description": ""
+    },
+    {
+      "id": "198709000026153115",
+      "name": "Back Office",
+      "description": ""
+    },
+    {
+      "id": "198709000026180825",
+      "name": "Back-office",
+      "description": ""
+    },
+    {
+      "id": "198709000027921097",
+      "name": "Relations entreprises",
+      "description": ""
+    },
+    {
+      "id": "198709000035496031",
+      "name": "Recrutement",
+      "description": ""
+    },
+    {
+      "id": "198709000040285715",
+      "name": "Réferent handicap",
+      "description": ""
+    },
+    {
+      "id": "198709000042442495",
+      "name": "Assistance commerciale",
+      "description": ""
+    },
+    {
+      "id": "198709000057394047",
+      "name": "Uber",
+      "description": ""
+    },
+    {
+      "id": "198709000092515473",
+      "name": "Refus CMA",
+      "description": ""
+    },
+    {
+      "id": "198709000092827577",
+      "name": "Inscription CMA",
+      "description": ""
+    },
+    {
+      "id": "198709000102023223",
+      "name": "PARTICULIER COMPTA",
+      "description": "Factures particulier"
+    },
+    {
+      "id": "198709000102030275",
+      "name": "DOCS CAB",
+      "description": "Documents des candidats CAB seulement"
+    },
+    {
+      "id": "198709000102046075",
+      "name": "Mon Compte Formation",
+      "description": ""
+    },
+    {
+      "id": "198709000102116029",
+      "name": "Notifications",
+      "description": ""
+    },
+    {
+      "id": "198709000102607293",
+      "name": "EXAMEN PRATIQUE VTC",
+      "description": ""
+    },
+    {
+      "id": "198709000131511107",
+      "name": "Aleo - Administratif",
+      "description": ""
+    },
+    {
+      "id": "198709000139436077",
+      "name": "Aleo - Relations Entreprises",
+      "description": ""
+    },
+    {
+      "id": "198709000139634435",
+      "name": "Aleo - Comptabilité",
+      "description": ""
+    },
+    {
+      "id": "198709000250868739",
+      "name": "Engins",
+      "description": ""
+    }
+  ]
+}
