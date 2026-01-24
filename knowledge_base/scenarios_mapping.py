@@ -198,8 +198,10 @@ SCENARIOS = {
     "SC-HORS_PARTENARIAT": {
         "name": "Formation hors partenariat Uber",
         "triggers": [
-            "taxi", "ambulance", "autre formation", "pas uber"
+            "taxi", "ambulance", "autre formation", "pas uber",
+            "sans uber", "hors uber"
         ],
+        "detection": "Amount != 20€ (in CRM Deal) OR explicit keywords",
         "routing": "Contact department",
         "stop_workflow": True,
         "template_notes": "Route to Contact, do NOT draft response"
@@ -207,10 +209,14 @@ SCENARIOS = {
 
     "SC-VTC_HORS_PARTENARIAT": {
         "name": "VTC hors partenariat",
-        "triggers": ["vtc", "formation vtc"],
+        "triggers": [
+            # Removed "vtc" alone - too broad, all DOC tickets contain "vtc"
+            # Detection based on CRM Amount field instead
+        ],
+        "detection": "Amount != 20€ (checked via CRM data)",
         "routing": "DOCS CAB",
         "stop_workflow": True,
-        "template_notes": "Route to DOCS CAB"
+        "template_notes": "Route to DOCS CAB if not Uber partnership"
     },
 
     # ========== SPAM ==========
@@ -292,26 +298,52 @@ def detect_scenario_from_text(
     detected_scenarios = []
     combined_text = (subject + " " + customer_message).lower()
 
+    # =========================================================================
+    # PRIORITY 1: CRM-based detection (HORS_PARTENARIAT)
+    # =========================================================================
+    if crm_data:
+        # Check Amount field - Uber partnership = 20€
+        amount = crm_data.get("Amount", 0)
+
+        # If Amount != 20€ and != 0 (0 means not set yet) → HORS PARTENARIAT
+        if amount != 0 and amount != 20:
+            detected_scenarios.append("SC-HORS_PARTENARIAT")
+            # Also check if it's VTC specifically (vs taxi/ambulance)
+            if "vtc" in combined_text and "taxi" not in combined_text and "ambulance" not in combined_text:
+                detected_scenarios.append("SC-VTC_HORS_PARTENARIAT")
+
+    # =========================================================================
+    # PRIORITY 2: Text-based detection
+    # =========================================================================
     # Check each scenario's triggers
     for scenario_id, scenario_def in SCENARIOS.items():
-        # Skip scenarios without triggers (date-based detection)
-        if not scenario_def.get("triggers"):
+        # Skip if already detected via CRM
+        if scenario_id in detected_scenarios:
+            continue
+
+        # Skip scenarios without triggers (CRM-based or date-based detection)
+        triggers = scenario_def.get("triggers", [])
+        if not triggers:
             continue
 
         # Check if any trigger matches
-        for trigger in scenario_def["triggers"]:
+        for trigger in triggers:
             if trigger.lower() in combined_text:
                 detected_scenarios.append(scenario_id)
                 break
 
+    # =========================================================================
     # Special detection: ANCIEN_DOSSIER (date-based)
+    # =========================================================================
     if crm_data:
         date_depot_cma = crm_data.get("Date_de_depot_CMA")
         if date_depot_cma and date_depot_cma < "2025-11-01":
             detected_scenarios.append("SC-ANCIEN_DOSSIER")
 
+    # =========================================================================
     # Special detection: REPORT type (SANS_DOSSIER, AVANT_CLOTURE, APRES_CLOTURE)
-    if any("report" in s for s in detected_scenarios):
+    # =========================================================================
+    if any("report" in s.lower() for s in detected_scenarios):
         if crm_data:
             date_depot = crm_data.get("Date_de_depot_CMA")
             date_cloture = crm_data.get("Date_de_cloture")
