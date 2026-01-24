@@ -11,11 +11,140 @@ Modify the methods below to match your:
 - Customer segmentation
 - Automation preferences
 """
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
+
+
+# ===== KEYWORDS POUR DÉTECTION D'ENVOI DE DOCUMENTS =====
+DOCUMENT_KEYWORDS = [
+    # Générique
+    "ci-joint", "ci joint", "pièce jointe", "piece jointe",
+    "document", "fichier", "attachment", "attaché", "attache",
+    "vous trouverez", "je vous envoie", "voici le", "voici les",
+
+    # Identité
+    "pièce d'identité", "piece d'identite", "photo d'identité", "photo d'identite",
+    "carte d'identité", "carte d'identite", "cni", "passeport",
+    "titre de séjour", "titre de sejour",
+    "récépissé de titre de séjour", "recepisse de titre de sejour",
+    "récépissé de permis", "recepisse de permis",
+    "récépissé", "recepisse",
+
+    # Domicile
+    "justificatif de domicile", "justificatif domicile",
+    "attestation d'hébergement", "attestation d'hebergement", "attestation hebergement",
+    "preuve de domicile",
+
+    # Signature
+    "signature", "signé", "signe"
+]
 
 
 class BusinessRules:
     """Your custom business rules. Modify these methods!"""
+
+    @staticmethod
+    def is_document_submission(thread_content: str) -> bool:
+        """
+        Détecte si le contenu d'un thread correspond à un envoi de documents.
+
+        Args:
+            thread_content: Contenu du thread (peut contenir du HTML)
+
+        Returns:
+            True si envoi de documents détecté
+        """
+        if not thread_content:
+            return False
+
+        content_lower = thread_content.lower()
+        return any(keyword in content_lower for keyword in DOCUMENT_KEYWORDS)
+
+    @staticmethod
+    def determine_department_from_deals_and_ticket(
+        all_deals: List[Dict[str, Any]],
+        ticket: Dict[str, Any],
+        last_thread_content: Optional[str] = None
+    ) -> Optional[str]:
+        """
+        LOGIQUE COMPLÈTE DE ROUTING basée sur les deals CRM et le ticket.
+
+        WORKFLOW:
+        1. Filtrer les deals à 20€
+        2. Priorité 1: Deal 20€ GAGNÉ (le plus récent closing_date)
+        3. Priorité 2: Deal 20€ EN ATTENTE
+        4. Si deal 20€ trouvé: vérifier conditions Refus CMA vs DOC
+        5. Si pas de deal 20€: chercher autre montant GAGNÉ ou EN ATTENTE → Contact
+        6. Sinon: fallback sur keywords
+
+        Args:
+            all_deals: TOUS les deals liés au contact
+            ticket: Ticket data complet
+            last_thread_content: Contenu du dernier thread (optionnel)
+
+        Returns:
+            Nom du département ou None (fallback keywords)
+        """
+        if not all_deals:
+            return None
+
+        # Étape 1: Filtrer les deals à 20€
+        deals_20 = [d for d in all_deals if d.get("Amount") == 20]
+
+        # Étape 2: Prioriser GAGNÉ (plus récent)
+        deals_20_won = [d for d in deals_20 if d.get("Stage") == "GAGNÉ"]
+
+        selected_deal = None
+
+        if deals_20_won:
+            # Prendre le plus récent (Closing_Date)
+            deals_20_won_sorted = sorted(
+                deals_20_won,
+                key=lambda d: d.get("Closing_Date", ""),
+                reverse=True
+            )
+            selected_deal = deals_20_won_sorted[0]
+            deal_source = "20€ GAGNÉ (plus récent)"
+
+        else:
+            # Étape 3: Chercher EN ATTENTE
+            deals_20_pending = [d for d in deals_20 if d.get("Stage") == "EN ATTENTE"]
+            if deals_20_pending:
+                selected_deal = deals_20_pending[0]
+                deal_source = "20€ EN ATTENTE"
+
+        # Étape 4: Si deal 20€ trouvé, déterminer DOC ou REFUS CMA
+        if selected_deal:
+            evalbox = selected_deal.get("Evalbox", "")
+
+            # Conditions Refus CMA
+            refus_cma_conditions = [
+                evalbox == "Refusé CMA",
+                evalbox == "Documents refusés",
+                evalbox == "Documents manquants"
+            ]
+
+            if any(refus_cma_conditions):
+                return "Refus CMA"
+
+            # Condition D: Evalbox OK mais envoi de documents
+            if evalbox not in ["Refusé CMA", "Documents refusés", "Documents manquants"]:
+                if last_thread_content and BusinessRules.is_document_submission(last_thread_content):
+                    return "Refus CMA"
+
+            # Sinon → DOC
+            return "DOC"
+
+        # Étape 5: Pas de deal 20€, chercher autre montant
+        other_deals_won_or_pending = [
+            d for d in all_deals
+            if d.get("Amount") != 20 and d.get("Stage") in ["GAGNÉ", "EN ATTENTE"]
+        ]
+
+        if other_deals_won_or_pending:
+            return "Contact"
+
+        # Étape 6: Aucun deal pertinent trouvé
+        return None
 
     @staticmethod
     def should_create_deal_for_ticket(ticket: Dict[str, Any]) -> bool:
