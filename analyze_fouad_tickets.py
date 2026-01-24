@@ -1,19 +1,19 @@
 """
 Script pour analyser les tickets traités par Fouad Haddouchi dans le département DOC.
 
-Version avec contenu COMPLET des threads et gestion du rate limiting.
+Version OPTIMISÉE avec filtre de date et contenu COMPLET des threads.
 
 Ce script :
-1. Récupère TOUS les tickets du département DOC (avec pagination)
+1. Récupère les tickets DOC fermés après le 01/11/2025 (tickets récents uniquement)
 2. Pour chaque ticket, récupère les threads avec CONTENU COMPLET
 3. Filtre les tickets où Fouad a répondu
-4. Limite à 500 tickets maximum
+4. Limite à 100 tickets maximum (suffisant pour analyse robuste)
 5. Extrait les questions clients et réponses complètes de Fouad
 6. Génère une analyse détaillée avec patterns et recommandations
 7. Sauvegarde progressive tous les 50 tickets (protection contre crash)
 
 Résultat sauvegardé dans : fouad_tickets_analysis.json
-Temps estimé : 20-30 minutes
+Temps estimé : 10-15 minutes
 
 INTERRUPTION : Si le script s'arrête, relancez-le, il reprendra où il s'était arrêté.
 """
@@ -146,15 +146,16 @@ def analyze_fouad_tickets():
         doc_department_id = "198709000025523146"
 
         if last_index == 0:
-            print(f"\n🔍 Récupération de TOUS les tickets du département DOC...")
-            print("   (Cela peut prendre plusieurs minutes selon le volume)")
+            print(f"\n🔍 Récupération des tickets DOC fermés après le 01/11/2025...")
+            print("   (Filtrage pour optimiser la recherche)")
 
-            # Récupérer TOUS les tickets du département DOC avec pagination
+            # Récupérer les tickets récents du département DOC avec pagination
             url = f"{settings.zoho_desk_api_url}/tickets"
             base_params = {
                 "orgId": settings.zoho_desk_org_id,
                 "departmentId": doc_department_id,
-                "status": "Closed"  # Tickets fermés pour avoir l'historique complet
+                "status": "Closed",  # Tickets fermés
+                "closedTimeRange": "2025-11-01T00:00:00Z,2026-12-31T23:59:59Z"  # Depuis le 01/11/2025
             }
 
             # Utiliser la pagination automatique
@@ -167,12 +168,15 @@ def analyze_fouad_tickets():
             base_params = {
                 "orgId": settings.zoho_desk_org_id,
                 "departmentId": doc_department_id,
-                "status": "Closed"
+                "status": "Closed",
+                "closedTimeRange": "2025-11-01T00:00:00Z,2026-12-31T23:59:59Z"  # Depuis le 01/11/2025
             }
             all_tickets = desk_client._get_all_pages(url, base_params, limit_per_page=100)
 
         print(f"\n🔎 Filtrage des tickets traités par Fouad Haddouchi...")
-        print(f"⏱️  Temps estimé : 20-30 minutes (contenu complet + rate limiting)")
+        print(f"📅 Période : tickets fermés depuis le 01/11/2025")
+        print(f"🎯 Objectif : 100 tickets (suffisant pour analyse robuste)")
+        print(f"⏱️  Temps estimé : 10-15 minutes (contenu complet + rate limiting)")
         print(f"💾 Sauvegarde automatique tous les 50 tickets")
 
         tickets_checked = last_index
@@ -249,9 +253,9 @@ def analyze_fouad_tickets():
 
                 fouad_tickets.append(ticket_data)
 
-                # Limiter à 500 tickets
-                if len(fouad_tickets) >= 500:
-                    print(f"\n✅ Limite de 500 tickets atteinte")
+                # Limiter à 100 tickets (suffisant pour analyse robuste)
+                if len(fouad_tickets) >= 100:
+                    print(f"\n✅ Limite de 100 tickets atteinte")
                     break
 
             # Sauvegarde progressive tous les 50 tickets
