@@ -111,6 +111,88 @@ Coordonne les agents pour des workflows complexes :
 - Détection d'opportunités en attente
 - Cycles d'automatisation complets
 
+## 🔍 Contexte Complet des Tickets
+
+**IMPORTANT** : Le système récupère le **contexte complet** de chaque ticket, pas seulement un résumé.
+
+### Ce qui est récupéré pour chaque ticket :
+
+#### 1. **Informations de base**
+- ID, numéro, sujet, description
+- Statut, priorité, canal
+- Contact, département
+- Dates de création et modification
+
+#### 2. **Historique complet des threads** (`GET /tickets/{id}/threads`)
+- **Contenu COMPLET de tous les emails** (pas de résumés)
+- Direction (entrant/sortant)
+- Expéditeur et destinataire
+- Sujet de chaque email
+- Horodatage
+- Indicateurs (réponse, transfert)
+
+#### 3. **Historique des conversations** (`GET /tickets/{id}/conversations`)
+- Tous les commentaires et interactions
+- Type de conversation
+- Auteur
+- Visibilité (public/privé)
+- Contenu intégral
+
+#### 4. **Historique des modifications** (`GET /tickets/{id}/history`)
+- Tous les changements de champ
+- Anciennes et nouvelles valeurs
+- Qui a fait la modification
+- Quand cela a été fait
+
+### Pourquoi c'est crucial
+
+```
+❌ AVANT (incomplet)
+├─ Ticket de base uniquement
+└─ Description initiale
+
+✅ MAINTENANT (contexte complet)
+├─ Ticket de base
+├─ Email initial du client (texte complet)
+├─ Réponse de l'agent (texte complet)
+├─ Email de suivi du client (texte complet)
+├─ Tous les commentaires internes
+└─ Historique des changements de statut
+```
+
+### Impact sur l'analyse IA
+
+L'agent IA peut maintenant :
+- ✅ Comprendre toute l'historique de la conversation
+- ✅ Voir si le client a déjà posé cette question
+- ✅ Savoir ce qui a déjà été tenté/proposé
+- ✅ Détecter les clients frustrés par des réponses répétées
+- ✅ Éviter de redemander des informations déjà fournies
+- ✅ Comprendre l'évolution du problème
+- ✅ Fournir des réponses vraiment contextualisées
+
+### Exemple d'utilisation
+
+```python
+from src.agents import DeskTicketAgent
+
+agent = DeskTicketAgent()
+result = agent.process({"ticket_id": "123456789"})
+
+# Le résultat contient maintenant :
+complete_context = result["complete_context"]
+
+# Accès au contexte complet
+threads = complete_context["threads"]        # Tous les emails
+conversations = complete_context["conversations"]  # Tous les commentaires
+history = complete_context["history"]        # Tous les changements
+
+# L'analyse IA est basée sur TOUT ce contexte
+analysis = result["agent_analysis"]
+```
+
+Voir `examples/full_context_analysis.py` pour une démonstration complète.
+
 ## 📖 Utilisation
 
 ### Utilisation de base - Agent Desk

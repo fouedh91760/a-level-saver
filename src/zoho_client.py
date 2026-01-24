@@ -146,6 +146,76 @@ class ZohoDeskClient(ZohoAPIClient):
         }
         return self._make_request("POST", url, params=params, json=data)
 
+    def get_ticket_threads(self, ticket_id: str) -> Dict[str, Any]:
+        """
+        Get all threads (emails, replies) for a ticket.
+        This returns the complete conversation history including full email content.
+        """
+        url = f"{settings.zoho_desk_api_url}/tickets/{ticket_id}/threads"
+        params = {"orgId": settings.zoho_desk_org_id}
+        return self._make_request("GET", url, params=params)
+
+    def get_ticket_conversations(self, ticket_id: str) -> Dict[str, Any]:
+        """
+        Get all conversations for a ticket.
+        This includes all interactions and communications.
+        """
+        url = f"{settings.zoho_desk_api_url}/tickets/{ticket_id}/conversations"
+        params = {"orgId": settings.zoho_desk_org_id}
+        return self._make_request("GET", url, params=params)
+
+    def get_ticket_history(self, ticket_id: str) -> Dict[str, Any]:
+        """
+        Get the complete history of a ticket.
+        This includes all modifications, status changes, assignments, etc.
+        """
+        url = f"{settings.zoho_desk_api_url}/tickets/{ticket_id}/history"
+        params = {"orgId": settings.zoho_desk_org_id}
+        return self._make_request("GET", url, params=params)
+
+    def get_ticket_complete_context(self, ticket_id: str) -> Dict[str, Any]:
+        """
+        Get complete context for a ticket including:
+        - Basic ticket information
+        - Full thread history (emails, replies)
+        - Conversations
+        - History of changes
+
+        This provides the most comprehensive view of a ticket for AI analysis.
+        """
+        logger.info(f"Fetching complete context for ticket {ticket_id}")
+
+        # Get basic ticket info
+        ticket = self.get_ticket(ticket_id)
+
+        # Get all threads (full email content)
+        try:
+            threads = self.get_ticket_threads(ticket_id)
+        except Exception as e:
+            logger.warning(f"Could not fetch threads for ticket {ticket_id}: {e}")
+            threads = {"data": []}
+
+        # Get conversations
+        try:
+            conversations = self.get_ticket_conversations(ticket_id)
+        except Exception as e:
+            logger.warning(f"Could not fetch conversations for ticket {ticket_id}: {e}")
+            conversations = {"data": []}
+
+        # Get history
+        try:
+            history = self.get_ticket_history(ticket_id)
+        except Exception as e:
+            logger.warning(f"Could not fetch history for ticket {ticket_id}: {e}")
+            history = {"data": []}
+
+        return {
+            "ticket": ticket,
+            "threads": threads.get("data", []),
+            "conversations": conversations.get("data", []),
+            "history": history.get("data", [])
+        }
+
 
 class ZohoCRMClient(ZohoAPIClient):
     """Client for Zoho CRM API operations."""
