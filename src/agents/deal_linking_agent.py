@@ -445,27 +445,19 @@ Always respond in JSON format with the following structure:
         # Format: https://crm.zoho.{datacenter}/crm/tab/Potentials/{deal_id}
         deal_url = f"https://crm.zoho.{settings.zoho_datacenter}/crm/tab/Potentials/{deal_id}"
 
-        # Update ticket with custom field
-        # Common field names: cf_opportunite, cf_opportunité, cf_deal_url
+        # Update ticket with custom field in the correct format
+        # Zoho Desk requires custom fields to be nested under "cf" key
         update_data = {
-            "cf_opportunite": deal_url  # Change this if your field name is different
+            "cf": {
+                "cf_opportunite": deal_url
+            }
         }
 
         try:
             self.desk_client.update_ticket(ticket_id, update_data)
             logger.info(f"Updated ticket {ticket_id} custom field 'cf_opportunite' with deal URL: {deal_url}")
         except Exception as e:
-            # Try alternate field names
-            alternate_fields = ["cf_opportunité", "cf_deal_url", "cf_deal_link"]
-            for field_name in alternate_fields:
-                try:
-                    self.desk_client.update_ticket(ticket_id, {field_name: deal_url})
-                    logger.info(f"Updated ticket {ticket_id} custom field '{field_name}' with deal URL: {deal_url}")
-                    return
-                except Exception:
-                    continue
-
-            # If all attempts failed, raise the original error
+            logger.error(f"Failed to update ticket {ticket_id} with deal URL: {e}")
             raise e
 
     def _validate_link_with_ai(
