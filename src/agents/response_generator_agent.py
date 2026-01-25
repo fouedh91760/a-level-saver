@@ -589,13 +589,25 @@ Génère uniquement le contenu de la réponse (pas de métadonnées)."""
         date_examen_vtc_data: Optional[Dict] = None,
         session_data: Optional[Dict] = None,
         uber_eligibility_data: Optional[Dict] = None,
+        credentials_only_response: bool = False,
         max_retries: int = 2
     ) -> Dict:
         """
         Generate response with validation loop.
 
         If response is not compliant, retry with feedback.
+
+        Args:
+            credentials_only_response: Si True, génère UNIQUEMENT une réponse
+                demandant les bons identifiants. Ignore dates/sessions.
         """
+        # ================================================================
+        # CAS SPÉCIAL: Identifiants invalides = SEUL sujet de la réponse
+        # ================================================================
+        if credentials_only_response:
+            logger.info("🚨 MODE CREDENTIALS_ONLY: Réponse uniquement sur identifiants")
+            return self._generate_credentials_only_response(exament3p_data)
+
         for attempt in range(max_retries + 1):
             logger.info(f"Generation attempt {attempt + 1}/{max_retries + 1}")
 
@@ -627,6 +639,65 @@ Génère uniquement le contenu de la réponse (pas de métadonnées)."""
 
         logger.warning("Max retries reached, returning last result")
         return result
+
+    def _generate_credentials_only_response(self, exament3p_data: Optional[Dict] = None) -> Dict:
+        """
+        Génère une réponse UNIQUEMENT sur les identifiants invalides.
+
+        Utilisé quand les identifiants trouvés sont invalides.
+        On ne peut RIEN faire d'autre tant qu'on n'a pas accès au compte.
+        """
+        logger.info("Generating credentials-only response (identifiants invalides)")
+
+        # Récupérer le message de réinitialisation depuis exament3p_data
+        candidate_message = ""
+        if exament3p_data and exament3p_data.get('candidate_response_message'):
+            candidate_message = exament3p_data['candidate_response_message']
+        else:
+            # Message par défaut
+            candidate_message = """Bonjour,
+
+Nous avons tenté d'accéder à votre dossier sur la plateforme ExamenT3P avec les identifiants que vous nous avez transmis, mais la connexion a échoué.
+
+**Pouvez-vous vérifier vos identifiants et nous les retransmettre ?**
+
+Si vous avez modifié votre mot de passe ou si vous n'êtes pas certain de vos identifiants, vous pouvez :
+
+1. Vous rendre sur **https://www.exament3p.fr**
+2. Cliquer sur "Me connecter"
+3. Utiliser le lien **"Mot de passe oublié ?"**
+4. Suivre les instructions pour réinitialiser votre mot de passe
+5. Nous transmettre vos nouveaux identifiants par email
+
+**Important :** Nous ne pouvons pas avancer sur votre dossier tant que nous n'avons pas accès à votre compte ExamenT3P.
+
+Dans l'attente de votre retour.
+
+Bien cordialement,
+
+L'équipe Cab Formations"""
+
+        return {
+            'response_text': candidate_message,
+            'detected_scenarios': ['SC-01_IDENTIFIANTS_EXAMENT3P'],
+            'similar_tickets': [],
+            'validation': {
+                'SC-01_IDENTIFIANTS_EXAMENT3P': {
+                    'compliant': True,
+                    'missing_blocks': [],
+                    'forbidden_terms_found': []
+                }
+            },
+            'requires_crm_update': False,
+            'crm_update_fields': [],
+            'should_stop_workflow': False,
+            'metadata': {
+                'input_tokens': 0,
+                'output_tokens': len(candidate_message),
+                'model': self.model,
+                'credentials_only_mode': True
+            }
+        }
 
 
 def test_generator():

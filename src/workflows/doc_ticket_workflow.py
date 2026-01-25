@@ -597,20 +597,35 @@ class DOCTicketWorkflow:
             logger.info("  ℹ️ Pas une opportunité Uber 20€")
 
         # ================================================================
+        # RÈGLE CRITIQUE: SI IDENTIFIANTS INVALIDES → SKIP DATES/SESSIONS
+        # ================================================================
+        # On ne peut RIEN faire tant qu'on n'a pas accès au compte ExamT3P
+        # La seule réponse possible = demander les bons identifiants
+        skip_date_session_analysis = False
+        if exament3p_data.get('should_respond_to_candidate') and not exament3p_data.get('compte_existe'):
+            logger.warning("  🚨 IDENTIFIANTS INVALIDES → SKIP analyse dates/sessions")
+            logger.warning("  → La réponse doit UNIQUEMENT demander les bons identifiants")
+            skip_date_session_analysis = True
+
+        # ================================================================
         # VÉRIFICATION DATE EXAMEN VTC
         # ================================================================
-        logger.info("  📅 Vérification date examen VTC...")
-        date_examen_vtc_result = analyze_exam_date_situation(
-            deal_data=deal_data,
-            threads=threads_data,
-            crm_client=self.crm_client,
-            examt3p_data=exament3p_data
-        )
+        date_examen_vtc_result = {}
+        if not skip_date_session_analysis:
+            logger.info("  📅 Vérification date examen VTC...")
+            date_examen_vtc_result = analyze_exam_date_situation(
+                deal_data=deal_data,
+                threads=threads_data,
+                crm_client=self.crm_client,
+                examt3p_data=exament3p_data
+            )
 
-        if date_examen_vtc_result.get('should_include_in_response'):
-            logger.info(f"  ➡️ CAS {date_examen_vtc_result['case']}: {date_examen_vtc_result['case_description']}")
+            if date_examen_vtc_result.get('should_include_in_response'):
+                logger.info(f"  ➡️ CAS {date_examen_vtc_result['case']}: {date_examen_vtc_result['case_description']}")
+            else:
+                logger.info(f"  ✅ Date examen VTC OK (CAS {date_examen_vtc_result['case']})")
         else:
-            logger.info(f"  ✅ Date examen VTC OK (CAS {date_examen_vtc_result['case']})")
+            logger.info("  📅 Vérification date examen VTC... SKIPPED (identifiants invalides)")
 
         # ================================================================
         # ANALYSE SESSIONS DE FORMATION
@@ -619,7 +634,7 @@ class DOCTicketWorkflow:
         from src.utils.session_helper import analyze_session_situation
 
         next_dates = date_examen_vtc_result.get('next_dates', [])
-        if next_dates and date_examen_vtc_result.get('should_include_in_response'):
+        if not skip_date_session_analysis and next_dates and date_examen_vtc_result.get('should_include_in_response'):
             logger.info("  📚 Recherche des sessions de formation associées...")
             session_data = analyze_session_situation(
                 deal_data=deal_data,
@@ -631,6 +646,8 @@ class DOCTicketWorkflow:
                 logger.info(f"  ➡️ Préférence détectée: {session_data['session_preference']}")
             if session_data.get('proposed_options'):
                 logger.info(f"  ✅ {len(session_data['proposed_options'])} option(s) de session proposée(s)")
+        elif skip_date_session_analysis:
+            logger.info("  📚 Recherche sessions... SKIPPED (identifiants invalides)")
 
         # VÉRIFICATION #0: ANCIEN DOSSIER
         ancien_dossier = False
@@ -654,6 +671,8 @@ class DOCTicketWorkflow:
             # Nouveaux champs pour traçabilité
             'sync_result': sync_result,  # Résultat sync ExamT3P → CRM
             'ticket_confirmations': ticket_confirmations,  # Confirmations extraites du ticket
+            # Flag critique: identifiants invalides = SEUL sujet de la réponse
+            'credentials_only_response': skip_date_session_analysis,
         }
 
     def _run_response_generation(
@@ -688,7 +707,8 @@ class DOCTicketWorkflow:
             evalbox_data=analysis_result.get('evalbox_data'),
             date_examen_vtc_data=analysis_result.get('date_examen_vtc_result'),
             session_data=analysis_result.get('session_data'),
-            uber_eligibility_data=analysis_result.get('uber_eligibility_result')
+            uber_eligibility_data=analysis_result.get('uber_eligibility_result'),
+            credentials_only_response=analysis_result.get('credentials_only_response', False)
         )
 
         return response_result
