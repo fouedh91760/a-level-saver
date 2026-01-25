@@ -688,7 +688,11 @@ Génère uniquement le contenu de la réponse (pas de métadonnées)."""
         # ================================================================
         if credentials_only_response:
             logger.info("🚨 MODE CREDENTIALS_ONLY: Réponse uniquement sur identifiants")
-            return self._generate_credentials_only_response(exament3p_data, threads)
+            return self._generate_credentials_only_response(
+                exament3p_data=exament3p_data,
+                threads=threads,
+                customer_message=customer_message
+            )
 
         for attempt in range(max_retries + 1):
             logger.info(f"Generation attempt {attempt + 1}/{max_retries + 1}")
