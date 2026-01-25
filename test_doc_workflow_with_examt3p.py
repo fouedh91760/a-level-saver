@@ -132,8 +132,12 @@ def test_doc_workflow(ticket_id: str):
             print(f"   Scénarios détectés: {', '.join(response.get('detected_scenarios', []))}")
             print(f"   Mise à jour CRM requise: {response.get('requires_crm_update', False)}")
             if response.get('response_text'):
-                preview = response['response_text'][:200].replace('\n', ' ')
-                print(f"   Réponse (preview): {preview}...")
+                print(f"\n   📧 RÉPONSE COMPLÈTE:")
+                print("   " + "=" * 76)
+                # Afficher la réponse complète avec indentation
+                for line in response['response_text'].split('\n'):
+                    print(f"   {line}")
+                print("   " + "=" * 76)
         else:
             print("   Pas de réponse générée (workflow arrêté avant)")
 
