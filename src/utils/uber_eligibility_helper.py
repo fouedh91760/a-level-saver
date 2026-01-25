@@ -38,20 +38,20 @@ logger = logging.getLogger(__name__)
 
 def is_uber_20_deal(deal_data: Dict[str, Any]) -> bool:
     """
-    Vérifie si le deal est une opportunité Uber à 20€ gagnée.
+    Vérifie si le deal est une opportunité Uber à 20€.
 
-    Critères:
-    - Stage = GAGNÉ (ou équivalent gagné)
-    - Amount = 20 (ou proche de 20€)
+    Critères (élargis pour couvrir tous les cas):
+    - Amount = 20€ (ou proche) ET:
+      * Stage = GAGNÉ, ou
+      * Stage = EN ATTENTE (candidat a payé mais dossier pas encore reçu), ou
+      * Deal_Name contient "BFS" ou "NP" (indicateurs offre partenaire)
     """
     if not deal_data:
         return False
 
     stage = deal_data.get('Stage', '')
     amount = deal_data.get('Amount', 0)
-
-    # Vérifier si le stage est gagné
-    stage_is_won = stage and 'GAGN' in str(stage).upper()
+    deal_name = deal_data.get('Deal_Name', '')
 
     # Vérifier si le montant est 20€ (avec tolérance)
     try:
@@ -60,7 +60,20 @@ def is_uber_20_deal(deal_data: Dict[str, Any]) -> bool:
     except (ValueError, TypeError):
         amount_is_20 = False
 
-    return stage_is_won and amount_is_20
+    # Si pas 20€, ce n'est pas un deal Uber
+    if not amount_is_20:
+        return False
+
+    # Vérifier le stage (GAGNÉ ou EN ATTENTE)
+    stage_upper = str(stage).upper()
+    stage_is_valid = 'GAGN' in stage_upper or 'ATTENTE' in stage_upper
+
+    # Vérifier le nom du deal (BFS = offre partenaire, NP = nouveau partenaire?)
+    deal_name_upper = str(deal_name).upper()
+    name_indicates_partner = 'BFS' in deal_name_upper or ' NP ' in deal_name_upper or deal_name_upper.startswith('NP ')
+
+    # C'est un deal Uber si le stage est valide OU si le nom indique partenaire
+    return stage_is_valid or name_indicates_partner
 
 
 def analyze_uber_eligibility(deal_data: Dict[str, Any]) -> Dict[str, Any]:
