@@ -373,24 +373,28 @@ def analyze_exam_date_situation(
     date_is_past = is_date_in_past(date_examen_str) if date_examen_str else False
 
     # CAS 3: Evalbox = Refusé CMA (prioritaire car peut arriver avec date passée ou future)
+    # Statut "Incomplet" sur ExamT3P = certaines pièces refusées par la CMA
     if evalbox_status == 'Refusé CMA':
         result['case'] = 3
         result['case_description'] = "Refusé CMA - Informer du refus et prochaines dates"
         result['should_include_in_response'] = True
 
-        # Récupérer les pièces refusées depuis ExamT3P
+        # Récupérer les pièces refusées depuis ExamT3P (noms + détails)
         if examt3p_data:
             result['pieces_refusees'] = examt3p_data.get('pieces_refusees', [])
+            # Récupérer les détails complets (nom, motif, solution)
+            result['pieces_refusees_details'] = examt3p_data.get('pieces_refusees_details', [])
 
         if crm_client and departement:
-            result['next_dates'] = get_next_exam_dates(crm_client, departement, limit=1)
+            result['next_dates'] = get_next_exam_dates(crm_client, departement, limit=2)
 
         result['response_message'] = generate_refus_cma_message(
             result['pieces_refusees'],
             result['date_cloture'],
-            result['next_dates']
+            result['next_dates'],
+            pieces_details=result.get('pieces_refusees_details', [])
         )
-        logger.info(f"  ➡️ CAS 3: Refusé CMA")
+        logger.info(f"  ➡️ CAS 3: Refusé CMA - {len(result['pieces_refusees'])} pièce(s) refusée(s)")
         return result
 
     # CAS avec date dans le passé
@@ -685,10 +689,23 @@ Merci de nous confirmer la date qui vous convient afin que nous puissions mettre
 def generate_refus_cma_message(
     pieces_refusees: List[str],
     date_cloture: str,
-    next_dates: List[Dict]
+    next_dates: List[Dict],
+    pieces_details: List[Dict] = None
 ) -> str:
     """
-    Génère le message pour informer d'un refus CMA (CAS 3).
+    Génère le message pour informer d'un refus CMA (CAS 3 / statut Incomplet).
+
+    Args:
+        pieces_refusees: Liste des noms de pièces refusées
+        date_cloture: Date de clôture des inscriptions
+        next_dates: Prochaines dates d'examen disponibles
+        pieces_details: Détails des pièces (nom, motif, solution)
+
+    Le message doit:
+    1. Expliquer pourquoi le candidat n'est pas convoqué sur l'examen prévu
+    2. Lister les pièces refusées avec le motif de refus
+    3. Donner la solution pour chaque pièce
+    4. Proposer les prochaines dates d'examen après correction
     """
     # Formater la date de clôture
     date_cloture_formatted = ""
@@ -702,9 +719,28 @@ def generate_refus_cma_message(
         except:
             date_cloture_formatted = str(date_cloture)
 
-    # Formater les pièces refusées
+    # Formater les pièces refusées avec détails
     pieces_text = ""
-    if pieces_refusees:
+    if pieces_details:
+        # Utiliser les détails complets (motif + solution)
+        pieces_lines = []
+        for piece in pieces_details:
+            nom = piece.get('nom', 'Document')
+            motif = piece.get('motif', 'Motif non précisé')
+            solution = piece.get('solution', 'Veuillez fournir un nouveau document conforme.')
+
+            pieces_lines.append(f"""**{nom}**
+   ❌ Motif du refus : {motif}
+   ✅ Solution : {solution}""")
+
+        pieces_list = "\n\n".join(pieces_lines)
+        pieces_text = f"""**Pièces refusées par la CMA :**
+
+{pieces_list}
+
+"""
+    elif pieces_refusees:
+        # Fallback: juste les noms (ancien format)
         pieces_list = "\n".join([f"- {piece}" for piece in pieces_refusees])
         pieces_text = f"""Les pièces suivantes ont été refusées :
 
@@ -712,21 +748,40 @@ def generate_refus_cma_message(
 
 """
 
-    # Formater la prochaine date
-    next_date_text = ""
+    # Formater les prochaines dates
+    next_dates_text = ""
     if next_dates:
-        next_date = next_dates[0]
-        next_date_formatted = format_exam_date_for_display(next_date)
-        next_date_text = f"""
+        if len(next_dates) >= 2:
+            dates_formatted = "\n".join([format_exam_date_for_display(d) for d in next_dates[:2]])
+            next_dates_text = f"""
 
-Si vous nous fournissez les documents corrigés avant la date de clôture, nous pourrons vous inscrire sur la prochaine date :
-{next_date_formatted}"""
+**Prochaines dates d'examen disponibles :**
 
-    date_cloture_text = f" (date limite : {date_cloture_formatted})" if date_cloture_formatted else ""
+{dates_formatted}
 
-    return f"""Nous vous informons que la CMA a refusé certaines pièces de votre dossier.
+Dès réception de vos documents corrigés, nous procéderons à votre inscription sur la date de votre choix."""
+        else:
+            next_date_formatted = format_exam_date_for_display(next_dates[0])
+            next_dates_text = f"""
 
-{pieces_text}Pour que votre inscription puisse être validée, merci de nous transmettre les documents corrigés dans les plus brefs délais{date_cloture_text}.{next_date_text}"""
+**Prochaine date d'examen disponible :**
+{next_date_formatted}
+
+Dès réception de vos documents corrigés, nous procéderons à votre inscription."""
+
+    date_cloture_text = f" avant le **{date_cloture_formatted}**" if date_cloture_formatted else " dans les plus brefs délais"
+
+    return f"""**Information importante concernant votre inscription à l'examen VTC**
+
+Nous vous informons que la CMA (Chambre des Métiers et de l'Artisanat) a refusé certaines pièces de votre dossier. C'est pour cette raison que vous n'avez pas reçu de convocation pour l'examen initialement prévu.
+
+{pieces_text}**Que devez-vous faire ?**
+
+Merci de nous transmettre les documents corrigés{date_cloture_text} afin que nous puissions finaliser votre inscription.
+
+📧 Vous pouvez nous envoyer vos documents par retour de mail ou les télécharger directement sur votre espace ExamT3P.{next_dates_text}
+
+Nous restons à votre disposition pour toute question."""
 
 
 def generate_valide_cma_message(date_examen_str: str, next_exam_date: Optional[Dict] = None) -> str:

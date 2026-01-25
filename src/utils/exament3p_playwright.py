@@ -339,6 +339,90 @@ class ExamenT3PPlaywright:
             except:
                 return ""
 
+    def _extract_refusal_reason(self, text_content: str, doc_name: str) -> Optional[str]:
+        """
+        Extrait le motif de refus d'un document depuis le texte de la page.
+
+        Sur ExamT3P, les motifs de refus sont typiquement affichés après le statut REFUSÉ
+        sous forme de message ou dans une section commentaire.
+
+        Motifs courants de refus par la CMA:
+        - Photo floue / non conforme aux normes
+        - Document illisible
+        - Document expiré
+        - Justificatif de domicile de plus de 6 mois
+        - Permis de conduire non valide
+        - Signature non manuscrite
+        - etc.
+        """
+        # Patterns pour trouver le motif de refus après le nom du document
+        refusal_patterns = [
+            # Pattern: "Document REFUSÉ: raison du refus"
+            rf"{re.escape(doc_name)}.*?REFUS[ÉE]?\s*[:\-]?\s*([^\n]{{10,200}})",
+            # Pattern: "REFUSÉ" suivi d'un commentaire/motif
+            rf"{re.escape(doc_name)}.*?REFUS[ÉE]?.*?\n\s*([A-Za-zÀ-ÿ][^\n]{{10,200}})",
+            # Pattern: Commentaire CMA après le document
+            rf"{re.escape(doc_name)}.*?REFUS[ÉE]?.*?(?:Commentaire|Motif|Raison)\s*[:\-]?\s*([^\n]{{5,200}})",
+        ]
+
+        for pattern in refusal_patterns:
+            match = re.search(pattern, text_content, re.IGNORECASE | re.DOTALL)
+            if match:
+                motif = match.group(1).strip()
+                # Nettoyer le motif (enlever caractères parasites)
+                motif = re.sub(r'\s+', ' ', motif)
+                # Filtrer les faux positifs (textes trop courts ou génériques)
+                if len(motif) > 5 and not motif.upper().startswith('VALID'):
+                    return motif
+
+        # Motifs par défaut basés sur le type de document
+        default_reasons = {
+            "Pièce d'identité": "Document non conforme ou illisible - veuillez fournir une copie lisible recto/verso",
+            "Photo d'identité": "Photo non conforme aux normes (fond non uni, visage non centré, ou qualité insuffisante)",
+            "Signature": "Signature non manuscrite ou non conforme - une signature manuscrite scannée est requise",
+            "Justificatif de domicile": "Document de plus de 6 mois ou non conforme - veuillez fournir un justificatif récent",
+            "Permis de conduire": "Permis non valide ou illisible - veuillez fournir une copie lisible recto/verso",
+        }
+
+        return default_reasons.get(doc_name, "Motif non précisé par la CMA")
+
+    def _get_solution_for_document(self, doc_name: str) -> str:
+        """
+        Retourne la solution/action à effectuer pour corriger un document refusé.
+
+        Ces solutions sont personnalisées selon le type de document pour guider
+        le candidat dans la correction.
+        """
+        solutions = {
+            "Pièce d'identité": (
+                "Scannez ou photographiez votre pièce d'identité (carte d'identité ou passeport) "
+                "RECTO et VERSO sur un fond uni et bien éclairé. "
+                "Assurez-vous que le document est lisible et non coupé."
+            ),
+            "Photo d'identité": (
+                "Fournissez une photo d'identité récente aux normes officielles : "
+                "fond uni clair, visage de face bien centré, expression neutre, "
+                "sans lunettes si possible. Format recommandé : 35x45mm minimum."
+            ),
+            "Signature": (
+                "Signez sur une feuille blanche avec un stylo noir, "
+                "puis scannez ou photographiez votre signature. "
+                "La signature doit être manuscrite (pas de signature électronique)."
+            ),
+            "Justificatif de domicile": (
+                "Fournissez un justificatif de domicile de moins de 6 mois à votre nom : "
+                "facture d'électricité, de gaz, d'eau, de téléphone fixe ou mobile, "
+                "ou avis d'imposition. Le document doit être complet et lisible."
+            ),
+            "Permis de conduire": (
+                "Scannez ou photographiez votre permis de conduire "
+                "RECTO et VERSO sur un fond uni. "
+                "Le permis doit être en cours de validité et lisible."
+            ),
+        }
+
+        return solutions.get(doc_name, "Veuillez nous fournir un nouveau document conforme.")
+
     async def _extract_overview(self):
         """Extraction des données de la Vue d'ensemble."""
         # S'assurer qu'on est sur Vue d'ensemble
@@ -572,6 +656,7 @@ class ExamenT3PPlaywright:
 
         # Liste des documents à extraire avec patterns améliorés
         # Patterns multiples pour gérer différents formats de page
+        # AMÉLIORATION: Capture aussi la raison du refus quand disponible
         documents_config = [
             {'nom': "Pièce d'identité", 'patterns': [
                 r"Pièce d'identité[^\n]*\n[^\n]*\n[^\n]*(VALIDÉ|VALIDE|À VALIDER|A VALIDER|REFUSÉ|REFUSE)",
@@ -603,7 +688,7 @@ class ExamenT3PPlaywright:
         self.data['documents'] = []
 
         for doc_config in documents_config:
-            doc_info = {'nom': doc_config['nom'], 'statut': 'INCONNU'}
+            doc_info = {'nom': doc_config['nom'], 'statut': 'INCONNU', 'motif_refus': None}
 
             # Essayer chaque pattern jusqu'à trouver un match
             for pattern in doc_config['patterns']:
@@ -617,6 +702,10 @@ class ExamenT3PPlaywright:
                         doc_info['statut'] = 'À VALIDER'
                     elif statut in ['REFUSÉ', 'REFUSE']:
                         doc_info['statut'] = 'REFUSÉ'
+                        # Chercher le motif de refus (texte après REFUSÉ)
+                        doc_info['motif_refus'] = self._extract_refusal_reason(
+                            text_content, doc_config['nom']
+                        )
                     break
 
             self.data['documents'].append(doc_info)
@@ -658,6 +747,8 @@ class ExamenT3PPlaywright:
         # Identifier les documents en attente et les documents refusés
         self.data['documents_en_attente'] = []
         self.data['documents_refuses'] = []
+        # Liste détaillée avec motifs de refus pour la réponse au candidat
+        self.data['pieces_refusees_details'] = []
 
         for doc in self.data['documents']:
             if doc['statut'] == 'À VALIDER':
@@ -666,9 +757,18 @@ class ExamenT3PPlaywright:
             elif doc['statut'] == 'REFUSÉ':
                 # Document refusé, action requise du candidat
                 self.data['documents_refuses'].append(doc['nom'])
+
+                # Ajouter le détail avec motif de refus
+                self.data['pieces_refusees_details'].append({
+                    'nom': doc['nom'],
+                    'motif': doc.get('motif_refus', 'Motif non précisé'),
+                    'solution': self._get_solution_for_document(doc['nom'])
+                })
+
                 if 'document_problematique' not in self.data:
                     self.data['document_problematique'] = doc['nom']
                     self.data['document_problematique_statut'] = 'REFUSÉ'
+                    self.data['document_problematique_motif'] = doc.get('motif_refus')
 
         # Indicateur si action requise du candidat
         self.data['action_candidat_requise'] = len(self.data['documents_refuses']) > 0
