@@ -207,9 +207,10 @@ Tu as accès à des exemples similaires de tes réponses passées pour t'inspire
         evalbox_data: Optional[Dict] = None,
         date_examen_vtc_data: Optional[Dict] = None,
         session_data: Optional[Dict] = None,
-        uber_eligibility_data: Optional[Dict] = None
+        uber_eligibility_data: Optional[Dict] = None,
+        threads: Optional[List] = None
     ) -> str:
-        """Build user prompt with context and examples."""
+        """Build user prompt with context, examples, and full thread history."""
         # Format similar tickets as few-shot examples
         few_shot_examples = self.rag.format_for_few_shot(similar_tickets)
 
@@ -223,12 +224,27 @@ Tu as accès à des exemples similaires de tes réponses passées pour t'inspire
         # Format data sources
         data_summary = self._format_data_sources(crm_data, exament3p_data, evalbox_data, date_examen_vtc_data, session_data, uber_eligibility_data)
 
+        # Format thread history (full conversation)
+        thread_history = self._format_thread_history(threads)
+
         user_prompt = f"""## NOUVEAU TICKET À TRAITER
 
 **Sujet** : {ticket_subject}
 
-**Message du client** :
+**Dernier message du client** :
 {customer_message}
+
+---
+
+## HISTORIQUE COMPLET DES ÉCHANGES :
+
+{thread_history}
+
+⚠️ **IMPORTANT** : Analyse tout l'historique ci-dessus pour :
+- Ne PAS répéter des informations déjà communiquées
+- Faire référence à des éléments précédemment discutés si pertinent
+- Adapter le ton si le candidat a déjà reçu plusieurs messages
+- Tenir compte des réponses/confirmations du candidat dans l'historique
 
 ---
 
@@ -444,6 +460,67 @@ Génère uniquement le contenu de la réponse (pas de métadonnées)."""
 
         return "\n".join(lines)
 
+    def _format_thread_history(self, threads: Optional[List]) -> str:
+        """
+        Format the complete thread history for the prompt.
+
+        Shows all exchanges chronologically so Claude understands the full context.
+        """
+        if not threads:
+            return "(Aucun historique d'échange disponible - premier contact)"
+
+        lines = []
+
+        # Sort threads by date if available
+        sorted_threads = sorted(
+            threads,
+            key=lambda t: t.get('createdTime', '') or t.get('created_time', '') or '',
+            reverse=False  # Oldest first
+        )
+
+        for i, thread in enumerate(sorted_threads, 1):
+            direction = thread.get('direction', 'unknown')
+            created_time = thread.get('createdTime', '') or thread.get('created_time', '')
+
+            # Format date
+            date_str = ""
+            if created_time:
+                try:
+                    from datetime import datetime
+                    if 'T' in str(created_time):
+                        dt = datetime.fromisoformat(str(created_time).replace('Z', '+00:00'))
+                    else:
+                        dt = datetime.strptime(str(created_time), "%Y-%m-%d %H:%M:%S")
+                    date_str = dt.strftime("%d/%m/%Y %H:%M")
+                except:
+                    date_str = str(created_time)[:16]
+
+            # Direction indicator
+            if direction == 'in':
+                sender = "📩 CANDIDAT"
+            elif direction == 'out':
+                sender = "📤 NOUS (Cab Formations)"
+            else:
+                sender = "❓ INCONNU"
+
+            # Get content
+            content = thread.get('content', '') or thread.get('summary', '') or thread.get('plainText', '') or ''
+
+            # Clean and truncate content if too long
+            content = content.strip()
+            if len(content) > 1500:
+                content = content[:1500] + "...[tronqué]"
+
+            lines.append(f"### Échange #{i} ({date_str})")
+            lines.append(f"**{sender}** :")
+            lines.append(f"{content}")
+            lines.append("")
+
+        if not lines:
+            return "(Aucun contenu dans l'historique)"
+
+        return "\n".join(lines)
+
     def generate_response(
         self,
         ticket_subject: str,
@@ -454,6 +531,7 @@ Génère uniquement le contenu de la réponse (pas de métadonnées)."""
         date_examen_vtc_data: Optional[Dict] = None,
         session_data: Optional[Dict] = None,
         uber_eligibility_data: Optional[Dict] = None,
+        threads: Optional[List] = None,
         top_k_similar: int = 3,
         temperature: float = 0.3,
         max_tokens: int = 2000
@@ -470,6 +548,7 @@ Génère uniquement le contenu de la réponse (pas de métadonnées)."""
             date_examen_vtc_data: Data from date examen VTC analysis
             session_data: Data from session analysis (sessions de formation)
             uber_eligibility_data: Data from Uber 20€ eligibility check
+            threads: Full thread history (all exchanges with candidate)
             top_k_similar: Number of similar tickets to use as examples
             temperature: Claude temperature (0-1, lower = more focused)
             max_tokens: Maximum tokens for response
@@ -520,7 +599,8 @@ Génère uniquement le contenu de la réponse (pas de métadonnées)."""
             evalbox_data=evalbox_data,
             date_examen_vtc_data=date_examen_vtc_data,
             session_data=session_data,
-            uber_eligibility_data=uber_eligibility_data
+            uber_eligibility_data=uber_eligibility_data,
+            threads=threads
         )
 
         # 5. Call Claude API
@@ -590,6 +670,7 @@ Génère uniquement le contenu de la réponse (pas de métadonnées)."""
         session_data: Optional[Dict] = None,
         uber_eligibility_data: Optional[Dict] = None,
         credentials_only_response: bool = False,
+        threads: Optional[List] = None,
         max_retries: int = 2
     ) -> Dict:
         """
@@ -600,13 +681,14 @@ Génère uniquement le contenu de la réponse (pas de métadonnées)."""
         Args:
             credentials_only_response: Si True, génère UNIQUEMENT une réponse
                 demandant les bons identifiants. Ignore dates/sessions.
+            threads: Historique complet des échanges pour contexte.
         """
         # ================================================================
         # CAS SPÉCIAL: Identifiants invalides = SEUL sujet de la réponse
         # ================================================================
         if credentials_only_response:
             logger.info("🚨 MODE CREDENTIALS_ONLY: Réponse uniquement sur identifiants")
-            return self._generate_credentials_only_response(exament3p_data)
+            return self._generate_credentials_only_response(exament3p_data, threads)
 
         for attempt in range(max_retries + 1):
             logger.info(f"Generation attempt {attempt + 1}/{max_retries + 1}")
@@ -619,7 +701,8 @@ Génère uniquement le contenu de la réponse (pas de métadonnées)."""
                 evalbox_data=evalbox_data,
                 date_examen_vtc_data=date_examen_vtc_data,
                 session_data=session_data,
-                uber_eligibility_data=uber_eligibility_data
+                uber_eligibility_data=uber_eligibility_data,
+                threads=threads  # Pass thread history for context
             )
 
             # Check if all validations passed
@@ -640,22 +723,93 @@ Génère uniquement le contenu de la réponse (pas de métadonnées)."""
         logger.warning("Max retries reached, returning last result")
         return result
 
-    def _generate_credentials_only_response(self, exament3p_data: Optional[Dict] = None) -> Dict:
+    def _generate_credentials_only_response(
+        self,
+        exament3p_data: Optional[Dict] = None,
+        threads: Optional[List] = None
+    ) -> Dict:
         """
         Génère une réponse UNIQUEMENT sur les identifiants invalides.
 
-        Utilisé quand les identifiants trouvés sont invalides.
-        On ne peut RIEN faire d'autre tant qu'on n'a pas accès au compte.
+        PREND EN COMPTE L'HISTORIQUE des échanges pour adapter le message:
+        - 1ère demande: message standard
+        - 2ème demande: reconnaître qu'on a déjà demandé
+        - 3ème+ demande: message plus direct
+
+        Args:
+            exament3p_data: Données ExamT3P avec message pré-formaté
+            threads: Historique des threads pour analyser les échanges précédents
         """
         logger.info("Generating credentials-only response (identifiants invalides)")
 
-        # Récupérer le message de réinitialisation depuis exament3p_data
-        candidate_message = ""
-        if exament3p_data and exament3p_data.get('candidate_response_message'):
-            candidate_message = exament3p_data['candidate_response_message']
-        else:
-            # Message par défaut
+        # Analyser l'historique pour compter les demandes d'identifiants
+        credentials_request_count = self._count_credentials_requests_in_threads(threads)
+        logger.info(f"  Nombre de demandes d'identifiants précédentes: {credentials_request_count}")
+
+        # Générer le message approprié selon l'historique
+        if credentials_request_count >= 2:
+            # 3ème demande ou plus - message direct
             candidate_message = """Bonjour,
+
+Nous avons à nouveau testé les identifiants que vous nous avez transmis, mais la connexion a une nouvelle fois échoué.
+
+**C'est la troisième fois que nous rencontrons ce problème.**
+
+Nous comprenons que cela puisse être frustrant. Voici ce que nous vous conseillons de faire :
+
+**ÉTAPE OBLIGATOIRE - Réinitialisation du mot de passe :**
+
+1. Rendez-vous sur **https://www.exament3p.fr**
+2. Cliquez sur **"Me connecter"**
+3. Cliquez sur **"Mot de passe oublié ?"**
+4. Entrez votre adresse email
+5. Suivez le lien reçu par email pour créer un **nouveau mot de passe**
+6. **Testez vous-même la connexion** pour vérifier que ça fonctionne
+7. Une fois que vous êtes connecté avec succès, transmettez-nous vos nouveaux identifiants
+
+**Important :** Merci de ne pas nous transmettre vos identifiants tant que vous n'avez pas vérifié vous-même qu'ils fonctionnent.
+
+Nous ne pouvons malheureusement pas avancer sur votre dossier tant que nous n'avons pas accès à votre compte ExamenT3P.
+
+Bien cordialement,
+
+L'équipe Cab Formations"""
+
+        elif credentials_request_count == 1:
+            # 2ème demande - reconnaître la situation
+            candidate_message = """Bonjour,
+
+Nous avons testé les nouveaux identifiants que vous nous avez transmis, mais malheureusement la connexion a encore échoué.
+
+**Que s'est-il passé ?**
+Les identifiants que vous nous avez envoyés ne permettent pas de se connecter à votre compte ExamenT3P.
+
+**Ce que nous vous conseillons :**
+
+La solution la plus fiable est de **réinitialiser votre mot de passe** :
+
+1. Allez sur **https://www.exament3p.fr**
+2. Cliquez sur "Me connecter"
+3. Cliquez sur **"Mot de passe oublié ?"**
+4. Suivez les instructions reçues par email
+5. Créez un nouveau mot de passe
+6. **Testez la connexion vous-même** pour être sûr que ça fonctionne
+7. Transmettez-nous ensuite vos identifiants
+
+Nous ne pouvons pas continuer le traitement de votre dossier sans accès à votre compte ExamenT3P.
+
+Dans l'attente de votre retour.
+
+Bien cordialement,
+
+L'équipe Cab Formations"""
+
+        else:
+            # 1ère demande - message standard
+            if exament3p_data and exament3p_data.get('candidate_response_message'):
+                candidate_message = exament3p_data['candidate_response_message']
+            else:
+                candidate_message = """Bonjour,
 
 Nous avons tenté d'accéder à votre dossier sur la plateforme ExamenT3P avec les identifiants que vous nous avez transmis, mais la connexion a échoué.
 
@@ -695,9 +849,49 @@ L'équipe Cab Formations"""
                 'input_tokens': 0,
                 'output_tokens': len(candidate_message),
                 'model': self.model,
-                'credentials_only_mode': True
+                'credentials_only_mode': True,
+                'credentials_request_count': credentials_request_count
             }
         }
+
+    def _count_credentials_requests_in_threads(self, threads: Optional[List]) -> int:
+        """
+        Compte le nombre de fois où on a demandé les identifiants dans l'historique.
+
+        Cherche des patterns comme:
+        - "identifiants"
+        - "mot de passe"
+        - "connexion a échoué"
+        """
+        if not threads:
+            return 0
+
+        count = 0
+        patterns = [
+            'identifiants',
+            'mot de passe oublié',
+            'connexion a échoué',
+            'connexion échouée',
+            'réinitialiser',
+            'nous transmettre vos identifiants',
+            'nouveaux identifiants'
+        ]
+
+        for thread in threads:
+            # Ne compter que les messages sortants (de nous vers le candidat)
+            if thread.get('direction') != 'out':
+                continue
+
+            content = thread.get('content', '') or thread.get('summary', '') or ''
+            content_lower = content.lower()
+
+            # Vérifier si ce message contient une demande d'identifiants
+            for pattern in patterns:
+                if pattern in content_lower:
+                    count += 1
+                    break  # Ne compter qu'une fois par thread
+
+        return count
 
 
 def test_generator():

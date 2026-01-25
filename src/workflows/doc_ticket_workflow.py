@@ -698,7 +698,9 @@ class DOCTicketWorkflow:
                 customer_message = get_clean_thread_content(thread)
                 break
 
-        # Generate response
+        # Generate response with FULL THREAD HISTORY
+        # Le générateur doit voir TOUT l'historique pour ne pas répéter
+        # et adapter sa réponse au contexte complet des échanges
         response_result = self.response_generator.generate_with_validation_loop(
             ticket_subject=ticket.get('subject', ''),
             customer_message=customer_message,
@@ -708,7 +710,8 @@ class DOCTicketWorkflow:
             date_examen_vtc_data=analysis_result.get('date_examen_vtc_result'),
             session_data=analysis_result.get('session_data'),
             uber_eligibility_data=analysis_result.get('uber_eligibility_result'),
-            credentials_only_response=analysis_result.get('credentials_only_response', False)
+            credentials_only_response=analysis_result.get('credentials_only_response', False),
+            threads=analysis_result.get('threads')  # Historique complet des échanges
         )
 
         return response_result
