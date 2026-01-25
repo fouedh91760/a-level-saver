@@ -343,8 +343,10 @@ class ExamenT3PPlaywright:
         """
         Extrait le motif de refus d'un document depuis le texte de la page.
 
-        Sur ExamT3P, les motifs de refus sont typiquement affichés après le statut REFUSÉ
-        sous forme de message ou dans une section commentaire.
+        Sur ExamT3P, les motifs de refus peuvent être trouvés:
+        1. Dans la section "Actions Requises" de la Vue d'ensemble (stocké dans _motifs_refus_overview)
+        2. Dans la page "Mes Documents" après le statut REFUSÉ/À CORRIGER
+        3. Dans une modal de détail du document avec "Raison:"
 
         Motifs courants de refus par la CMA:
         - Photo floue / non conforme aux normes
@@ -355,14 +357,23 @@ class ExamenT3PPlaywright:
         - Signature non manuscrite
         - etc.
         """
-        # Patterns pour trouver le motif de refus après le nom du document
+        # 1. Vérifier si on a déjà extrait le motif depuis "Actions Requises" (Vue d'ensemble)
+        motifs_overview = self.data.get('_motifs_refus_overview', {})
+        if doc_name in motifs_overview:
+            return motifs_overview[doc_name]
+
+        # 2. Patterns pour trouver le motif de refus dans le texte de la page documents
         refusal_patterns = [
+            # Pattern: "Raison: Le document fourni est flou..."
+            rf"Raison\s*:\s*([^\n]{{10,300}})",
             # Pattern: "Document REFUSÉ: raison du refus"
-            rf"{re.escape(doc_name)}.*?REFUS[ÉE]?\s*[:\-]?\s*([^\n]{{10,200}})",
-            # Pattern: "REFUSÉ" suivi d'un commentaire/motif
-            rf"{re.escape(doc_name)}.*?REFUS[ÉE]?.*?\n\s*([A-Za-zÀ-ÿ][^\n]{{10,200}})",
+            rf"{re.escape(doc_name)}.*?(?:REFUS[ÉE]?|À CORRIGER|A CORRIGER)\s*[:\-]?\s*([^\n]{{10,200}})",
+            # Pattern: "REFUSÉ" ou "À CORRIGER" suivi d'un commentaire/motif
+            rf"{re.escape(doc_name)}.*?(?:REFUS[ÉE]?|À CORRIGER|A CORRIGER).*?\n\s*([A-Za-zÀ-ÿ][^\n]{{10,200}})",
             # Pattern: Commentaire CMA après le document
-            rf"{re.escape(doc_name)}.*?REFUS[ÉE]?.*?(?:Commentaire|Motif|Raison)\s*[:\-]?\s*([^\n]{{5,200}})",
+            rf"{re.escape(doc_name)}.*?(?:REFUS[ÉE]?|À CORRIGER|A CORRIGER).*?(?:Commentaire|Motif|Raison)\s*[:\-]?\s*([^\n]{{5,200}})",
+            # Pattern: "Le document fourni est..." après le nom du document
+            rf"{re.escape(doc_name)}.*?Le document fourni\s+([^\n]{{10,200}})",
         ]
 
         for pattern in refusal_patterns:
@@ -375,7 +386,7 @@ class ExamenT3PPlaywright:
                 if len(motif) > 5 and not motif.upper().startswith('VALID'):
                     return motif
 
-        # Motifs par défaut basés sur le type de document
+        # 3. Motifs par défaut basés sur le type de document
         default_reasons = {
             "Pièce d'identité": "Document non conforme ou illisible - veuillez fournir une copie lisible recto/verso",
             "Photo d'identité": "Photo non conforme aux normes (fond non uni, visage non centré, ou qualité insuffisante)",
@@ -585,7 +596,10 @@ class ExamenT3PPlaywright:
             self.data['progression']['type_examen'] = match.group(2).upper()
 
         # === ACTIONS REQUISES ===
+        # Cette section contient les documents à corriger avec leur motif de refus
         self.data['actions_requises'] = []
+        # Stockage des motifs de refus par document pour utilisation dans _extract_documents
+        self.data['_motifs_refus_overview'] = {}
 
         if 'Reçu de paiement disponible' in text_content:
             self.data['actions_requises'].append({
@@ -598,6 +612,46 @@ class ExamenT3PPlaywright:
                 'type': 'photo_requise',
                 'description': 'Photo d\'identité à mettre à jour'
             })
+
+        # Extraire les documents refusés avec leur motif depuis "Actions Requises"
+        # Format: "Nom du document non conforme" suivi de "Le document fourni est..." ou "Raison:"
+        documents_actions = [
+            ("Justificatif de domicile", r"Justificatif de domicile[^.]*?non conforme"),
+            ("Photo d'identité", r"Photo d'identité[^.]*?non conforme"),
+            ("Pièce d'identité", r"Pièce d'identité[^.]*?non conforme"),
+            ("Signature", r"Signature[^.]*?non conforme"),
+            ("Permis de conduire", r"Permis de conduire[^.]*?non conforme"),
+        ]
+
+        for doc_name, pattern in documents_actions:
+            if re.search(pattern, text_content, re.IGNORECASE):
+                # Document trouvé dans Actions Requises - chercher le motif
+                # Pattern: "non conforme" suivi du motif sur la ligne suivante ou après "Raison:"
+                motif_patterns = [
+                    # "Le document fourni est flou ou mal scanné..."
+                    rf"{pattern}.*?(?:Le document|Raison\s*:)\s*([^\n]{{10,300}})",
+                    # Texte directement après le nom du document
+                    rf"{pattern}\s*\n\s*([A-Za-zÀ-ÿ][^\n]{{10,200}})",
+                ]
+
+                motif = None
+                for motif_pattern in motif_patterns:
+                    motif_match = re.search(motif_pattern, text_content, re.IGNORECASE | re.DOTALL)
+                    if motif_match:
+                        motif = motif_match.group(1).strip()
+                        # Nettoyer
+                        motif = re.sub(r'\s+', ' ', motif)
+                        break
+
+                self.data['actions_requises'].append({
+                    'type': 'document_non_conforme',
+                    'document': doc_name,
+                    'description': f'{doc_name} non conforme',
+                    'motif': motif or 'Document non conforme'
+                })
+
+                # Stocker le motif pour utilisation dans _extract_documents
+                self.data['_motifs_refus_overview'][doc_name] = motif or 'Document non conforme'
 
         # === HISTORIQUE DES ÉTAPES ===
         self.data['historique_etapes'] = []
@@ -657,31 +711,39 @@ class ExamenT3PPlaywright:
         # Liste des documents à extraire avec patterns améliorés
         # Patterns multiples pour gérer différents formats de page
         # AMÉLIORATION: Capture aussi la raison du refus quand disponible
+        # Statuts possibles sur ExamT3P:
+        # - VALIDÉ / VALIDE: Document accepté
+        # - À VALIDER / A VALIDER: Document uploadé, en attente de vérification CMA
+        # - REFUSÉ / REFUSE: Document refusé par la CMA
+        # - À CORRIGER / A CORRIGER: Document refusé, nécessite une nouvelle soumission (équivalent à REFUSÉ)
+        STATUTS_PATTERN = r"(VALIDÉ|VALIDE|À VALIDER|A VALIDER|REFUSÉ|REFUSE|À CORRIGER|A CORRIGER)"
+
         documents_config = [
             {'nom': "Pièce d'identité", 'patterns': [
-                r"Pièce d'identité[^\n]*\n[^\n]*\n[^\n]*(VALIDÉ|VALIDE|À VALIDER|A VALIDER|REFUSÉ|REFUSE)",
-                r"Pièce d'identité.*?(VALIDÉ|VALIDE|À VALIDER|A VALIDER|REFUSÉ|REFUSE)",
-                r"Carte.*?identité.*?(VALIDÉ|VALIDE|À VALIDER|A VALIDER|REFUSÉ|REFUSE)"
+                rf"Pièce d'identité[^\n]*\n[^\n]*\n[^\n]*{STATUTS_PATTERN}",
+                rf"Pièce d'identité.*?{STATUTS_PATTERN}",
+                rf"Carte.*?identité.*?{STATUTS_PATTERN}"
             ]},
             {'nom': "Photo d'identité", 'patterns': [
-                r"Photo d'identité[^\n]*\n[^\n]*\n[^\n]*(VALIDÉ|VALIDE|À VALIDER|A VALIDER|REFUSÉ|REFUSE)",
-                r"Photo d'identité.*?(VALIDÉ|VALIDE|À VALIDER|A VALIDER|REFUSÉ|REFUSE)",
-                r"Photo.*?récente.*?(VALIDÉ|VALIDE|À VALIDER|A VALIDER|REFUSÉ|REFUSE)"
+                rf"Photo d'identité[^\n]*\n[^\n]*\n[^\n]*{STATUTS_PATTERN}",
+                rf"Photo d'identité.*?{STATUTS_PATTERN}",
+                rf"Photo.*?récente.*?{STATUTS_PATTERN}"
             ]},
             {'nom': "Signature", 'patterns': [
-                r"Signature[^\n]*\n[^\n]*\n[^\n]*(VALIDÉ|VALIDE|À VALIDER|A VALIDER|REFUSÉ|REFUSE)",
-                r"Signature.*?(VALIDÉ|VALIDE|À VALIDER|A VALIDER|REFUSÉ|REFUSE)",
-                r"Signature.*?manuscrite.*?(VALIDÉ|VALIDE|À VALIDER|A VALIDER|REFUSÉ|REFUSE)"
+                rf"Signature[^\n]*\n[^\n]*\n[^\n]*{STATUTS_PATTERN}",
+                rf"Signature.*?{STATUTS_PATTERN}",
+                rf"Signature.*?manuscrite.*?{STATUTS_PATTERN}"
             ]},
             {'nom': "Justificatif de domicile", 'patterns': [
-                r"Justificatif de domicile[^\n]*\n[^\n]*\n[^\n]*(VALIDÉ|VALIDE|À VALIDER|A VALIDER|REFUSÉ|REFUSE)",
-                r"Justificatif de domicile.*?(VALIDÉ|VALIDE|À VALIDER|A VALIDER|REFUSÉ|REFUSE)",
-                r"JDD.*?(VALIDÉ|VALIDE|À VALIDER|A VALIDER|REFUSÉ|REFUSE)"
+                rf"Justificatif de domicile[^\n]*\n[^\n]*\n[^\n]*{STATUTS_PATTERN}",
+                rf"Justificatif de domicile.*?{STATUTS_PATTERN}",
+                rf"attestation d'hébergement.*?{STATUTS_PATTERN}",
+                rf"JDD.*?{STATUTS_PATTERN}"
             ]},
             {'nom': "Permis de conduire", 'patterns': [
-                r"Permis de conduire[^\n]*\n[^\n]*\n[^\n]*(VALIDÉ|VALIDE|À VALIDER|A VALIDER|REFUSÉ|REFUSE)",
-                r"Permis de conduire.*?(VALIDÉ|VALIDE|À VALIDER|A VALIDER|REFUSÉ|REFUSE)",
-                r"Permis.*?en cours.*?(VALIDÉ|VALIDE|À VALIDER|A VALIDER|REFUSÉ|REFUSE)"
+                rf"Permis de conduire[^\n]*\n[^\n]*\n[^\n]*{STATUTS_PATTERN}",
+                rf"Permis de conduire.*?{STATUTS_PATTERN}",
+                rf"Permis.*?en cours.*?{STATUTS_PATTERN}"
             ]},
         ]
 
@@ -700,9 +762,10 @@ class ExamenT3PPlaywright:
                         doc_info['statut'] = 'VALIDÉ'
                     elif statut in ['À VALIDER', 'A VALIDER']:
                         doc_info['statut'] = 'À VALIDER'
-                    elif statut in ['REFUSÉ', 'REFUSE']:
+                    elif statut in ['REFUSÉ', 'REFUSE', 'À CORRIGER', 'A CORRIGER']:
+                        # "À CORRIGER" est équivalent à "REFUSÉ" sur ExamT3P
                         doc_info['statut'] = 'REFUSÉ'
-                        # Chercher le motif de refus (texte après REFUSÉ)
+                        # Chercher le motif de refus (texte après REFUSÉ ou dans Actions Requises)
                         doc_info['motif_refus'] = self._extract_refusal_reason(
                             text_content, doc_config['nom']
                         )
