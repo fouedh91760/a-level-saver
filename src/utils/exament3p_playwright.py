@@ -112,10 +112,11 @@ class ExamenT3PPlaywright:
         for global_attempt in range(1, self.max_retries + 1):
             try:
                 async with async_playwright() as p:
-                    # Lancer le navigateur en mode headless avec Chromium système
+                    # Lancer le navigateur en mode headless
+                    # NOTE: Ne PAS spécifier executable_path pour laisser Playwright utiliser son navigateur bundlé
+                    # Installer les navigateurs avec: playwright install chromium
                     self.browser = await p.chromium.launch(
                         headless=True,
-                        executable_path='/usr/bin/chromium-browser',
                         args=['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage']
                     )
 
