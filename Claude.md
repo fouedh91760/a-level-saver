@@ -2078,6 +2078,272 @@ Merci de nous indiquer votre préférence (cours du jour ou cours du soir) ainsi
 
 ---
 
+## 🧵 ANALYSE DE L'HISTORIQUE DES THREADS (SESSION JAN 2026)
+
+### Contexte
+
+Le système doit analyser **TOUT l'historique de conversation**, pas seulement le dernier message du candidat. Cela permet de:
+- Ne pas répéter des informations déjà communiquées
+- Détecter si on a déjà demandé les identifiants/la création de compte
+- Adapter le ton selon le nombre d'échanges précédents
+- Tenir compte des préférences déjà exprimées
+
+### Implémentation
+
+**Fichier:** `src/agents/response_generator_agent.py`
+
+**Méthode:** `_format_thread_history(threads)`
+
+```python
+def _format_thread_history(self, threads: Optional[List]) -> str:
+    """
+    Formate l'historique complet des échanges pour le prompt.
+    Affiche chronologiquement tous les messages (entrants et sortants).
+    """
+    # Format:
+    # ### Échange #1 (25/01/2026 10:30)
+    # **📩 CANDIDAT** :
+    # [contenu du message]
+    #
+    # ### Échange #2 (25/01/2026 14:45)
+    # **📤 NOUS (Cab Formations)** :
+    # [contenu de notre réponse]
+```
+
+**Passage dans le workflow:**
+- `doc_ticket_workflow.py` → `analysis_result['threads']`
+- `response_generator_agent.py` → Paramètre `threads` dans toutes les méthodes de génération
+
+---
+
+## 🔐 DÉTECTION DEMANDES D'IDENTIFIANTS/COMPTE DANS L'HISTORIQUE
+
+### Objectif
+
+Détecter si nous avons déjà demandé:
+1. Les **identifiants ExamT3P** au candidat
+2. De **créer un compte** ExamT3P
+
+Et adapter la réponse en conséquence (ne pas re-demander de la même façon, être plus direct).
+
+### Fichier: `src/utils/examt3p_credentials_helper.py`
+
+**Fonctions:**
+
+| Fonction | Description |
+|----------|-------------|
+| `detect_credentials_request_in_history(threads)` | Détecte si on a déjà demandé les identifiants |
+| `detect_account_creation_request_in_history(threads)` | Détecte si on a demandé de créer un compte |
+| `detect_session_preference_in_threads(threads)` | Détecte préférence cours jour/soir |
+
+### Patterns Détectés
+
+**Messages SORTANTS (de nous vers le candidat):**
+```python
+outgoing_patterns = [
+    r'transmettre\s+vos\s+identifiants',
+    r'communiquer\s+vos\s+identifiants',
+    r'envoyer\s+vos\s+identifiants',
+    r'identifiants\s+de\s+connexion',
+    r'créer\s+(?:votre\s+)?compte',
+    r's[\'']inscrire\s+sur\s+exament3p',
+]
+```
+
+**Messages ENTRANTS (du candidat):**
+```python
+incoming_patterns = [
+    r're[çc]u\s+un\s+mail.*demande.*identifiants',
+    r'vous\s+(?:m\'avez|avez)\s+demandé\s+mes\s+identifiants',
+    r'est-ce\s+(?:que\s+c\'est\s+)?normal.*identifiants',
+]
+```
+
+### Adaptation de la Réponse
+
+| Nombre de demandes | Ton de la réponse |
+|--------------------|-------------------|
+| 0 (première fois) | Expliquer pourquoi + demander poliment |
+| 1 (2ème demande) | Reconnaître la situation + recommander réinitialisation |
+| ≥2 (3ème+ demande) | Ton plus direct + insister sur vérification avant envoi |
+
+---
+
+## ⚠️ COHÉRENCE FORMATION / EXAMEN (CRITIQUE)
+
+### Le Problème
+
+Le système proposait parfois des dates de **formation APRÈS la date d'examen**, ce qui est illogique.
+
+**Exemple bugué:**
+- Examen: 27/01/2026
+- Formation proposée: 09/02/2026 au 20/02/2026 ❌
+
+### Solution: Helper de Cohérence
+
+**Fichier:** `src/utils/training_exam_consistency_helper.py`
+
+#### Détection du Cas Critique
+
+**Conditions:**
+1. Candidat mentionne avoir **manqué sa formation** (patterns détectés)
+2. Date d'examen est **imminente** (≤ 14 jours)
+
+#### Les 2 Options à Proposer
+
+| Option | Description | Condition |
+|--------|-------------|-----------|
+| **A** | Maintenir l'examen | E-learning considéré suffisant |
+| **B** | Reporter l'examen | **Justificatif de force majeure OBLIGATOIRE** |
+
+### Règles Métier Cruciales
+
+#### 🔒 Force Majeure = Seul Motif de Report
+
+**CE QUI EST UN MOTIF VALABLE:**
+- Certificat médical **couvrant le jour de l'examen**
+- Décès d'un proche
+- Accident
+- Convocation judiciaire
+
+**CE QUI N'EST PAS UN MOTIF VALABLE:**
+- Ne pas avoir suivi la formation ❌
+- Certificat médical couvrant uniquement la période de formation ❌
+- "Pas prêt" / "Pas eu le temps de réviser" ❌
+
+#### 🏛️ CMA vs Formation
+
+| Entité | Gère | Ne gère PAS |
+|--------|------|-------------|
+| **CMA** (Chambre des Métiers) | Examens, inscriptions, reports | Formation |
+| **CAB Formations** | Formation (visio, e-learning) | Décision de report |
+
+**Conséquence:** Le justificatif de force majeure doit couvrir **le jour de l'EXAMEN**, pas la période de formation.
+
+#### 📚 E-learning = Suffisant
+
+La formation en visioconférence est un **complément**, pas une obligation. Le candidat peut passer l'examen s'il a suivi le e-learning uniquement.
+
+### Message Type Généré
+
+```
+Bonjour,
+
+Nous avons bien pris connaissance de votre message concernant la formation.
+
+**⚠️ Information importante : Vous êtes inscrit(e) à l'examen VTC du 27/01/2026.**
+
+La formation en visioconférence et le e-learning sont des outils de préparation,
+mais votre inscription à l'examen est déjà validée auprès de la CMA.
+
+Vous avez deux possibilités :
+
+---
+
+## Option A : Maintenir votre examen au 27/01/2026
+
+Si le e-learning vous a permis d'acquérir les connaissances nécessaires,
+vous pouvez passer l'examen à la date prévue.
+
+La formation en visioconférence est un complément, mais n'est pas obligatoire.
+
+---
+
+## Option B : Reporter votre examen
+
+**Un justificatif de force majeure couvrant la date du 27/01/2026 est obligatoire.**
+
+⚠️ Le certificat médical doit couvrir **le jour de l'examen** (27/01/2026),
+pas seulement la période de la formation.
+
+En cas de report accepté, vous serez repositionné(e) sur le 15/03/2026.
+
+⚠️ **Important** : Le simple fait de ne pas avoir suivi la formation
+n'est **pas** un motif valable de report auprès de la CMA.
+
+---
+
+**Merci de nous indiquer votre choix.**
+
+Cordialement,
+L'équipe Cab Formations
+```
+
+### Fonctions Principales
+
+```python
+from src.utils.training_exam_consistency_helper import (
+    analyze_training_exam_consistency,
+    detect_missed_training_in_threads,
+    detect_force_majeure_in_threads,
+    get_next_exam_date_after,
+    generate_training_exam_options_message,
+    check_session_dates_consistency
+)
+
+# Analyse complète
+result = analyze_training_exam_consistency(
+    deal_data=deal_data,
+    threads=threads_data,
+    session_data=session_data,
+    crm_client=crm_client
+)
+
+# Résultat:
+{
+    'has_consistency_issue': True,
+    'issue_type': 'MISSED_TRAINING_IMMINENT_EXAM',
+    'exam_date': '2026-01-27',
+    'exam_date_formatted': '27/01/2026',
+    'next_exam_date': '2026-03-15',
+    'next_exam_date_formatted': '15/03/2026',
+    'force_majeure_detected': True,
+    'force_majeure_type': 'medical',
+    'should_present_options': True,
+    'response_message': '...',
+    'options': [
+        {'id': 'A', 'title': "Maintenir l'examen", ...},
+        {'id': 'B', 'title': "Reporter l'examen", ...}
+    ]
+}
+```
+
+### Intégration Workflow
+
+**Fichier:** `src/workflows/doc_ticket_workflow.py`
+
+L'analyse est effectuée **APRÈS** l'analyse de la date d'examen et **AVANT** la génération de réponse:
+
+```
+1. Validation identifiants ExamT3P
+2. Analyse date examen VTC (date_examen_vtc_helper)
+3. ⭐ Vérification cohérence formation/examen (training_exam_consistency_helper)
+4. Analyse sessions de formation (session_helper)
+5. Génération de la réponse
+```
+
+**Si `has_consistency_issue = True`:**
+- Le système utilise **directement le message pré-généré** avec les options A/B
+- Pas d'appel à Claude pour cette partie (message déterministe)
+- Évite de proposer des dates de formation incohérentes
+
+---
+
+## 📝 RÉCAPITULATIF DES HELPERS CRÉÉS (SESSION JAN 2026)
+
+| Helper | Fichier | Rôle |
+|--------|---------|------|
+| **Credentials** | `examt3p_credentials_helper.py` | Validation identifiants, détection historique |
+| **Date Examen** | `date_examen_vtc_helper.py` | 10 cas de gestion date examen |
+| **Sessions** | `session_helper.py` | Proposition sessions, rafraîchissement |
+| **Uber Eligibility** | `uber_eligibility_helper.py` | Vérification prérequis Uber 20€ |
+| **Training/Exam Consistency** | `training_exam_consistency_helper.py` | Cohérence formation/examen, options A/B |
+| **CRM Sync** | `examt3p_crm_sync.py` | Sync ExamT3P → CRM |
+| **CRM Note Logger** | `crm_note_logger.py` | Logging notes CRM |
+| **Ticket Info Extractor** | `ticket_info_extractor.py` | Extraction confirmations ticket |
+
+---
+
 **Dernière mise à jour:** 2026-01-25
-**Version Claude.md:** 1.2
+**Version Claude.md:** 1.3
 **Généré par:** Claude Opus 4.5 (Anthropic)
