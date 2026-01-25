@@ -435,6 +435,9 @@ def analyze_session_situation(
         {
             'session_preference': 'jour' | 'soir' | None,
             'current_session': Dict or None,
+            'current_session_is_past': bool,
+            'refresh_session_available': bool,
+            'refresh_session': Dict or None,
             'proposed_options': List of {exam_date, sessions},
             'message': str (message à inclure dans la réponse)
         }
@@ -442,6 +445,9 @@ def analyze_session_situation(
     result = {
         'session_preference': None,
         'current_session': None,
+        'current_session_is_past': False,
+        'refresh_session_available': False,
+        'refresh_session': None,
         'proposed_options': [],
         'message': None
     }
@@ -453,6 +459,36 @@ def analyze_session_situation(
     if current_session:
         result['current_session'] = current_session
         logger.info(f"  Session actuelle: {current_session}")
+
+        # Vérifier si la session actuelle est passée
+        session_end_date = None
+        if isinstance(current_session, dict):
+            # Si c'est un lookup, on a besoin de récupérer les détails
+            session_id = current_session.get('id')
+            session_name = current_session.get('name', '')
+
+            # Extraire la date de fin du nom si possible (format: xxx - DD mois - DD mois YYYY)
+            # ou récupérer via API
+            if crm_client and session_id:
+                try:
+                    from config import settings
+                    url = f"{settings.zoho_crm_api_url}/Sessions1/{session_id}"
+                    response = crm_client._make_request("GET", url)
+                    session_data = response.get("data", [])
+                    if session_data:
+                        session_end_date = session_data[0].get('Date_fin')
+                        logger.info(f"  Date fin session actuelle: {session_end_date}")
+                except Exception as e:
+                    logger.warning(f"  Erreur récupération session: {e}")
+
+        if session_end_date:
+            try:
+                session_end_obj = datetime.strptime(session_end_date, "%Y-%m-%d")
+                if session_end_obj.date() < datetime.now().date():
+                    result['current_session_is_past'] = True
+                    logger.info("  ⚠️ Session actuelle TERMINÉE (dans le passé)")
+            except:
+                pass
 
     # 2. Détecter la préférence jour/soir
     preference = detect_session_preference_from_deal(deal_data)
@@ -482,10 +518,28 @@ def analyze_session_situation(
                     'sessions': sessions
                 })
 
-    # 5. Générer le message
+    # 5. CAS SPÉCIAL: Session passée + Examen futur = Proposer rafraîchissement
+    if result['current_session_is_past'] and result['proposed_options']:
+        # Chercher la meilleure session de rafraîchissement (la plus proche de l'examen)
+        for option in result['proposed_options']:
+            sessions = option.get('sessions', [])
+            if sessions:
+                # Prendre la session la plus proche de l'examen
+                best_session = sessions[0]  # Déjà triée par proximité
+                result['refresh_session_available'] = True
+                result['refresh_session'] = {
+                    'session': best_session,
+                    'exam_info': option.get('exam_info')
+                }
+                logger.info(f"  ✅ Session de rafraîchissement disponible: {best_session.get('Name')}")
+                break
+
+    # 6. Générer le message
     result['message'] = generate_session_proposal_message(
         result['proposed_options'],
-        preference
+        preference,
+        refresh_available=result['refresh_session_available'],
+        refresh_session=result['refresh_session']
     )
 
     return result
@@ -493,7 +547,9 @@ def analyze_session_situation(
 
 def generate_session_proposal_message(
     options: List[Dict],
-    preference: Optional[str] = None
+    preference: Optional[str] = None,
+    refresh_available: bool = False,
+    refresh_session: Optional[Dict] = None
 ) -> str:
     """
     Génère le message proposant les sessions de formation avec les dates d'examen.
@@ -501,6 +557,8 @@ def generate_session_proposal_message(
     Args:
         options: Liste des options {exam_info, sessions}
         preference: Préférence jour/soir du candidat
+        refresh_available: Si une session de rafraîchissement est disponible
+        refresh_session: Infos sur la session de rafraîchissement proposée
 
     Returns:
         Message formaté pour le candidat
@@ -509,6 +567,11 @@ def generate_session_proposal_message(
         return ""
 
     lines = []
+
+    # CAS SPÉCIAL: Formation terminée mais examen à venir = proposer rafraîchissement
+    if refresh_available and refresh_session:
+        lines.append(generate_refresh_session_message(refresh_session))
+        lines.append("")  # Ligne vide de séparation
 
     for option in options:
         exam_info = option.get('exam_info', {})
@@ -523,5 +586,73 @@ def generate_session_proposal_message(
     else:
         pref_label = "cours du jour" if preference == 'jour' else "cours du soir"
         message += f"\nMerci de nous confirmer la date d'examen qui vous convient pour votre formation en {pref_label}."
+
+    return message
+
+
+def generate_refresh_session_message(refresh_session: Dict) -> str:
+    """
+    Génère le message proposant une session de rafraîchissement.
+
+    Ce cas se produit quand:
+    - Le candidat a déjà suivi une formation (session terminée)
+    - Son examen est dans le futur
+    - Une nouvelle session est disponible avant l'examen
+
+    On lui propose de rejoindre cette session GRATUITEMENT pour rafraîchir
+    ses connaissances et maximiser ses chances de réussite.
+    """
+    session = refresh_session.get('session', {})
+    exam_info = refresh_session.get('exam_info', {})
+
+    # Formater les dates de la session de rafraîchissement
+    date_debut = session.get('Date_d_but', '')
+    date_fin = session.get('Date_fin', '')
+    type_cours = session.get('Type_de_cours', '')
+    session_type_label = session.get('session_type_label', 'Formation')
+
+    date_debut_formatted = ""
+    date_fin_formatted = ""
+
+    try:
+        if date_debut:
+            date_obj = datetime.strptime(date_debut, "%Y-%m-%d")
+            date_debut_formatted = date_obj.strftime("%d/%m/%Y")
+    except:
+        date_debut_formatted = date_debut
+
+    try:
+        if date_fin:
+            date_obj = datetime.strptime(date_fin, "%Y-%m-%d")
+            date_fin_formatted = date_obj.strftime("%d/%m/%Y")
+    except:
+        date_fin_formatted = date_fin
+
+    # Formater la date d'examen
+    exam_date = exam_info.get('Date_Examen', '')
+    exam_date_formatted = ""
+    try:
+        if exam_date:
+            date_obj = datetime.strptime(exam_date, "%Y-%m-%d")
+            exam_date_formatted = date_obj.strftime("%d/%m/%Y")
+    except:
+        exam_date_formatted = exam_date
+
+    message = f"""📚 **PROPOSITION DE RAFRAÎCHISSEMENT (sans frais supplémentaires)**
+
+Nous avons constaté que vous avez déjà suivi votre formation, mais votre examen est prévu pour le {exam_date_formatted}.
+
+**Pour nous, votre réussite est notre priorité.** Plus vos connaissances sont fraîches au moment de l'examen, plus vos chances de succès sont élevées.
+
+C'est pourquoi nous vous proposons, **sans aucun coût additionnel**, de rejoindre la prochaine session de formation pour rafraîchir vos acquis :
+
+• **{session_type_label}** : du {date_debut_formatted} au {date_fin_formatted}"""
+
+    if type_cours and type_cours != '-None-':
+        message += f" ({type_cours})"
+
+    message += """
+
+Si vous souhaitez bénéficier de ce rafraîchissement gratuit, merci de nous le confirmer et nous vous ajouterons à cette session."""
 
     return message

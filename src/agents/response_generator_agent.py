@@ -347,6 +347,27 @@ Génère uniquement le contenu de la réponse (pas de métadonnées)."""
             else:
                 lines.append(f"  - ⚠️ Préférence jour/soir NON CONNUE - Proposer les deux options")
 
+            # CAS SPÉCIAL: Formation terminée + examen futur = proposer rafraîchissement
+            if session_data.get('refresh_session_available'):
+                lines.append("\n  🔄 **CAS SPÉCIAL - RAFRAÎCHISSEMENT GRATUIT À PROPOSER**")
+                lines.append("  Le candidat a DÉJÀ suivi sa formation mais son examen est dans le futur.")
+                lines.append("  → Proposer de rejoindre la prochaine session GRATUITEMENT")
+                lines.append("  → Insister sur: 'Pour nous, votre réussite est notre priorité'")
+                lines.append("  → Insister sur: 'Plus vos connaissances sont fraîches, plus vos chances sont élevées'")
+                lines.append("  → Préciser: 'Sans aucun coût additionnel'")
+
+                refresh_info = session_data.get('refresh_session', {})
+                if refresh_info:
+                    refresh_sess = refresh_info.get('session', {})
+                    date_debut = refresh_sess.get('Date_d_but', '')
+                    date_fin = refresh_sess.get('Date_fin', '')
+                    try:
+                        debut_fmt = datetime.strptime(date_debut, "%Y-%m-%d").strftime("%d/%m/%Y") if date_debut else ''
+                        fin_fmt = datetime.strptime(date_fin, "%Y-%m-%d").strftime("%d/%m/%Y") if date_fin else ''
+                        lines.append(f"  → Session proposée: du {debut_fmt} au {fin_fmt}")
+                    except:
+                        pass
+
             for option in session_data.get('proposed_options', []):
                 exam_info = option.get('exam_info', {})
                 sessions = option.get('sessions', [])
