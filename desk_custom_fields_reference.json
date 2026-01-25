@@ -1,0 +1,52 @@
+{
+  "timestamp": "2026-01-24T20:13:19.811092",
+  "org_id": "648790851",
+  "api_url": "https://desk.zoho.com/api/v1",
+  "summary": {
+    "total_departments": 10,
+    "custom_fields_count": 0
+  },
+  "departments": [
+    {
+      "id": "198709000000006907",
+      "name": "NA PAS UTILISER"
+    },
+    {
+      "id": "198709000025160121",
+      "name": "BO"
+    },
+    {
+      "id": "198709000025221397",
+      "name": "FACTURATION"
+    },
+    {
+      "id": "198709000025227670",
+      "name": "Contact"
+    },
+    {
+      "id": "198709000025233943",
+      "name": "PUB ET SPAM"
+    },
+    {
+      "id": "198709000025523146",
+      "name": "DOC"
+    },
+    {
+      "id": "198709000025558419",
+      "name": "Comptabilité"
+    },
+    {
+      "id": "198709000025742482",
+      "name": "Pédagogie"
+    },
+    {
+      "id": "198709000026153115",
+      "name": "Back Office"
+    },
+    {
+      "id": "198709000026180825",
+      "name": "Back-office"
+    }
+  ],
+  "custom_fields": {}
+}

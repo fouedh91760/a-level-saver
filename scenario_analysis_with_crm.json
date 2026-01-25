@@ -1,0 +1,250 @@
+{
+  "timestamp": "2026-01-25T01:07:27.602087",
+  "total_tickets": 100,
+  "scenario_distribution": {
+    "SC-02_CONFIRMATION_PAIEMENT": 36,
+    "SC-20_RESULTAT_POSITIF": 53,
+    "SC-25_RECLAMATION": 7,
+    "SC-01_IDENTIFIANTS_EXAMENT3P": 45,
+    "SC-ANCIEN_DOSSIER": 28,
+    "SC-04_DOCUMENT_MANQUANT": 19,
+    "SC-HORS_PARTENARIAT": 16,
+    "SC-17_CONFIRMATION_SESSION": 9,
+    "SC-REINSCRIPTION": 6,
+    "SC-21_RESULTAT_NEGATIF": 10,
+    "SC-15a_REPORT_SANS_DOSSIER": 14,
+    "SC-15b_REPORT_AVANT_CLOTURE": 21,
+    "SC-15c_REPORT_APRES_CLOTURE": 12,
+    "SC-00_NOUVEAU_CANDIDAT": 2,
+    "SC-06_STATUT_DOSSIER": 4,
+    "SC-VTC_HORS_PARTENARIAT": 5,
+    "SC-03_PAIEMENT_EN_ATTENTE": 2
+  },
+  "hors_partenariat_cases": [
+    {
+      "ticket_id": "198709000441642385",
+      "ticket_number": "1075043",
+      "subject": "[Service client] Formation",
+      "amount": 20,
+      "scenarios": [
+        "SC-04_DOCUMENT_MANQUANT",
+        "SC-20_RESULTAT_POSITIF",
+        "SC-HORS_PARTENARIAT",
+        "SC-ANCIEN_DOSSIER"
+      ]
+    },
+    {
+      "ticket_id": "198709000444311242",
+      "ticket_number": "1081742",
+      "subject": "Re: Rappel : Votre examen VTC",
+      "amount": 20,
+      "scenarios": [
+        "SC-01_IDENTIFIANTS_EXAMENT3P",
+        "SC-02_CONFIRMATION_PAIEMENT",
+        "SC-HORS_PARTENARIAT"
+      ]
+    },
+    {
+      "ticket_id": "198709000352111946",
+      "ticket_number": "952522",
+      "subject": "Re: Finaliser votre inscription examen Vtc : Offre uber 20€",
+      "amount": null,
+      "scenarios": [
+        "SC-HORS_PARTENARIAT",
+        "SC-REINSCRIPTION",
+        "SC-01_IDENTIFIANTS_EXAMENT3P",
+        "SC-02_CONFIRMATION_PAIEMENT",
+        "SC-17_CONFIRMATION_SESSION",
+        "SC-20_RESULTAT_POSITIF"
+      ]
+    },
+    {
+      "ticket_id": "198709000447067929",
+      "ticket_number": "1092372",
+      "subject": "BEYZAVI-Examen TAXI-VTC - VALIDATION du dossier d'inscription - Epreuve d'admissibilité du 31 mars 2026",
+      "amount": null,
+      "scenarios": [
+        "SC-02_CONFIRMATION_PAIEMENT",
+        "SC-17_CONFIRMATION_SESSION",
+        "SC-20_RESULTAT_POSITIF",
+        "SC-HORS_PARTENARIAT"
+      ]
+    },
+    {
+      "ticket_id": "198709000446703929",
+      "ticket_number": "1091092",
+      "subject": "Re: ANNULE ET REMPLACE: Convocation à l’épreuve d’admissibilité",
+      "amount": 20,
+      "scenarios": [
+        "SC-20_RESULTAT_POSITIF",
+        "SC-21_RESULTAT_NEGATIF",
+        "SC-HORS_PARTENARIAT"
+      ]
+    },
+    {
+      "ticket_id": "198709000447016128",
+      "ticket_number": "1092072",
+      "subject": "Fwd: FORMATION",
+      "amount": 1,
+      "scenarios": [
+        "SC-HORS_PARTENARIAT",
+        "SC-VTC_HORS_PARTENARIAT",
+        "SC-15a_REPORT_SANS_DOSSIER",
+        "SC-15b_REPORT_AVANT_CLOTURE",
+        "SC-15c_REPORT_APRES_CLOTURE",
+        "SC-ANCIEN_DOSSIER",
+        "SC-15b_REPORT_AVANT_CLOTURE"
+      ]
+    },
+    {
+      "ticket_id": "198709000447014292",
+      "ticket_number": "1092069",
+      "subject": "Fwd: Problème de révision",
+      "amount": 1,
+      "scenarios": [
+        "SC-HORS_PARTENARIAT",
+        "SC-VTC_HORS_PARTENARIAT",
+        "SC-02_CONFIRMATION_PAIEMENT",
+        "SC-ANCIEN_DOSSIER"
+      ]
+    },
+    {
+      "ticket_id": "198709000447004885",
+      "ticket_number": "1092066",
+      "subject": "Fwd: Justification absence 21 et 22 janvier",
+      "amount": 1,
+      "scenarios": [
+        "SC-HORS_PARTENARIAT",
+        "SC-VTC_HORS_PARTENARIAT",
+        "SC-02_CONFIRMATION_PAIEMENT",
+        "SC-ANCIEN_DOSSIER"
+      ]
+    },
+    {
+      "ticket_id": "198709000444774053",
+      "ticket_number": "1083153",
+      "subject": "Demande de remboursement immédiat – Manquement grave à vos engagements",
+      "amount": null,
+      "scenarios": [
+        "SC-HORS_PARTENARIAT",
+        "SC-VTC_HORS_PARTENARIAT",
+        "SC-02_CONFIRMATION_PAIEMENT",
+        "SC-20_RESULTAT_POSITIF",
+        "SC-25_RECLAMATION"
+      ]
+    },
+    {
+      "ticket_id": "198709000440911522",
+      "ticket_number": "1073865",
+      "subject": "Re: Demande accès evalbox / inscription examen VTC offre 20€",
+      "amount": null,
+      "scenarios": [
+        "SC-HORS_PARTENARIAT",
+        "SC-VTC_HORS_PARTENARIAT",
+        "SC-REINSCRIPTION",
+        "SC-01_IDENTIFIANTS_EXAMENT3P",
+        "SC-02_CONFIRMATION_PAIEMENT",
+        "SC-06_STATUT_DOSSIER",
+        "SC-21_RESULTAT_NEGATIF",
+        "SC-25_RECLAMATION"
+      ]
+    },
+    {
+      "ticket_id": "198709000446109093",
+      "ticket_number": "1089040",
+      "subject": "Fwd: Formations webinaire",
+      "amount": 1,
+      "scenarios": [
+        "SC-HORS_PARTENARIAT",
+        "SC-REINSCRIPTION",
+        "SC-01_IDENTIFIANTS_EXAMENT3P",
+        "SC-02_CONFIRMATION_PAIEMENT",
+        "SC-15a_REPORT_SANS_DOSSIER",
+        "SC-15b_REPORT_AVANT_CLOTURE",
+        "SC-15c_REPORT_APRES_CLOTURE",
+        "SC-ANCIEN_DOSSIER",
+        "SC-15b_REPORT_AVANT_CLOTURE"
+      ]
+    },
+    {
+      "ticket_id": "198709000430067878",
+      "ticket_number": "1058782",
+      "subject": "Inscription examen T3P",
+      "amount": null,
+      "scenarios": [
+        "SC-02_CONFIRMATION_PAIEMENT",
+        "SC-17_CONFIRMATION_SESSION",
+        "SC-15a_REPORT_SANS_DOSSIER",
+        "SC-15b_REPORT_AVANT_CLOTURE",
+        "SC-15c_REPORT_APRES_CLOTURE",
+        "SC-20_RESULTAT_POSITIF",
+        "SC-HORS_PARTENARIAT"
+      ]
+    },
+    {
+      "ticket_id": "198709000446224546",
+      "ticket_number": "1089561",
+      "subject": "Re: Rappel : Votre examen VTC",
+      "amount": 20,
+      "scenarios": [
+        "SC-01_IDENTIFIANTS_EXAMENT3P",
+        "SC-HORS_PARTENARIAT"
+      ]
+    },
+    {
+      "ticket_id": "198709000312783681",
+      "ticket_number": "912107",
+      "subject": "[Service client] Formation VTC",
+      "amount": null,
+      "scenarios": [
+        "SC-HORS_PARTENARIAT",
+        "SC-REINSCRIPTION",
+        "SC-01_IDENTIFIANTS_EXAMENT3P",
+        "SC-02_CONFIRMATION_PAIEMENT",
+        "SC-03_PAIEMENT_EN_ATTENTE",
+        "SC-04_DOCUMENT_MANQUANT",
+        "SC-20_RESULTAT_POSITIF"
+      ]
+    },
+    {
+      "ticket_id": "198709000293667383",
+      "ticket_number": "884944",
+      "subject": "[Service client] Suivi de mon dossier d'examen VTC – Paiement en attente à la CMA",
+      "amount": 20,
+      "scenarios": [
+        "SC-01_IDENTIFIANTS_EXAMENT3P",
+        "SC-02_CONFIRMATION_PAIEMENT",
+        "SC-03_PAIEMENT_EN_ATTENTE",
+        "SC-04_DOCUMENT_MANQUANT",
+        "SC-06_STATUT_DOSSIER",
+        "SC-17_CONFIRMATION_SESSION",
+        "SC-20_RESULTAT_POSITIF",
+        "SC-25_RECLAMATION",
+        "SC-HORS_PARTENARIAT",
+        "SC-ANCIEN_DOSSIER"
+      ]
+    },
+    {
+      "ticket_id": "198709000420498658",
+      "ticket_number": "1045665",
+      "subject": "Fwd: Suivi de dossier formation VTC - Dossier N°0000489420",
+      "amount": 20,
+      "scenarios": [
+        "SC-01_IDENTIFIANTS_EXAMENT3P",
+        "SC-15a_REPORT_SANS_DOSSIER",
+        "SC-15b_REPORT_AVANT_CLOTURE",
+        "SC-15c_REPORT_APRES_CLOTURE",
+        "SC-20_RESULTAT_POSITIF",
+        "SC-25_RECLAMATION",
+        "SC-HORS_PARTENARIAT",
+        "SC-ANCIEN_DOSSIER",
+        "SC-15b_REPORT_AVANT_CLOTURE"
+      ]
+    }
+  ],
+  "comparison": {
+    "before": 102,
+    "after": 16,
+    "reduction": 86
+  }
+}
