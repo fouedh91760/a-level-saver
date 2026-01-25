@@ -15,6 +15,10 @@ asyncio==3.4.3
 python-dateutil==2.8.2
 tenacity==8.2.3
 
+# Web Server (for webhook)
+Flask==3.0.0
+gunicorn==21.2.0
+
 # Web Scraping
 playwright==1.40.0
 beautifulsoup4==4.12.3

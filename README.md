@@ -63,7 +63,32 @@ python examples/full_workflow_orchestration.py
 ## 📖 Documentation
 
 - **[GUIDE.md](GUIDE.md)** - Guide complet d'utilisation
+- **[WEBHOOK_QUICKSTART.md](WEBHOOK_QUICKSTART.md)** - 🚀 Démarrer le webhook en 5 minutes
+- **[WEBHOOK_SETUP.md](WEBHOOK_SETUP.md)** - Configuration complète du webhook
 - **[examples/](examples/)** - Exemples de code
+
+## 🔔 Webhook Automation (Nouveau !)
+
+Le système peut maintenant être déclenché automatiquement via webhook Zoho Desk :
+
+```bash
+# 1. Démarrer le serveur webhook
+python webhook_server.py
+
+# 2. Tester localement
+python test_webhook.py --test simple
+
+# 3. Exposer avec ngrok (pour tests)
+ngrok http 5000
+```
+
+**Configuration Zoho Desk :**
+1. Setup → Automation → Webhooks → Add Webhook
+2. URL : `https://votre-domaine.com/webhook/zoho-desk`
+3. Events : "Ticket Created", "Ticket Updated"
+4. Configurer le secret HMAC dans `.env`
+
+**Guide rapide :** [WEBHOOK_QUICKSTART.md](WEBHOOK_QUICKSTART.md)
 
 ## 🏗️ Architecture
 
