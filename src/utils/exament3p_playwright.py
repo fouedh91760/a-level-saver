@@ -374,14 +374,18 @@ class ExamenT3PPlaywright:
                 self.data['departement'] = match.group(3)
 
         # === STATUT DU DOSSIER ===
+        # Liste des statuts possibles sur ExamT3P
+        # IMPORTANT: Ces statuts sont mappés vers le champ Evalbox du CRM
+        # Voir examt3p_crm_sync.py pour le mapping complet
         statuts_possibles = [
+            'En attente de convocation',      # → Convoc CMA reçue (dans CRM)
             'En attente d\'instruction des pièces',
-            'En cours d\'instruction',
-            'Valide',
-            'Incomplet',
-            'En attente du paiement',
+            'En cours d\'instruction',        # → Dossier Synchronisé (dans CRM)
+            'Valide',                         # → VALIDE CMA (dans CRM)
+            'Incomplet',                      # → Refusé CMA (dans CRM)
+            'En attente du paiement',         # → Pret a payer (dans CRM)
             'Dossier validé',
-            'En cours de composition'
+            'En cours de composition'         # → Dossier crée (dans CRM)
         ]
         for statut in statuts_possibles:
             if statut.lower() in text_content.lower():
