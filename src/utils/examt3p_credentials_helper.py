@@ -361,9 +361,21 @@ def get_credentials_with_validation(
     # Si aucun identifiant trouvé...
     if not identifiant or not mot_de_passe:
         # ================================================================
-        # VÉRIFICATION CRITIQUE: Avons-nous déjà demandé au candidat de
-        # créer son compte? Si oui → on doit lui redemander ses identifiants
+        # VÉRIFICATION CRITIQUE: Avons-nous déjà demandé au candidat
+        # ses identifiants OU de créer son compte?
+        # Si oui → on doit lui redemander
         # ================================================================
+
+        # CAS 1: On a demandé les identifiants (compte déjà créé)
+        if detect_credentials_request_in_history(threads):
+            logger.warning("⚠️  Identifiants non trouvés MAIS demande d'identifiants déjà faite!")
+            logger.info("→ On doit redemander les identifiants au candidat")
+            result['should_respond_to_candidate'] = True
+            result['candidate_response_message'] = generate_credentials_request_followup_response()
+            result['credentials_request_sent'] = True  # Flag pour traçabilité
+            return result
+
+        # CAS 2: On a demandé de créer le compte
         if detect_account_creation_request_in_history(threads):
             logger.warning("⚠️  Identifiants non trouvés MAIS création de compte déjà demandée!")
             logger.info("→ On doit redemander au candidat s'il a créé son compte")
@@ -523,6 +535,56 @@ def detect_account_creation_request_in_history(threads: List[Dict]) -> bool:
     return False
 
 
+def detect_credentials_request_in_history(threads: List[Dict]) -> bool:
+    """
+    Détecte si nous (Cab Formations) avons déjà demandé au candidat ses
+    identifiants ExamT3P dans l'historique des échanges.
+
+    Patterns recherchés dans les messages SORTANTS (direction='out'):
+    - "transmettre vos identifiants"
+    - "envoyer vos identifiants"
+    - "communiquer vos identifiants"
+    - "nous fournir vos identifiants"
+    - "vos identifiants examt3p"
+    - "email et mot de passe"
+
+    Returns:
+        True si on a demandé les identifiants au candidat, False sinon
+    """
+    from src.utils.text_utils import get_clean_thread_content
+
+    patterns = [
+        r'transmettre\s+vos\s+identifiants',
+        r'envoyer\s+vos\s+identifiants',
+        r'communiquer\s+vos\s+identifiants',
+        r'fournir\s+vos\s+identifiants',
+        r'vos\s+identifiants\s+examen?t3p',
+        r'identifiants\s+de\s+connexion',
+        r'email\s+et\s+mot\s+de\s+passe',
+        r'identifiant\s+et\s+mot\s+de\s+passe',
+        r'nous\s+transmettre.*identifiants',
+        r'besoin\s+de\s+vos\s+identifiants',
+        r'merci\s+de\s+nous\s+transmettre.*identifiants',
+        r'demandons\s+vos\s+identifiants',
+    ]
+
+    for thread in threads:
+        # Uniquement les messages SORTANTS (de nous vers le candidat)
+        if thread.get('direction') != 'out':
+            continue
+
+        content = get_clean_thread_content(thread)
+        content_lower = content.lower()
+
+        for pattern in patterns:
+            if re.search(pattern, content_lower, re.IGNORECASE):
+                logger.info(f"🔍 Détecté: demande d'identifiants dans l'historique")
+                logger.info(f"   Pattern trouvé: {pattern}")
+                return True
+
+    return False
+
+
 def generate_account_creation_followup_response() -> str:
     """
     Génère le message à envoyer au candidat quand on lui avait précédemment
@@ -544,6 +606,38 @@ Si vous n'avez pas encore créé votre compte, voici les étapes à suivre :
 ⚠️ **Important** : La création du compte ExamT3P est obligatoire pour pouvoir être inscrit à l'examen VTC auprès de la CMA.
 
 En attendant votre retour,
+
+Cordialement,
+L'équipe DOC"""
+
+
+def generate_credentials_request_followup_response() -> str:
+    """
+    Génère le message à envoyer au candidat quand on lui avait précédemment
+    demandé ses identifiants ExamT3P et qu'on ne les a toujours pas reçus.
+
+    Ce message rassure également le candidat sur le fait que c'est normal
+    que nous demandions ses identifiants.
+    """
+    return """Bonjour,
+
+Concernant votre question : **oui, c'est tout à fait normal que notre équipe vous demande vos identifiants ExamT3P**.
+
+**Pourquoi avons-nous besoin de vos identifiants ?**
+
+Sans accès à votre compte ExamT3P, il nous est **impossible** de :
+- Effectuer le suivi de votre dossier auprès de la CMA
+- Vérifier l'état de votre inscription à l'examen
+- Procéder au paiement de vos frais d'examen (si ce n'est pas encore fait)
+- Vous inscrire à une date d'examen
+
+Merci de nous transmettre vos identifiants de connexion ExamT3P :
+- **Identifiant** (généralement votre adresse email)
+- **Mot de passe**
+
+⚠️ **Conseil de sécurité** : Vérifiez toujours que les emails que vous recevez proviennent bien de @cab-formations.fr. En cas de doute, vous pouvez nous contacter directement au 01 74 90 20 82.
+
+Une fois vos identifiants reçus, nous pourrons avancer sur votre dossier.
 
 Cordialement,
 L'équipe DOC"""

@@ -605,7 +605,10 @@ class DOCTicketWorkflow:
         # 2. Création de compte demandée mais pas d'identifiants → relancer le candidat
         skip_date_session_analysis = False
         if exament3p_data.get('should_respond_to_candidate') and not exament3p_data.get('compte_existe'):
-            if exament3p_data.get('account_creation_requested'):
+            if exament3p_data.get('credentials_request_sent'):
+                logger.warning("  🚨 DEMANDE D'IDENTIFIANTS DÉJÀ ENVOYÉE MAIS PAS DE RÉPONSE")
+                logger.warning("  → La réponse doit confirmer que c'est normal et redemander les identifiants")
+            elif exament3p_data.get('account_creation_requested'):
                 logger.warning("  🚨 CRÉATION DE COMPTE DEMANDÉE MAIS PAS D'IDENTIFIANTS REÇUS")
                 logger.warning("  → La réponse doit relancer le candidat sur la création de compte")
             else:
