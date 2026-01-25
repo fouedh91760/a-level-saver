@@ -715,7 +715,23 @@ Génère uniquement le contenu de la réponse (pas de métadonnées)."""
                 Si 'has_consistency_issue' est True, utilise le message pré-généré.
         """
         # ================================================================
-        # CAS SPÉCIAL: Identifiants invalides = SEUL sujet de la réponse
+        # CAS SPÉCIAL #0: CAS A ou CAS B Uber (AVANT identifiants!)
+        # ================================================================
+        # CAS A: Candidat a payé 20€ mais n'a pas finalisé son inscription
+        # CAS B: Candidat a envoyé documents mais n'a pas passé le test
+        # → Utiliser le message pré-généré (PAS demande identifiants ExamT3P!)
+        if uber_eligibility_data and uber_eligibility_data.get('is_uber_20_deal'):
+            uber_case = uber_eligibility_data.get('case')
+            if uber_case in ['A', 'B']:
+                logger.info(f"🚨 MODE CAS {uber_case}: Utilisation message pré-généré Uber")
+                return self._generate_uber_case_a_b_response(
+                    uber_eligibility_data=uber_eligibility_data,
+                    customer_message=customer_message,
+                    threads=threads
+                )
+
+        # ================================================================
+        # CAS SPÉCIAL #1: Identifiants invalides = SEUL sujet de la réponse
         # ================================================================
         if credentials_only_response:
             logger.info("🚨 MODE CREDENTIALS_ONLY: Réponse uniquement sur identifiants")
@@ -975,6 +991,129 @@ L'équipe Cab Formations"""
                     break  # Ne compter qu'une fois par thread
 
         return count
+
+    def _generate_uber_case_a_b_response(
+        self,
+        uber_eligibility_data: Dict,
+        customer_message: str = "",
+        threads: Optional[List] = None
+    ) -> Dict:
+        """
+        Génère une réponse pour CAS A ou CAS B Uber.
+
+        CAS A: Candidat a payé 20€ mais n'a pas finalisé son inscription sur CAB Formations
+               → Expliquer l'offre + demander de finaliser inscription + envoyer documents
+               → PAS de demande d'identifiants ExamT3P (le compte n'existe pas encore!)
+
+        CAS B: Candidat a envoyé documents mais n'a pas passé le test de sélection
+               → Demander de passer le test de sélection
+               → PAS de demande d'identifiants ExamT3P
+
+        IMPORTANT: Le message pré-généré par uber_eligibility_helper.py est utilisé.
+        """
+        uber_case = uber_eligibility_data.get('case', 'A')
+        logger.info(f"Generating Uber CAS {uber_case} response")
+
+        # Utiliser le message pré-généré par uber_eligibility_helper.py
+        pre_generated_message = uber_eligibility_data.get('response_message', '')
+
+        if pre_generated_message:
+            # Construire la réponse complète avec le message pré-généré
+            response_message = f"""Bonjour,
+
+Merci pour votre message concernant la formation VTC.
+
+{pre_generated_message}
+
+Je reste à votre disposition pour toute question.
+
+Cordialement,
+L'équipe Cab Formations"""
+            logger.info(f"  Utilisation du message pré-généré CAS {uber_case}")
+        else:
+            # Fallback: messages par défaut
+            if uber_case == 'A':
+                response_message = """Bonjour,
+
+Merci pour votre message et votre intérêt pour notre formation VTC !
+
+Nous avons bien reçu votre paiement de 20€ pour l'offre VTC en partenariat avec Uber. Merci pour votre confiance !
+
+**Ce que comprend votre offre :**
+
+- **Inscription à l'examen VTC** incluant le paiement des frais d'examen de 241€ (pris en charge par CAB Formations)
+- **Accès à notre plateforme e-learning** pour réviser à votre rythme
+- **Formation en visio** avec un formateur professionnel (cours du jour OU cours du soir selon votre disponibilité)
+
+**Pour bénéficier de cette offre, il vous reste à :**
+
+1. **Finaliser votre inscription** sur la plateforme CAB Formations où vous avez effectué le paiement
+2. **Nous transmettre tous vos documents** requis (pièce d'identité, justificatif de domicile, etc.)
+3. **Passer un test de sélection simple** - Vous recevrez le lien par email une fois votre inscription finalisée
+
+Le test de sélection est rapide et ne nécessite aucune préparation particulière. Il nous permet simplement de déclencher votre inscription à l'examen.
+
+**Dès que ces étapes seront complétées**, nous pourrons vous proposer les prochaines dates d'examen disponibles et vous inscrire à la session de formation correspondante.
+
+Je reste à votre disposition pour toute question.
+
+Cordialement,
+L'équipe Cab Formations"""
+            else:  # CAS B
+                date_dossier = uber_eligibility_data.get('date_dossier_recu', '')
+                date_text = f" le **{date_dossier}**" if date_dossier else ""
+
+                response_message = f"""Bonjour,
+
+Merci pour votre message !
+
+Nous avons bien reçu votre dossier{date_text}. Merci !
+
+**Pour finaliser votre inscription à l'examen VTC, il vous reste une dernière étape :**
+
+Vous devez passer le **test de sélection**. Un email contenant le lien vers ce test vous a été envoyé{date_text}.
+
+**À propos du test de sélection :**
+
+- C'est un test **simple et rapide**
+- Il **ne nécessite pas de consulter les cours** au préalable
+- Il nous permet de **déclencher votre inscription à l'examen**
+
+**Important :** Nous ne pouvons pas procéder à votre inscription à l'examen tant que vous n'avez pas réussi ce test.
+
+Si vous n'avez pas reçu l'email ou si vous avez des difficultés pour accéder au test, n'hésitez pas à nous le signaler et nous vous renverrons le lien.
+
+**Dès que le test sera passé**, nous pourrons vous proposer les prochaines dates d'examen disponibles et vous inscrire à la session de formation correspondante.
+
+Je reste à votre disposition pour toute question.
+
+Cordialement,
+L'équipe Cab Formations"""
+
+        logger.info(f"  Message généré: {len(response_message)} caractères")
+
+        return {
+            'response_text': response_message,
+            'detected_scenarios': [f'SC-UBER_CAS_{uber_case}'],
+            'similar_tickets': [],
+            'validation': {
+                f'SC-UBER_CAS_{uber_case}': {
+                    'compliant': True,
+                    'missing_blocks': [],
+                    'forbidden_terms_found': []
+                }
+            },
+            'requires_crm_update': False,
+            'crm_update_fields': [],
+            'should_stop_workflow': False,
+            'metadata': {
+                'input_tokens': 0,
+                'output_tokens': len(response_message),
+                'model': self.model,
+                'uber_case_mode': True,
+                'uber_case': uber_case
+            }
+        }
 
     def _generate_training_exam_options_response(
         self,
