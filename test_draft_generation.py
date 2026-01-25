@@ -91,18 +91,22 @@ def test_draft_generation(ticket_id: str):
         # ================================================================
         print("\n2️⃣  Recherche du deal CRM...")
 
-        deal_id = deal_linker.find_deal_for_ticket(ticket_id, email)
+        # Utiliser la méthode process() de DealLinkingAgent
+        linking_result = deal_linker.process({"ticket_id": ticket_id})
 
         deal_data = None
-        if deal_id:
-            print(f"   ✅ Deal trouvé: {deal_id}")
-            deal = crm_client.get_deal(deal_id)
-            deal_data = deal
+        deal_id = None
 
-            print(f"   📋 Deal: {deal.get('Deal_Name')}")
-            print(f"   💰 Montant: {deal.get('Amount')}€")
-            print(f"   📊 Stage: {deal.get('Stage')}")
-            print(f"   📝 Evalbox: {deal.get('Evalbox', 'N/A')}")
+        if linking_result.get('success') and linking_result.get('selected_deal'):
+            deal_data = linking_result['selected_deal']
+            deal_id = deal_data.get('id')
+
+            print(f"   ✅ Deal trouvé: {deal_id}")
+            print(f"   📋 Deal: {deal_data.get('Deal_Name')}")
+            print(f"   💰 Montant: {deal_data.get('Amount')}€")
+            print(f"   📊 Stage: {deal_data.get('Stage')}")
+            print(f"   📝 Evalbox: {deal_data.get('Evalbox', 'N/A')}")
+            print(f"   🎯 Département recommandé: {linking_result.get('recommended_department')}")
         else:
             print("   ⚠️  Aucun deal trouvé")
 
