@@ -80,7 +80,9 @@ def test_draft_generation(ticket_id: str):
         print("\n1️⃣  Récupération des données du ticket...")
 
         ticket = desk_client.get_ticket(ticket_id)
-        threads = desk_client.get_ticket_threads(ticket_id)
+        # Utiliser get_all_threads_with_full_content pour obtenir le contenu complet
+        threads_list = desk_client.get_all_threads_with_full_content(ticket_id)
+        threads = {'data': threads_list}  # Format attendu par extract_customer_message
 
         subject = ticket.get('subject', '')
         email = ticket.get('email', '')
