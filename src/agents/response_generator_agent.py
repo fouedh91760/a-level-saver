@@ -180,7 +180,8 @@ Tu as accès à des exemples similaires de tes réponses passées pour t'inspire
         detected_scenarios: List[str],
         crm_data: Optional[Dict] = None,
         exament3p_data: Optional[Dict] = None,
-        evalbox_data: Optional[Dict] = None
+        evalbox_data: Optional[Dict] = None,
+        date_examen_vtc_data: Optional[Dict] = None
     ) -> str:
         """Build user prompt with context and examples."""
         # Format similar tickets as few-shot examples
@@ -194,7 +195,7 @@ Tu as accès à des exemples similaires de tes réponses passées pour t'inspire
         )
 
         # Format data sources
-        data_summary = self._format_data_sources(crm_data, exament3p_data, evalbox_data)
+        data_summary = self._format_data_sources(crm_data, exament3p_data, evalbox_data, date_examen_vtc_data)
 
         user_prompt = f"""## NOUVEAU TICKET À TRAITER
 
@@ -246,7 +247,8 @@ Génère uniquement le contenu de la réponse (pas de métadonnées)."""
         self,
         crm_data: Optional[Dict],
         exament3p_data: Optional[Dict],
-        evalbox_data: Optional[Dict]
+        evalbox_data: Optional[Dict],
+        date_examen_vtc_data: Optional[Dict] = None
     ) -> str:
         """Format available data sources for prompt."""
         lines = []
@@ -267,6 +269,16 @@ Génère uniquement le contenu de la réponse (pas de métadonnées)."""
                 lines.append(f"  - Documents manquants : {len(exament3p_data.get('documents_manquants', []))}")
                 lines.append(f"  - Paiement CMA : {exament3p_data.get('paiement_cma_status', 'N/A')}")
 
+        if date_examen_vtc_data:
+            lines.append("\n### Date Examen VTC :")
+            lines.append(f"  - Cas détecté : CAS {date_examen_vtc_data.get('case', 'N/A')} - {date_examen_vtc_data.get('case_description', '')}")
+            lines.append(f"  - Statut Evalbox : {date_examen_vtc_data.get('evalbox_status', 'N/A')}")
+            if date_examen_vtc_data.get('should_include_in_response'):
+                lines.append(f"  - ⚠️ ACTION REQUISE : Inclure message date examen dans la réponse")
+                if date_examen_vtc_data.get('response_message'):
+                    lines.append(f"  - Message à intégrer :")
+                    lines.append(f"    {date_examen_vtc_data['response_message'][:200]}...")
+
         if evalbox_data:
             lines.append("\n### Evalbox (Google Sheet) :")
             lines.append(f"  - Éligible Uber : {evalbox_data.get('eligible_uber', 'N/A')}")
@@ -284,6 +296,7 @@ Génère uniquement le contenu de la réponse (pas de métadonnées)."""
         crm_data: Optional[Dict] = None,
         exament3p_data: Optional[Dict] = None,
         evalbox_data: Optional[Dict] = None,
+        date_examen_vtc_data: Optional[Dict] = None,
         top_k_similar: int = 3,
         temperature: float = 0.3,
         max_tokens: int = 2000
@@ -297,6 +310,7 @@ Génère uniquement le contenu de la réponse (pas de métadonnées)."""
             crm_data: Data from CRM (contact, deal fields)
             exament3p_data: Data from ExamenT3P scraping
             evalbox_data: Data from Evalbox (Google Sheet)
+            date_examen_vtc_data: Data from date examen VTC analysis
             top_k_similar: Number of similar tickets to use as examples
             temperature: Claude temperature (0-1, lower = more focused)
             max_tokens: Maximum tokens for response
@@ -344,7 +358,8 @@ Génère uniquement le contenu de la réponse (pas de métadonnées)."""
             detected_scenarios=detected_scenarios,
             crm_data=crm_data,
             exament3p_data=exament3p_data,
-            evalbox_data=evalbox_data
+            evalbox_data=evalbox_data,
+            date_examen_vtc_data=date_examen_vtc_data
         )
 
         # 5. Call Claude API
@@ -410,6 +425,7 @@ Génère uniquement le contenu de la réponse (pas de métadonnées)."""
         crm_data: Optional[Dict] = None,
         exament3p_data: Optional[Dict] = None,
         evalbox_data: Optional[Dict] = None,
+        date_examen_vtc_data: Optional[Dict] = None,
         max_retries: int = 2
     ) -> Dict:
         """
@@ -425,7 +441,8 @@ Génère uniquement le contenu de la réponse (pas de métadonnées)."""
                 customer_message=customer_message,
                 crm_data=crm_data,
                 exament3p_data=exament3p_data,
-                evalbox_data=evalbox_data
+                evalbox_data=evalbox_data,
+                date_examen_vtc_data=date_examen_vtc_data
             )
 
             # Check if all validations passed

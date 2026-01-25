@@ -1152,6 +1152,93 @@ Si identifiants trouvés dans threads email ET connexion OK:
 
 ---
 
+### 📅 Nouvelle Logique de Gestion des Dates d'Examen VTC
+
+**Fichier:** `src/utils/date_examen_vtc_helper.py`
+
+#### Objectif
+
+Inscrire le candidat à son examen VTC en s'assurant que la date d'examen est renseignée et valide. Si des informations manquent, les ajouter automatiquement à la réponse.
+
+#### Champs CRM Utilisés
+
+**Module Deals:**
+- `Date_examen_VTC` (lookup) → Module `Dates_Examens_VTC_TAXI`
+- `Evalbox` (picklist) → Statut du dossier
+- `CMA_de_depot` (text) → CMA/Département du candidat
+
+**Module Dates_Examens_VTC_TAXI:**
+- `Date_Examen` (date) → Date de l'examen
+- `Date_Cloture_Inscription` (datetime) → Date limite inscription
+- `Departement` (integer) → Numéro département (75, 93, etc.)
+- `Statut` (picklist) → Actif, Complet, Cloturé, Annulé
+- `Libelle_Affichage` (text) → Libellé pour affichage candidat
+
+#### Les 7 Cas de Gestion
+
+| CAS | Condition | Action dans la réponse |
+|-----|-----------|------------------------|
+| **1** | `Date_examen_VTC` = vide | Proposer 2 prochaines dates (CMA du candidat, clôture future) |
+| **2** | Date passée + `Evalbox` ≠ "VALIDE CMA" / "Dossier Synchronisé" | Proposer 2 prochaines dates |
+| **3** | `Evalbox` = "Refusé CMA" | Informer du refus + lister pièces refusées (ExamT3P) + date clôture + prochaine date |
+| **4** | Date future + `Evalbox` = "VALIDE CMA" | Rassurer : dossier validé, convocation ~10j avant examen |
+| **5** | Date future + `Evalbox` = "Dossier Synchronisé" | Prévenir : instruction en cours, surveiller mails, corriger avant clôture sinon décalé |
+| **6** | Date future + `Evalbox` = autre | En attente (pas d'action spéciale) |
+| **7** | Date passée + `Evalbox` ∈ {VALIDE CMA, Dossier Synchronisé} | Examen passé, SAUF indices thread → demander clarification |
+
+#### Valeurs Evalbox
+
+- `Dossier crée` → Compte créé
+- `Documents manquants` / `Documents refusés` → Problème documents
+- `Pret a payer` / `Pret a payer par cheque` → En attente paiement
+- `Dossier Synchronisé` → En cours d'instruction CMA
+- `VALIDE CMA` → Dossier validé par CMA
+- `Refusé CMA` → Pièces refusées par CMA
+- `Convoc CMA reçue` → Convocation reçue
+
+#### Fonctions Principales
+
+```python
+from src.utils.date_examen_vtc_helper import analyze_exam_date_situation, get_next_exam_dates
+
+# Analyser la situation du candidat
+result = analyze_exam_date_situation(
+    deal_data=deal_data,
+    threads=threads_data,
+    crm_client=crm_client,
+    examt3p_data=examt3p_data
+)
+
+# Résultat
+{
+    'case': 1,  # Numéro du cas (1-7)
+    'case_description': 'Date examen VTC vide - Proposer 2 prochaines dates',
+    'should_include_in_response': True,  # Doit-on ajouter info à la réponse?
+    'response_message': '...',  # Message à intégrer
+    'next_dates': [...],  # Prochaines dates disponibles
+    'pieces_refusees': [...],  # Pour cas 3
+    'date_cloture': '2026-02-15'
+}
+
+# Récupérer les prochaines dates d'examen
+next_dates = get_next_exam_dates(
+    crm_client=crm_client,
+    departement='75',
+    limit=2
+)
+```
+
+#### Intégration Workflow DOC
+
+Le helper est automatiquement appelé dans l'étape ANALYSE du workflow DOC:
+
+1. **Analyse** → `analyze_exam_date_situation()` est appelé
+2. **Log** → Affiche le cas détecté
+3. **Génération réponse** → Les données sont passées à l'agent rédacteur
+4. **Réponse** → Le message date examen est intégré si `should_include_in_response=True`
+
+---
+
 ### 🔧 Corrections Workflow DOC
 
 **Fichier:** `src/workflows/doc_ticket_workflow.py`

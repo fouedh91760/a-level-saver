@@ -160,6 +160,14 @@ class DOCTicketWorkflow:
             else:
                 logger.info(f"✅ Identifiants validés (source: {exament3p_data.get('credentials_source')})")
 
+            # Check VÉRIFICATION #2: Date examen VTC
+            date_examen_vtc_result = analysis_result.get('date_examen_vtc_result', {})
+            if date_examen_vtc_result.get('should_include_in_response'):
+                logger.warning(f"⚠️  DATE EXAMEN VTC - CAS {date_examen_vtc_result.get('case')}: {date_examen_vtc_result.get('case_description')}")
+                logger.info("→ L'agent rédacteur intégrera les infos date examen dans la réponse globale")
+            else:
+                logger.info(f"✅ Date examen VTC OK (CAS {date_examen_vtc_result.get('case', 'N/A')})")
+
             logger.info("✅ ANALYSIS → Données extraites")
 
             # ================================================================
@@ -408,6 +416,7 @@ class DOCTicketWorkflow:
 
         # Import du helper pour la gestion des identifiants
         from src.utils.examt3p_credentials_helper import get_credentials_with_validation
+        from src.utils.date_examen_vtc_helper import analyze_exam_date_situation
 
         # Récupérer les threads du ticket avec contenu complet
         threads_data = self.desk_client.get_all_threads_with_full_content(ticket_id)
@@ -494,6 +503,22 @@ class DOCTicketWorkflow:
         logger.info("  📁 Source 6/6: Google Drive...")
         # Only if specific documents needed
 
+        # ================================================================
+        # VÉRIFICATION DATE EXAMEN VTC
+        # ================================================================
+        logger.info("  📅 Vérification date examen VTC...")
+        date_examen_vtc_result = analyze_exam_date_situation(
+            deal_data=deal_data,
+            threads=threads_data,
+            crm_client=self.crm_client,
+            examt3p_data=exament3p_data
+        )
+
+        if date_examen_vtc_result.get('should_include_in_response'):
+            logger.info(f"  ➡️ CAS {date_examen_vtc_result['case']}: {date_examen_vtc_result['case_description']}")
+        else:
+            logger.info(f"  ✅ Date examen VTC OK (CAS {date_examen_vtc_result['case']})")
+
         # VÉRIFICATION #0: ANCIEN DOSSIER
         ancien_dossier = False
         if deal_data.get('Date_de_depot_CMA'):
@@ -507,6 +532,7 @@ class DOCTicketWorkflow:
             'deal_id': deal_id,
             'deal_data': deal_data,
             'exament3p_data': exament3p_data,
+            'date_examen_vtc_result': date_examen_vtc_result,
             'evalbox_data': evalbox_data,
             'session_data': session_data,
             'threads': threads_data,  # threads_data déjà récupérés au début
@@ -542,7 +568,8 @@ class DOCTicketWorkflow:
             customer_message=customer_message,
             crm_data=analysis_result.get('deal_data'),
             exament3p_data=analysis_result.get('exament3p_data'),
-            evalbox_data=analysis_result.get('evalbox_data')
+            evalbox_data=analysis_result.get('evalbox_data'),
+            date_examen_vtc_data=analysis_result.get('date_examen_vtc_result')
         )
 
         return response_result
