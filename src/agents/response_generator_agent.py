@@ -171,6 +171,19 @@ Tu réponds aux tickets clients concernant les formations VTC pour Uber avec un 
   * CAS B: Demander de passer le test de sélection
 - Utiliser le message pré-généré fourni dans les données
 
+### 📄 RÈGLES MÉTIER CMA (TRÈS IMPORTANT) :
+
+**Justificatif de domicile :**
+- ⚠️ Le justificatif de domicile doit avoir **MOINS DE 3 MOIS** (pas 6 mois !)
+- C'est une règle CMA stricte - ne jamais dire "moins de 6 mois"
+- Documents acceptés : facture d'électricité, gaz, eau, téléphone fixe/mobile, avis d'imposition
+
+**Dates de formation - NE JAMAIS INVENTER :**
+- ⚠️ NE JAMAIS inventer ou supposer les dates de formation du candidat
+- Utiliser UNIQUEMENT les données "Session_choisie" ou "Session actuelle" fournies dans les données CRM
+- Si la session indique "janvier", dire "janvier" (pas "décembre")
+- Si aucune session n'est mentionnée, ne pas en inventer une
+
 ## SOURCES DE VÉRITÉ :
 
 - **ExamenT3P** : source de vérité pour documents, paiement CMA, statut dossier
@@ -358,7 +371,14 @@ Génère uniquement le contenu de la réponse (pas de métadonnées)."""
         if crm_data:
             lines.append("### CRM Zoho :")
             lines.append(f"  - Contact : {crm_data.get('email', 'N/A')}")
-            lines.append(f"  - Session actuelle : {crm_data.get('Session', 'Non définie')}")
+            # Extraire le nom de la session (peut être un dict avec 'name' ou une string)
+            session_data_crm = crm_data.get('Session_choisie') or crm_data.get('Session')
+            if isinstance(session_data_crm, dict):
+                session_name = session_data_crm.get('name', 'Non définie')
+            else:
+                session_name = session_data_crm or 'Non définie'
+            lines.append(f"  - 📅 Session de formation choisie : {session_name}")
+            lines.append(f"  - ⚠️ UTILISER CETTE SESSION - NE PAS INVENTER DE DATES")
             lines.append(f"  - Date dépôt CMA : {crm_data.get('Date_de_depot_CMA', 'N/A')}")
             lines.append(f"  - Date clôture : {crm_data.get('Date_de_cloture', 'N/A')}")
 
