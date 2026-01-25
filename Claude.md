@@ -1144,6 +1144,55 @@ python test_doc_workflow_with_examt3p.py <TICKET_ID>
 - Valide le cas "identifiants absents"
 - Valide le cas "identifiants invalides"
 
+**4. `extract_crm_schema.py`** - Extraction schéma CRM ⭐ NOUVEAU
+```bash
+# Extraire tous les modules et champs CRM
+python extract_crm_schema.py
+
+# Rechercher un champ spécifique
+python extract_crm_schema.py --search "Date_examen"
+
+# Lister tous les champs d'un module
+python extract_crm_schema.py --module Deals
+```
+
+**Fonctionnalités:**
+- ✅ Extraction automatique de TOUS les modules Zoho CRM
+- ✅ Pour chaque module: tous les champs avec nom API, type, label, options
+- ✅ Sauvegarde dans `crm_schema.json`
+- ✅ Recherche de champs par nom
+- ✅ Liste détaillée des champs d'un module
+- ✅ Informations sur picklists et lookups
+
+**Utilité:**
+- Évite de devoir demander les noms de champs API à chaque fois
+- Documentation automatique du schéma CRM
+- Référence rapide pour développement
+
+**Sortie JSON:**
+```json
+{
+  "extraction_date": "2026-01-25T...",
+  "modules": {
+    "Deals": {
+      "module_label": "Opportunities",
+      "fields_count": 127,
+      "fields": [
+        {
+          "api_name": "Date_examen_VTC",
+          "field_label": "Date examen VTC",
+          "data_type": "date",
+          "required": false,
+          "custom_field": true
+        },
+        ...
+      ]
+    },
+    ...
+  }
+}
+```
+
 ---
 
 ### 📋 Documentation Technique
