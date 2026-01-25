@@ -65,8 +65,8 @@ class ResponseGeneratorAgent:
             api_key = "placeholder"  # Will fail on actual API call, but allows initialization
 
         self.anthropic_client = Anthropic(api_key=api_key)
-        # Use Claude 3.5 Sonnet (latest version)
-        self.model = "claude-3-5-sonnet-latest"
+        # Use Claude Sonnet 4.5 (recommended for coding and agents in 2026)
+        self.model = "claude-sonnet-4-5-20250929"
 
         # Initialize RAG system
         logger.info("Initializing RAG system...")
