@@ -66,7 +66,7 @@ class ResponseGeneratorAgent:
 
         self.anthropic_client = Anthropic(api_key=api_key)
         # Use Claude 3.5 Sonnet (stable snapshot)
-        self.model = "claude-3-5-sonnet-20240620"
+        self.model = "claude-3-5-sonnet-20241022"
 
         # Initialize RAG system
         logger.info("Initializing RAG system...")
