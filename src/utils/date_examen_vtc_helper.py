@@ -55,8 +55,8 @@ def get_next_exam_dates(
         # Note: L'API search ne supporte pas sort_by/sort_order sur les modules custom
         url = f"{settings.zoho_crm_api_url}/Dates_Examens_VTC_TAXI/search"
 
-        # Critère: Statut = Actif AND Departement = X
-        criteria = f"((Statut:equals:Actif)and(Departement:equals:{departement}))"
+        # Critère: (Statut = Actif OU Statut = vide) AND Departement = X
+        criteria = f"(((Statut:equals:Actif)or(Statut:equals:null))and(Departement:equals:{departement}))"
 
         # Pagination: récupérer toutes les pages
         all_sessions = []
@@ -140,7 +140,8 @@ def get_next_exam_dates_any_department(
     try:
         url = f"{settings.zoho_crm_api_url}/Dates_Examens_VTC_TAXI/search"
         # Note: L'API search ne supporte pas sort_by/sort_order sur les modules custom
-        criteria = "(Statut:equals:Actif)"
+        # Critère: Statut = Actif OU Statut = vide
+        criteria = "((Statut:equals:Actif)or(Statut:equals:null))"
 
         # Pagination: récupérer toutes les pages
         all_sessions = []
