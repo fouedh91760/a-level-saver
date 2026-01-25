@@ -150,9 +150,15 @@ class DOCTicketWorkflow:
                 result['success'] = True
                 return result
 
-            # Check VÉRIFICATION #1: Compte ExamenT3P existe ?
-            if not analysis_result.get('exament3p_data', {}).get('compte_existe'):
-                logger.warning("⚠️  COMPTE EXAMENT3P N'EXISTE PAS")
+            # Check VÉRIFICATION #1: Identifiants ExamenT3P
+            exament3p_data = analysis_result.get('exament3p_data', {})
+            if exament3p_data.get('should_respond_to_candidate'):
+                logger.warning("⚠️  IDENTIFIANTS EXAMENT3P INVALIDES OU MANQUANTS")
+                logger.info("→ L'agent rédacteur intégrera la demande d'identifiants dans la réponse globale")
+            elif not exament3p_data.get('compte_existe'):
+                logger.warning("⚠️  COMPTE EXAMENT3P N'EXISTE PAS OU EXTRACTION ÉCHOUÉE")
+            else:
+                logger.info(f"✅ Identifiants validés (source: {exament3p_data.get('credentials_source')})")
 
             logger.info("✅ ANALYSIS → Données extraites")
 
@@ -393,42 +399,76 @@ class DOCTicketWorkflow:
         else:
             logger.warning("  ⚠️  No deal found for this ticket")
 
-        # Source 2: ExamenT3P
+        # Source 2: ExamenT3P avec gestion complète des identifiants
         logger.info("  🌐 Source 2/6: ExamenT3P...")
+
+        # Import du helper pour la gestion des identifiants
+        from src.utils.examt3p_credentials_helper import get_credentials_with_validation
+
+        # Récupérer les threads du ticket
+        threads = self.desk_client.get_ticket_threads(ticket_id)
+        threads_data = threads.get('data', [])
+
+        # Workflow complet de validation des identifiants
+        credentials_result = get_credentials_with_validation(
+            deal_data=deal_data,
+            threads=threads_data,
+            crm_client=self.crm_client,
+            deal_id=deal_id,
+            auto_update_crm=True  # Toujours mettre à jour le CRM si identifiants trouvés dans mails
+        )
+
+        # Initialiser exament3p_data
         exament3p_data = {
             'compte_existe': False,
-            'identifiant': None,
-            'mot_de_passe': None,
+            'identifiant': credentials_result.get('identifiant'),
+            'mot_de_passe': credentials_result.get('mot_de_passe'),  # Sera masqué dans les logs
+            'credentials_source': credentials_result.get('credentials_source'),
+            'connection_test_success': credentials_result.get('connection_test_success'),
             'documents': [],
             'documents_manquants': [],
-            'paiement_cma_status': 'N/A'
+            'paiement_cma_status': 'N/A',
+            'should_respond_to_candidate': credentials_result.get('should_respond_to_candidate', False),
+            'candidate_response_message': credentials_result.get('candidate_response_message')
         }
 
-        # Extract credentials from CRM deal if available
-        identifiant_evalbox = deal_data.get('IDENTIFIANT_EVALBOX')
-        mdp_evalbox = deal_data.get('MDP_EVALBOX')
+        # Si les identifiants sont valides, procéder à l'extraction
+        if credentials_result.get('connection_test_success'):
+            logger.info(f"  ✅ Identifiants validés (source: {credentials_result['credentials_source']})")
 
-        if identifiant_evalbox and mdp_evalbox:
-            logger.info(f"  📧 Identifiants trouvés dans le CRM: {identifiant_evalbox}")
+            if credentials_result.get('crm_updated'):
+                logger.info("  ✅ CRM mis à jour avec les nouveaux identifiants")
+
             try:
-                # Call ExamT3PAgent to scrape data
+                # Extraction complète des données ExamenT3P
+                logger.info("  📥 Extraction des données ExamenT3P...")
                 examt3p_result = self.examt3p_agent.process({
-                    'username': identifiant_evalbox,
-                    'password': mdp_evalbox
+                    'username': credentials_result['identifiant'],
+                    'password': credentials_result['mot_de_passe']
                 })
 
                 if examt3p_result.get('success'):
-                    exament3p_data = examt3p_result
+                    # Fusionner les données extraites avec exament3p_data
+                    exament3p_data.update(examt3p_result)
+                    exament3p_data['compte_existe'] = True
                     logger.info("  ✅ Données ExamenT3P extraites avec succès")
                 else:
                     logger.warning(f"  ⚠️  Échec extraction ExamenT3P: {examt3p_result.get('error')}")
                     exament3p_data['extraction_error'] = examt3p_result.get('error')
+
             except Exception as e:
                 logger.error(f"  ❌ Erreur lors de l'extraction ExamenT3P: {e}")
                 exament3p_data['extraction_error'] = str(e)
+
+        elif credentials_result.get('credentials_found'):
+            # Identifiants trouvés mais connexion échouée
+            logger.warning(f"  ❌ Identifiants trouvés mais connexion échouée: {credentials_result.get('connection_error')}")
+            exament3p_data['extraction_error'] = f"Connexion échouée: {credentials_result.get('connection_error')}"
+
         else:
-            logger.warning("  ⚠️  Identifiants ExamenT3P non disponibles dans le CRM")
-            exament3p_data['extraction_error'] = "Identifiants manquants dans le CRM"
+            # Identifiants non trouvés
+            logger.warning("  ⚠️  Identifiants ExamenT3P introuvables")
+            exament3p_data['extraction_error'] = "Identifiants non trouvés dans le CRM ni dans les threads"
 
         # Source 3: Evalbox (Google Sheet)
         logger.info("  📊 Source 3/6: Evalbox...")
@@ -443,9 +483,9 @@ class DOCTicketWorkflow:
         session_data = {}
         # TODO: Query sessions sheet
 
-        # Source 5: Ticket threads
+        # Source 5: Ticket threads (déjà récupérés pour ExamenT3P)
         logger.info("  💬 Source 5/6: Ticket threads...")
-        threads = self.desk_client.get_ticket_threads(ticket_id)
+        # threads déjà récupérés plus haut pour la validation des identifiants
 
         # Source 6: Google Drive (if needed)
         logger.info("  📁 Source 6/6: Google Drive...")
@@ -466,7 +506,7 @@ class DOCTicketWorkflow:
             'exament3p_data': exament3p_data,
             'evalbox_data': evalbox_data,
             'session_data': session_data,
-            'threads': threads.get('data', []),
+            'threads': threads_data,  # threads_data déjà récupérés au début
             'ancien_dossier': ancien_dossier
         }
 
