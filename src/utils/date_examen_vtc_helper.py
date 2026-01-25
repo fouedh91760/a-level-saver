@@ -433,8 +433,35 @@ def analyze_exam_date_situation(
             result['case'] = 4
             result['case_description'] = "Date future + VALIDE CMA - Dossier validé, convocation à venir"
             result['should_include_in_response'] = True
-            result['response_message'] = generate_valide_cma_message(date_examen_str)
-            logger.info(f"  ➡️ CAS 4: Date future + VALIDE CMA")
+
+            # Calculer les jours jusqu'à l'examen pour adapter le message
+            days_until_exam = None
+            if date_examen_str:
+                try:
+                    date_obj = datetime.strptime(str(date_examen_str), "%Y-%m-%d")
+                    today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+                    days_until_exam = (date_obj - today).days
+                except:
+                    pass
+
+            # Si examen dans ≤ 7 jours sans convocation → candidat sera décalé
+            # Récupérer la prochaine date d'examen disponible
+            next_exam_date = None
+            if days_until_exam is not None and days_until_exam <= 7:
+                if crm_client and departement:
+                    next_dates = get_next_exam_dates(crm_client, departement, limit=2)
+                    # Prendre la 2ème date (la 1ère est celle qui est imminente)
+                    if len(next_dates) >= 2:
+                        next_exam_date = next_dates[1]
+                    elif len(next_dates) == 1:
+                        next_exam_date = next_dates[0]
+                    result['next_dates'] = next_dates
+
+            result['response_message'] = generate_valide_cma_message(
+                date_examen_str,
+                next_exam_date=next_exam_date
+            )
+            logger.info(f"  ➡️ CAS 4: Date future + VALIDE CMA (jours restants: {days_until_exam})")
             return result
 
         # CAS 5: Date future + Dossier Synchronisé
@@ -702,13 +729,18 @@ Si vous nous fournissez les documents corrigés avant la date de clôture, nous 
 {pieces_text}Pour que votre inscription puisse être validée, merci de nous transmettre les documents corrigés dans les plus brefs délais{date_cloture_text}.{next_date_text}"""
 
 
-def generate_valide_cma_message(date_examen_str: str) -> str:
+def generate_valide_cma_message(date_examen_str: str, next_exam_date: Optional[Dict] = None) -> str:
     """
     Génère le message pour un dossier validé CMA (CAS 4).
 
     Adapte le message selon la proximité de l'examen:
     - > 10 jours: "vous recevrez la convocation ~10j avant"
-    - ≤ 10 jours: "la convocation devrait être arrivée, vérifiez vos spams"
+    - 7-10 jours: "la convocation devrait être arrivée, vérifiez vos spams"
+    - ≤ 7 jours sans convocation: "report automatique sur prochaine date"
+
+    Args:
+        date_examen_str: Date d'examen actuelle
+        next_exam_date: Prochaine date d'examen si report nécessaire
     """
     date_formatted = ""
     days_until_exam = None
@@ -725,13 +757,41 @@ def generate_valide_cma_message(date_examen_str: str) -> str:
 
     date_text = f" du {date_formatted}" if date_formatted else ""
 
-    # Message différent selon la proximité de l'examen
+    # CAS CRITIQUE: Examen dans ≤ 7 jours = report automatique par la CMA
+    if days_until_exam is not None and days_until_exam <= 7:
+        # Formater la prochaine date d'examen
+        next_date_formatted = ""
+        if next_exam_date:
+            try:
+                next_date_str = next_exam_date.get('Date_Examen', '')
+                if next_date_str:
+                    next_date_obj = datetime.strptime(str(next_date_str), "%Y-%m-%d")
+                    next_date_formatted = next_date_obj.strftime("%d/%m/%Y")
+            except:
+                pass
+
+        next_date_text = f" du **{next_date_formatted}**" if next_date_formatted else " (date à confirmer)"
+
+        return f"""Votre dossier a été validé par la CMA.
+
+**Information importante concernant votre examen :**
+
+La CMA envoie les convocations au minimum **7 jours avant** la date d'examen. Or, l'examen initialement prévu{date_text} est dans moins de 7 jours et vous n'avez pas encore reçu de convocation.
+
+Cela signifie que la CMA, en raison de ses **délais de traitement importants**, n'a pas pu finaliser votre convocation à temps pour cette session.
+
+**Ne vous inquiétez pas !** Votre dossier reste validé et vous serez **automatiquement convoqué(e) pour la prochaine session d'examen**{next_date_text}.
+
+Vous recevrez votre convocation officielle environ 7 à 10 jours avant cette nouvelle date. Pensez à vérifier régulièrement vos spams.
+
+En attendant, nous vous conseillons de continuer à bien préparer votre examen. N'hésitez pas à nous contacter si vous avez des questions."""
+
+    # Examen entre 7 et 10 jours - convocation devrait être arrivée
     if days_until_exam is not None and days_until_exam <= 10:
-        # Examen imminent - la convocation devrait déjà être arrivée
         return f"""Bonne nouvelle ! Votre dossier a été validé par la CMA pour l'examen{date_text}.
 
 **Concernant votre convocation :**
-La convocation officielle est généralement envoyée par la CMA environ 10 jours avant l'examen. Elle devrait donc **déjà être arrivée** dans votre boîte mail.
+La convocation officielle est généralement envoyée par la CMA environ 7 à 10 jours avant l'examen. Elle devrait donc **déjà être arrivée** dans votre boîte mail.
 
 📧 **Vérifiez impérativement vos spams et courriers indésirables**, car il arrive fréquemment que les emails de la CMA s'y retrouvent.
 
