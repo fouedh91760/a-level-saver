@@ -139,6 +139,17 @@ Tu réponds aux tickets clients concernant les formations VTC pour Uber avec un 
 - Ne jamais paraphraser par "prochaine session disponible" sans donner les dates précises
 - Format : lister les dates avec leurs infos (date examen + date clôture si disponible)
 
+**Si "SESSIONS DE FORMATION À PROPOSER" dans les données** :
+- ⚠️ OBLIGATOIRE : La session de formation DOIT correspondre à la date d'examen
+- La formation doit se terminer AVANT la date d'examen (pour permettre la préparation)
+- Si préférence jour/soir connue : proposer uniquement ce type de session
+- Si préférence NON connue : proposer les deux options (cours du jour ET cours du soir)
+- Ne JAMAIS proposer une date de formation sans la lier à une date d'examen
+- Format exemple :
+  "Pour l'examen du 31/03/2026, vous pouvez suivre la formation :
+   • Cours du jour : du 10/02/2026 au 21/02/2026 (8h30-16h30)
+   • Cours du soir : du 10/02/2026 au 14/03/2026 (18h-22h)"
+
 ## SOURCES DE VÉRITÉ :
 
 - **ExamenT3P** : source de vérité pour documents, paiement CMA, statut dossier
@@ -186,7 +197,8 @@ Tu as accès à des exemples similaires de tes réponses passées pour t'inspire
         crm_data: Optional[Dict] = None,
         exament3p_data: Optional[Dict] = None,
         evalbox_data: Optional[Dict] = None,
-        date_examen_vtc_data: Optional[Dict] = None
+        date_examen_vtc_data: Optional[Dict] = None,
+        session_data: Optional[Dict] = None
     ) -> str:
         """Build user prompt with context and examples."""
         # Format similar tickets as few-shot examples
@@ -200,7 +212,7 @@ Tu as accès à des exemples similaires de tes réponses passées pour t'inspire
         )
 
         # Format data sources
-        data_summary = self._format_data_sources(crm_data, exament3p_data, evalbox_data, date_examen_vtc_data)
+        data_summary = self._format_data_sources(crm_data, exament3p_data, evalbox_data, date_examen_vtc_data, session_data)
 
         user_prompt = f"""## NOUVEAU TICKET À TRAITER
 
@@ -253,7 +265,8 @@ Génère uniquement le contenu de la réponse (pas de métadonnées)."""
         crm_data: Optional[Dict],
         exament3p_data: Optional[Dict],
         evalbox_data: Optional[Dict],
-        date_examen_vtc_data: Optional[Dict] = None
+        date_examen_vtc_data: Optional[Dict] = None,
+        session_data: Optional[Dict] = None
     ) -> str:
         """Format available data sources for prompt."""
         lines = []
@@ -261,7 +274,7 @@ Génère uniquement le contenu de la réponse (pas de métadonnées)."""
         if crm_data:
             lines.append("### CRM Zoho :")
             lines.append(f"  - Contact : {crm_data.get('email', 'N/A')}")
-            lines.append(f"  - Session choisie : {crm_data.get('Session_choisie', 'Non définie')}")
+            lines.append(f"  - Session actuelle : {crm_data.get('Session', 'Non définie')}")
             lines.append(f"  - Date dépôt CMA : {crm_data.get('Date_de_depot_CMA', 'N/A')}")
             lines.append(f"  - Date clôture : {crm_data.get('Date_de_cloture', 'N/A')}")
 
@@ -317,6 +330,54 @@ Génère uniquement le contenu de la réponse (pas de métadonnées)."""
             lines.append(f"  - Éligible Uber : {evalbox_data.get('eligible_uber', 'N/A')}")
             lines.append(f"  - Scope : {evalbox_data.get('scope', 'N/A')}")
 
+        if session_data and session_data.get('proposed_options'):
+            lines.append("\n### 📚 SESSIONS DE FORMATION À PROPOSER :")
+            preference = session_data.get('session_preference')
+            if preference:
+                pref_label = "cours du jour" if preference == 'jour' else "cours du soir"
+                lines.append(f"  - Préférence candidat détectée : {pref_label}")
+            else:
+                lines.append(f"  - ⚠️ Préférence jour/soir NON CONNUE - Proposer les deux options")
+
+            for option in session_data.get('proposed_options', []):
+                exam_info = option.get('exam_info', {})
+                sessions = option.get('sessions', [])
+                exam_date = exam_info.get('Date_Examen', '')
+
+                # Formater date examen
+                try:
+                    from datetime import datetime
+                    date_obj = datetime.strptime(str(exam_date), "%Y-%m-%d")
+                    exam_formatted = date_obj.strftime("%d/%m/%Y")
+                except:
+                    exam_formatted = str(exam_date)
+
+                lines.append(f"\n  📅 Pour l'examen du {exam_formatted} :")
+
+                if sessions:
+                    for session in sessions:
+                        session_type = session.get('session_type_label', '')
+                        date_debut = session.get('Date_d_but', '')
+                        date_fin = session.get('Date_fin', '')
+                        type_cours = session.get('Type_de_cours', '')
+
+                        # Formater dates
+                        try:
+                            debut_formatted = datetime.strptime(date_debut, "%Y-%m-%d").strftime("%d/%m/%Y") if date_debut else ''
+                            fin_formatted = datetime.strptime(date_fin, "%Y-%m-%d").strftime("%d/%m/%Y") if date_fin else ''
+                        except:
+                            debut_formatted = date_debut
+                            fin_formatted = date_fin
+
+                        session_line = f"      • {session_type} : du {debut_formatted} au {fin_formatted}"
+                        if type_cours and type_cours != '-None-':
+                            session_line += f" ({type_cours})"
+                        lines.append(session_line)
+                else:
+                    lines.append("      ⚠️ Aucune session disponible pour cette date")
+
+            lines.append("\n  ⚠️ RÈGLE IMPORTANTE : Toujours lier la proposition de formation à la date d'examen choisie")
+
         if not lines:
             lines.append("Aucune donnée disponible")
 
@@ -330,6 +391,7 @@ Génère uniquement le contenu de la réponse (pas de métadonnées)."""
         exament3p_data: Optional[Dict] = None,
         evalbox_data: Optional[Dict] = None,
         date_examen_vtc_data: Optional[Dict] = None,
+        session_data: Optional[Dict] = None,
         top_k_similar: int = 3,
         temperature: float = 0.3,
         max_tokens: int = 2000
@@ -344,6 +406,7 @@ Génère uniquement le contenu de la réponse (pas de métadonnées)."""
             exament3p_data: Data from ExamenT3P scraping
             evalbox_data: Data from Evalbox (Google Sheet)
             date_examen_vtc_data: Data from date examen VTC analysis
+            session_data: Data from session analysis (sessions de formation)
             top_k_similar: Number of similar tickets to use as examples
             temperature: Claude temperature (0-1, lower = more focused)
             max_tokens: Maximum tokens for response
@@ -392,7 +455,8 @@ Génère uniquement le contenu de la réponse (pas de métadonnées)."""
             crm_data=crm_data,
             exament3p_data=exament3p_data,
             evalbox_data=evalbox_data,
-            date_examen_vtc_data=date_examen_vtc_data
+            date_examen_vtc_data=date_examen_vtc_data,
+            session_data=session_data
         )
 
         # 5. Call Claude API
@@ -459,6 +523,7 @@ Génère uniquement le contenu de la réponse (pas de métadonnées)."""
         exament3p_data: Optional[Dict] = None,
         evalbox_data: Optional[Dict] = None,
         date_examen_vtc_data: Optional[Dict] = None,
+        session_data: Optional[Dict] = None,
         max_retries: int = 2
     ) -> Dict:
         """
@@ -475,7 +540,8 @@ Génère uniquement le contenu de la réponse (pas de métadonnées)."""
                 crm_data=crm_data,
                 exament3p_data=exament3p_data,
                 evalbox_data=evalbox_data,
-                date_examen_vtc_data=date_examen_vtc_data
+                date_examen_vtc_data=date_examen_vtc_data,
+                session_data=session_data
             )
 
             # Check if all validations passed

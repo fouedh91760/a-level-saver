@@ -490,10 +490,10 @@ class DOCTicketWorkflow:
         }
         # TODO: Query Evalbox Google Sheet
 
-        # Source 4: Sessions (SESSIONSUBER2026.xlsx)
+        # Source 4: Sessions (CRM module Sessions1)
         logger.info("  📅 Source 4/6: Sessions...")
         session_data = {}
-        # TODO: Query sessions sheet
+        # Les sessions seront récupérées après l'analyse date_examen_vtc
 
         # Source 5: Ticket threads (déjà récupérés pour ExamenT3P)
         logger.info("  💬 Source 5/6: Ticket threads...")
@@ -518,6 +518,26 @@ class DOCTicketWorkflow:
             logger.info(f"  ➡️ CAS {date_examen_vtc_result['case']}: {date_examen_vtc_result['case_description']}")
         else:
             logger.info(f"  ✅ Date examen VTC OK (CAS {date_examen_vtc_result['case']})")
+
+        # ================================================================
+        # ANALYSE SESSIONS DE FORMATION
+        # ================================================================
+        # Si des dates d'examen sont proposées, récupérer les sessions correspondantes
+        from src.utils.session_helper import analyze_session_situation
+
+        next_dates = date_examen_vtc_result.get('next_dates', [])
+        if next_dates and date_examen_vtc_result.get('should_include_in_response'):
+            logger.info("  📚 Recherche des sessions de formation associées...")
+            session_data = analyze_session_situation(
+                deal_data=deal_data,
+                exam_dates=next_dates,
+                threads=threads_data,
+                crm_client=self.crm_client
+            )
+            if session_data.get('session_preference'):
+                logger.info(f"  ➡️ Préférence détectée: {session_data['session_preference']}")
+            if session_data.get('proposed_options'):
+                logger.info(f"  ✅ {len(session_data['proposed_options'])} option(s) de session proposée(s)")
 
         # VÉRIFICATION #0: ANCIEN DOSSIER
         ancien_dossier = False
@@ -569,7 +589,8 @@ class DOCTicketWorkflow:
             crm_data=analysis_result.get('deal_data'),
             exament3p_data=analysis_result.get('exament3p_data'),
             evalbox_data=analysis_result.get('evalbox_data'),
-            date_examen_vtc_data=analysis_result.get('date_examen_vtc_result')
+            date_examen_vtc_data=analysis_result.get('date_examen_vtc_result'),
+            session_data=analysis_result.get('session_data')
         )
 
         return response_result

@@ -1,0 +1,473 @@
+"""
+Helper pour gérer les sessions de formation et leur association avec les dates d'examen.
+
+Logique métier:
+1. Les sessions de formation doivent se terminer AVANT la date d'examen
+2. On privilégie les sessions dont la Date_fin est la plus proche de la date d'examen
+3. Convention de nommage: cdj-* = Cours Du Jour, cds-* = Cours Du Soir
+4. On propose toujours une option CDJ et une option CDS sauf si préférence connue
+"""
+import logging
+from datetime import datetime, timedelta
+from typing import Dict, Optional, List, Any, Tuple
+
+logger = logging.getLogger(__name__)
+
+# Constantes
+SESSION_TYPE_JOUR = "cdj"  # Cours Du Jour
+SESSION_TYPE_SOIR = "cds"  # Cours Du Soir
+
+# Délai minimum entre fin de formation et examen (en jours)
+MIN_DAYS_BEFORE_EXAM = 3
+# Délai maximum entre fin de formation et examen (en jours) - au delà, la session est trop éloignée
+MAX_DAYS_BEFORE_EXAM = 60
+
+
+def get_sessions_for_exam_date(
+    crm_client,
+    exam_date: str,
+    session_type: Optional[str] = None,
+    limit: int = 2
+) -> List[Dict[str, Any]]:
+    """
+    Récupère les sessions de formation adaptées pour une date d'examen donnée.
+
+    La session doit se terminer AVANT la date d'examen, idéalement proche.
+
+    Args:
+        crm_client: Client Zoho CRM
+        exam_date: Date d'examen au format YYYY-MM-DD
+        session_type: Type de session souhaité ('cdj', 'cds', ou None pour les deux)
+        limit: Nombre de sessions à retourner par type
+
+    Returns:
+        Liste des sessions avec leurs infos
+    """
+    from config import settings
+
+    logger.info(f"🔍 Recherche des sessions pour l'examen du {exam_date}")
+
+    try:
+        # Parser la date d'examen
+        exam_date_obj = datetime.strptime(exam_date, "%Y-%m-%d")
+
+        # Calculer la plage de dates pour la fin de formation
+        # La session doit se terminer entre (exam - MAX_DAYS) et (exam - MIN_DAYS)
+        min_end_date = exam_date_obj - timedelta(days=MAX_DAYS_BEFORE_EXAM)
+        max_end_date = exam_date_obj - timedelta(days=MIN_DAYS_BEFORE_EXAM)
+
+        logger.info(f"  Recherche sessions se terminant entre {min_end_date.strftime('%Y-%m-%d')} et {max_end_date.strftime('%Y-%m-%d')}")
+
+        # Rechercher les sessions planifiées
+        url = f"{settings.zoho_crm_api_url}/Sessions1/search"
+
+        # Critère: Statut = PLANIFIÉ et Date_fin dans la plage
+        criteria = f"((Statut:equals:PLANIFIÉ)and(Date_fin:greater_equal:{min_end_date.strftime('%Y-%m-%d')})and(Date_fin:less_equal:{max_end_date.strftime('%Y-%m-%d')}))"
+
+        # Pagination
+        all_sessions = []
+        page = 1
+        max_pages = 5
+
+        while page <= max_pages:
+            params = {
+                "criteria": criteria,
+                "page": page,
+                "per_page": 200
+            }
+
+            response = crm_client._make_request("GET", url, params=params)
+            sessions = response.get("data", [])
+
+            if not sessions:
+                break
+
+            all_sessions.extend(sessions)
+            logger.info(f"  Page {page}: {len(sessions)} session(s) récupérée(s)")
+
+            if len(sessions) < 200:
+                break
+
+            page += 1
+
+        if not all_sessions:
+            logger.warning(f"Aucune session trouvée pour l'examen du {exam_date}")
+            return []
+
+        logger.info(f"  Total: {len(all_sessions)} session(s) trouvée(s)")
+
+        # Filtrer et catégoriser par type (CDJ/CDS)
+        sessions_jour = []
+        sessions_soir = []
+
+        for session in all_sessions:
+            session_name = session.get('Name', '').lower()
+            date_fin = session.get('Date_fin', '')
+
+            # Calculer la distance avec l'examen
+            if date_fin:
+                try:
+                    date_fin_obj = datetime.strptime(date_fin, "%Y-%m-%d")
+                    days_before_exam = (exam_date_obj - date_fin_obj).days
+                    session['days_before_exam'] = days_before_exam
+                except:
+                    session['days_before_exam'] = 999
+
+            # Catégoriser par type
+            if session_name.startswith(SESSION_TYPE_JOUR):
+                session['session_type'] = 'jour'
+                session['session_type_label'] = 'Cours du jour'
+                sessions_jour.append(session)
+            elif session_name.startswith(SESSION_TYPE_SOIR):
+                session['session_type'] = 'soir'
+                session['session_type_label'] = 'Cours du soir'
+                sessions_soir.append(session)
+
+        # Trier par proximité avec l'examen (Date_fin la plus proche de l'examen)
+        sessions_jour.sort(key=lambda x: x.get('days_before_exam', 999))
+        sessions_soir.sort(key=lambda x: x.get('days_before_exam', 999))
+
+        # Retourner selon le type demandé
+        result = []
+
+        if session_type == SESSION_TYPE_JOUR or session_type == 'jour':
+            result = sessions_jour[:limit]
+        elif session_type == SESSION_TYPE_SOIR or session_type == 'soir':
+            result = sessions_soir[:limit]
+        else:
+            # Retourner les deux types
+            if sessions_jour:
+                result.append(sessions_jour[0])
+            if sessions_soir:
+                result.append(sessions_soir[0])
+
+        logger.info(f"✅ {len(result)} session(s) sélectionnée(s) pour l'examen du {exam_date}")
+        return result
+
+    except Exception as e:
+        logger.error(f"❌ Erreur lors de la recherche des sessions: {e}")
+        return []
+
+
+def get_sessions_for_multiple_exam_dates(
+    crm_client,
+    exam_dates: List[Dict[str, Any]],
+    session_type: Optional[str] = None
+) -> Dict[str, List[Dict[str, Any]]]:
+    """
+    Récupère les sessions de formation pour plusieurs dates d'examen.
+
+    Args:
+        crm_client: Client Zoho CRM
+        exam_dates: Liste des dates d'examen (retournées par get_next_exam_dates)
+        session_type: Type de session souhaité ('jour', 'soir', ou None pour les deux)
+
+    Returns:
+        Dict avec date_examen comme clé et liste de sessions comme valeur
+    """
+    result = {}
+
+    for exam_info in exam_dates:
+        exam_date = exam_info.get('Date_Examen')
+        if exam_date:
+            sessions = get_sessions_for_exam_date(crm_client, exam_date, session_type)
+            result[exam_date] = {
+                'exam_info': exam_info,
+                'sessions': sessions
+            }
+
+    return result
+
+
+def format_session_for_display(session: Dict[str, Any]) -> str:
+    """
+    Formate une session pour affichage au candidat.
+
+    Args:
+        session: Données de la session
+
+    Returns:
+        Texte formaté pour le candidat
+    """
+    name = session.get('Name', 'Session inconnue')
+    date_debut = session.get('Date_d_but', '')
+    date_fin = session.get('Date_fin', '')
+    type_cours = session.get('Type_de_cours', '')
+    session_type_label = session.get('session_type_label', '')
+    days_before = session.get('days_before_exam', 0)
+
+    # Formater les dates
+    date_debut_formatted = ""
+    date_fin_formatted = ""
+
+    try:
+        if date_debut:
+            date_obj = datetime.strptime(date_debut, "%Y-%m-%d")
+            date_debut_formatted = date_obj.strftime("%d/%m/%Y")
+    except:
+        date_debut_formatted = date_debut
+
+    try:
+        if date_fin:
+            date_obj = datetime.strptime(date_fin, "%Y-%m-%d")
+            date_fin_formatted = date_obj.strftime("%d/%m/%Y")
+    except:
+        date_fin_formatted = date_fin
+
+    result = f"**{session_type_label}** : du {date_debut_formatted} au {date_fin_formatted}"
+    if type_cours and type_cours != '-None-':
+        result += f" ({type_cours})"
+
+    return result
+
+
+def format_exam_with_sessions(
+    exam_info: Dict[str, Any],
+    sessions: List[Dict[str, Any]]
+) -> str:
+    """
+    Formate une date d'examen avec ses sessions associées.
+
+    Args:
+        exam_info: Infos sur la date d'examen
+        sessions: Sessions de formation associées
+
+    Returns:
+        Texte formaté pour le candidat
+    """
+    # Formater la date d'examen
+    exam_date = exam_info.get('Date_Examen', '')
+    exam_date_formatted = ""
+
+    try:
+        if exam_date:
+            date_obj = datetime.strptime(exam_date, "%Y-%m-%d")
+            exam_date_formatted = date_obj.strftime("%d/%m/%Y")
+    except:
+        exam_date_formatted = exam_date
+
+    # Formater la date de clôture
+    date_cloture = exam_info.get('Date_Cloture_Inscription', '')
+    cloture_formatted = ""
+
+    if date_cloture:
+        try:
+            if 'T' in str(date_cloture):
+                cloture_obj = datetime.fromisoformat(str(date_cloture).replace('Z', '+00:00'))
+            else:
+                cloture_obj = datetime.strptime(str(date_cloture), "%Y-%m-%d")
+            cloture_formatted = cloture_obj.strftime("%d/%m/%Y")
+        except:
+            pass
+
+    result = f"📅 **Examen du {exam_date_formatted}**"
+    if cloture_formatted:
+        result += f" (clôture inscriptions: {cloture_formatted})"
+    result += "\n"
+
+    if sessions:
+        result += "   Sessions de formation disponibles :\n"
+        for session in sessions:
+            result += f"   • {format_session_for_display(session)}\n"
+    else:
+        result += "   ⚠️ Pas de session de formation disponible pour cette date\n"
+
+    return result
+
+
+def detect_session_preference_from_deal(deal_data: Dict[str, Any]) -> Optional[str]:
+    """
+    Détecte la préférence de session (jour/soir) à partir des données du deal.
+
+    Args:
+        deal_data: Données du deal CRM
+
+    Returns:
+        'jour', 'soir', ou None si pas de préférence détectée
+    """
+    # Vérifier le champ Session existant
+    session = deal_data.get('Session')
+    if session:
+        if isinstance(session, dict):
+            session_name = session.get('name', '').lower()
+        else:
+            session_name = str(session).lower()
+
+        if session_name.startswith(SESSION_TYPE_JOUR):
+            return 'jour'
+        elif session_name.startswith(SESSION_TYPE_SOIR):
+            return 'soir'
+
+    # Vérifier le champ Session_souhait_e
+    session_souhaitee = deal_data.get('Session_souhait_e', '')
+    if session_souhaitee:
+        session_lower = str(session_souhaitee).lower()
+        if 'jour' in session_lower or 'cdj' in session_lower:
+            return 'jour'
+        elif 'soir' in session_lower or 'cds' in session_lower:
+            return 'soir'
+
+    return None
+
+
+def detect_session_preference_from_threads(threads: List[Dict]) -> Optional[str]:
+    """
+    Détecte la préférence de session (jour/soir) à partir des messages du candidat.
+
+    Args:
+        threads: Liste des threads du ticket
+
+    Returns:
+        'jour', 'soir', ou None si pas de préférence détectée
+    """
+    import re
+
+    patterns_jour = [
+        r"cours du jour",
+        r"en journ[ée]e",
+        r"la journ[ée]e",
+        r"le matin",
+        r"8h30",
+        r"9h",
+        r"journée",
+    ]
+
+    patterns_soir = [
+        r"cours du soir",
+        r"le soir",
+        r"en soir[ée]e",
+        r"18h",
+        r"19h",
+        r"après le travail",
+        r"après mon travail",
+    ]
+
+    for thread in threads:
+        if thread.get('direction') != 'in':
+            continue
+
+        content = thread.get('content', '') or thread.get('plainText', '')
+        content_lower = content.lower()
+
+        for pattern in patterns_jour:
+            if re.search(pattern, content_lower):
+                logger.info(f"Préférence 'jour' détectée: pattern '{pattern}'")
+                return 'jour'
+
+        for pattern in patterns_soir:
+            if re.search(pattern, content_lower):
+                logger.info(f"Préférence 'soir' détectée: pattern '{pattern}'")
+                return 'soir'
+
+    return None
+
+
+def analyze_session_situation(
+    deal_data: Dict[str, Any],
+    exam_dates: List[Dict[str, Any]],
+    threads: List[Dict] = None,
+    crm_client = None
+) -> Dict[str, Any]:
+    """
+    Analyse la situation et propose les sessions appropriées pour les dates d'examen.
+
+    Args:
+        deal_data: Données du deal CRM
+        exam_dates: Liste des prochaines dates d'examen
+        threads: Threads du ticket (pour détecter préférence)
+        crm_client: Client Zoho CRM
+
+    Returns:
+        {
+            'session_preference': 'jour' | 'soir' | None,
+            'current_session': Dict or None,
+            'proposed_options': List of {exam_date, sessions},
+            'message': str (message à inclure dans la réponse)
+        }
+    """
+    result = {
+        'session_preference': None,
+        'current_session': None,
+        'proposed_options': [],
+        'message': None
+    }
+
+    logger.info("🔍 Analyse de la situation session de formation...")
+
+    # 1. Vérifier si une session est déjà assignée
+    current_session = deal_data.get('Session')
+    if current_session:
+        result['current_session'] = current_session
+        logger.info(f"  Session actuelle: {current_session}")
+
+    # 2. Détecter la préférence jour/soir
+    preference = detect_session_preference_from_deal(deal_data)
+    if not preference and threads:
+        preference = detect_session_preference_from_threads(threads)
+
+    result['session_preference'] = preference
+    logger.info(f"  Préférence détectée: {preference or 'aucune'}")
+
+    # 3. Si pas de dates d'examen, pas de proposition
+    if not exam_dates:
+        logger.info("  Pas de dates d'examen, pas de proposition de session")
+        return result
+
+    # 4. Récupérer les sessions pour chaque date d'examen
+    if crm_client:
+        for exam_info in exam_dates:
+            exam_date = exam_info.get('Date_Examen')
+            if exam_date:
+                sessions = get_sessions_for_exam_date(
+                    crm_client,
+                    exam_date,
+                    session_type=preference
+                )
+                result['proposed_options'].append({
+                    'exam_info': exam_info,
+                    'sessions': sessions
+                })
+
+    # 5. Générer le message
+    result['message'] = generate_session_proposal_message(
+        result['proposed_options'],
+        preference
+    )
+
+    return result
+
+
+def generate_session_proposal_message(
+    options: List[Dict],
+    preference: Optional[str] = None
+) -> str:
+    """
+    Génère le message proposant les sessions de formation avec les dates d'examen.
+
+    Args:
+        options: Liste des options {exam_info, sessions}
+        preference: Préférence jour/soir du candidat
+
+    Returns:
+        Message formaté pour le candidat
+    """
+    if not options:
+        return ""
+
+    lines = []
+
+    for option in options:
+        exam_info = option.get('exam_info', {})
+        sessions = option.get('sessions', [])
+
+        lines.append(format_exam_with_sessions(exam_info, sessions))
+
+    message = "\n".join(lines)
+
+    if not preference:
+        message += "\nMerci de nous indiquer votre préférence (cours du jour ou cours du soir) ainsi que la date d'examen qui vous convient."
+    else:
+        pref_label = "cours du jour" if preference == 'jour' else "cours du soir"
+        message += f"\nMerci de nous confirmer la date d'examen qui vous convient pour votre formation en {pref_label}."
+
+    return message
