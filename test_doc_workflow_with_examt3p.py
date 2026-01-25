@@ -1,9 +1,9 @@
 """
-Script de test pour le workflow DOC complet avec validation ExamT3P.
+Script de test pour le workflow DOC complet avec validation ExamT3P et Date Examen VTC.
 
 Ce script teste le workflow complet incluant :
 1. AGENT TRIEUR
-2. AGENT ANALYSTE (incluant validation ExamT3P)
+2. AGENT ANALYSTE (incluant validation ExamT3P + Date Examen VTC)
 3. AGENT RÉDACTEUR
 4. CRM Note
 5. Ticket Update
@@ -123,6 +123,44 @@ def test_doc_workflow(ticket_id: str):
                 print(f"      Documents: {len(examt3p.get('documents', []))}")
                 print(f"      Paiement CMA: {examt3p.get('paiement_cma_status')}")
 
+        # Date Examen VTC
+        print(f"\n   📅 Date Examen VTC:")
+        date_vtc = analysis.get('date_examen_vtc_result', {})
+        if date_vtc:
+            case_num = date_vtc.get('case', 0)
+            case_desc = date_vtc.get('case_description', 'N/A')
+            evalbox = date_vtc.get('evalbox_status', 'N/A')
+            should_include = date_vtc.get('should_include_in_response', False)
+
+            print(f"      CAS détecté: {case_num}")
+            print(f"      Description: {case_desc}")
+            print(f"      Statut Evalbox: {evalbox}")
+            print(f"      Inclure dans réponse: {'Oui' if should_include else 'Non'}")
+
+            if should_include:
+                print(f"\n      ⚠️  ACTION REQUISE - Message à intégrer:")
+                if date_vtc.get('response_message'):
+                    msg = date_vtc['response_message']
+                    lines = msg.split('\n')[:5]
+                    for line in lines:
+                        print(f"         {line}")
+                    if len(msg.split('\n')) > 5:
+                        print(f"         ... (message tronqué)")
+
+            if date_vtc.get('next_dates'):
+                print(f"\n      📆 Prochaines dates proposées:")
+                for i, date_info in enumerate(date_vtc['next_dates'][:2], 1):
+                    date_examen = date_info.get('Date_Examen', 'N/A')
+                    libelle = date_info.get('Libelle_Affichage', '')
+                    print(f"         {i}. {date_examen} - {libelle}")
+
+            if date_vtc.get('pieces_refusees'):
+                print(f"\n      ❌ Pièces refusées (CAS 3):")
+                for piece in date_vtc['pieces_refusees']:
+                    print(f"         - {piece}")
+        else:
+            print(f"      Pas d'analyse date examen VTC")
+
         # Génération de réponse
         print("\n" + "-" * 80)
         print("3️⃣  GÉNÉRATION DE RÉPONSE")
@@ -181,6 +219,16 @@ def test_doc_workflow(ticket_id: str):
                 print(f"      → Identifiants absents (création de compte)")
             else:
                 print(f"      → Identifiants validés et données extraites")
+
+        # Information importante sur Date Examen VTC
+        if analysis.get('date_examen_vtc_result'):
+            date_vtc = analysis['date_examen_vtc_result']
+            print(f"\n   📅 Date Examen VTC:")
+            print(f"      → CAS {date_vtc.get('case', 'N/A')}: {date_vtc.get('case_description', '')}")
+            if date_vtc.get('should_include_in_response'):
+                print(f"      → ⚠️ Message à intégrer dans la réponse")
+            else:
+                print(f"      → ✅ Pas d'action spéciale requise")
 
         print("\n" + "=" * 80)
 
