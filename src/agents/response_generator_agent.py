@@ -726,19 +726,21 @@ Génère uniquement le contenu de la réponse (pas de métadonnées)."""
     def _generate_credentials_only_response(
         self,
         exament3p_data: Optional[Dict] = None,
-        threads: Optional[List] = None
+        threads: Optional[List] = None,
+        customer_message: str = ""
     ) -> Dict:
         """
-        Génère une réponse UNIQUEMENT sur les identifiants invalides.
+        Génère une réponse contextuelle quand on n'a pas accès au compte ExamT3P.
 
-        PREND EN COMPTE L'HISTORIQUE des échanges pour adapter le message:
-        - 1ère demande: message standard
-        - 2ème demande: reconnaître qu'on a déjà demandé
-        - 3ème+ demande: message plus direct
+        UTILISE CLAUDE pour générer une réponse qui:
+        1. Répond à la question sur les identifiants (si posée)
+        2. Accuse réception de TOUTES les autres demandes/questions du candidat
+        3. Explique qu'on pourra les traiter une fois qu'on a accès au dossier
 
         Args:
             exament3p_data: Données ExamT3P avec message pré-formaté
             threads: Historique des threads pour analyser les échanges précédents
+            customer_message: Message du candidat pour contextualiser la réponse
         """
         logger.info("Generating credentials-only response (identifiants invalides)")
 
@@ -746,89 +748,122 @@ Génère uniquement le contenu de la réponse (pas de métadonnées)."""
         credentials_request_count = self._count_credentials_requests_in_threads(threads)
         logger.info(f"  Nombre de demandes d'identifiants précédentes: {credentials_request_count}")
 
-        # Générer le message approprié selon l'historique
+        # Extraire le message du candidat depuis les threads si pas fourni
+        if not customer_message and threads:
+            from src.utils.text_utils import get_clean_thread_content
+            for thread in threads:
+                if thread.get('direction') == 'in':
+                    customer_message = get_clean_thread_content(thread)
+                    break
+
+        # ================================================================
+        # UTILISER CLAUDE POUR GÉNÉRER UNE RÉPONSE CONTEXTUELLE
+        # ================================================================
+        # Au lieu de templates hardcodés, on utilise Claude pour:
+        # 1. Répondre à la question sur les identifiants
+        # 2. Accuser réception de TOUTES les autres demandes du candidat
+        # 3. Expliquer qu'on pourra les traiter une fois qu'on a les identifiants
+
+        system_prompt = """Tu es un assistant de Cab Formations, centre de formation VTC.
+Tu dois générer une réponse email professionnelle et empathique.
+
+CONTEXTE CRITIQUE:
+- Nous n'avons PAS accès au compte ExamT3P du candidat
+- Sans accès, nous ne pouvons PAS: vérifier son dossier, payer ses frais d'examen, l'inscrire à une date d'examen
+- Notre PRIORITÉ est d'obtenir ses identifiants ExamT3P
+
+RÈGLES DE RÉDACTION:
+1. Accuser réception de TOUTES les demandes/questions du candidat (préférences de cours, questions, etc.)
+2. Expliquer clairement pourquoi on a besoin des identifiants
+3. Rassurer si le candidat demande si c'est normal qu'on lui demande ses identifiants (OUI c'est normal)
+4. Inclure la procédure de création de compte AU CAS OÙ il n'a pas encore de compte
+5. Expliquer qu'on pourra traiter ses autres demandes APRÈS avoir accès à son dossier
+6. Ton professionnel mais chaleureux
+7. Formater avec du markdown (gras, listes)
+8. Terminer par "Cordialement, L'équipe Cab Formations"
+
+JAMAIS:
+- Proposer des dates d'examen ou de formation (on n'a pas accès au dossier)
+- Dire qu'on va créer le compte pour lui (c'est lui qui doit le faire ou nous transmettre ses identifiants)
+- Utiliser le mot "malheureusement" plus d'une fois"""
+
+        # Adapter le prompt selon le nombre de demandes précédentes
         if credentials_request_count >= 2:
-            # 3ème demande ou plus - message direct
-            candidate_message = """Bonjour,
-
-Nous avons à nouveau testé les identifiants que vous nous avez transmis, mais la connexion a une nouvelle fois échoué.
-
-**C'est la troisième fois que nous rencontrons ce problème.**
-
-Nous comprenons que cela puisse être frustrant. Voici ce que nous vous conseillons de faire :
-
-**ÉTAPE OBLIGATOIRE - Réinitialisation du mot de passe :**
-
-1. Rendez-vous sur **https://www.exament3p.fr**
-2. Cliquez sur **"Me connecter"**
-3. Cliquez sur **"Mot de passe oublié ?"**
-4. Entrez votre adresse email
-5. Suivez le lien reçu par email pour créer un **nouveau mot de passe**
-6. **Testez vous-même la connexion** pour vérifier que ça fonctionne
-7. Une fois que vous êtes connecté avec succès, transmettez-nous vos nouveaux identifiants
-
-**Important :** Merci de ne pas nous transmettre vos identifiants tant que vous n'avez pas vérifié vous-même qu'ils fonctionnent.
-
-Nous ne pouvons malheureusement pas avancer sur votre dossier tant que nous n'avons pas accès à votre compte ExamenT3P.
-
-Bien cordialement,
-
-L'équipe Cab Formations"""
-
+            context_note = f"""ATTENTION: C'est la {credentials_request_count + 1}ème fois qu'on demande les identifiants.
+Le candidat a déjà envoyé des identifiants {credentials_request_count} fois mais ils ne fonctionnaient pas.
+- Ton: Plus direct, montrer qu'on comprend la frustration
+- Insister sur: tester la connexion SOI-MÊME avant de nous transmettre les identifiants
+- Recommander fortement: réinitialiser le mot de passe via "Mot de passe oublié"
+"""
         elif credentials_request_count == 1:
-            # 2ème demande - reconnaître la situation
-            candidate_message = """Bonjour,
-
-Nous avons testé les nouveaux identifiants que vous nous avez transmis, mais malheureusement la connexion a encore échoué.
-
-**Que s'est-il passé ?**
-Les identifiants que vous nous avez envoyés ne permettent pas de se connecter à votre compte ExamenT3P.
-
-**Ce que nous vous conseillons :**
-
-La solution la plus fiable est de **réinitialiser votre mot de passe** :
-
-1. Allez sur **https://www.exament3p.fr**
-2. Cliquez sur "Me connecter"
-3. Cliquez sur **"Mot de passe oublié ?"**
-4. Suivez les instructions reçues par email
-5. Créez un nouveau mot de passe
-6. **Testez la connexion vous-même** pour être sûr que ça fonctionne
-7. Transmettez-nous ensuite vos identifiants
-
-Nous ne pouvons pas continuer le traitement de votre dossier sans accès à votre compte ExamenT3P.
-
-Dans l'attente de votre retour.
-
-Bien cordialement,
-
-L'équipe Cab Formations"""
-
+            context_note = """C'est la 2ème demande d'identifiants.
+Le candidat a déjà envoyé des identifiants une fois mais ils ne fonctionnaient pas.
+- Reconnaître la situation (on a déjà demandé)
+- Recommander de réinitialiser le mot de passe
+"""
         else:
-            # 1ère demande - message standard
+            context_note = """C'est la 1ère demande d'identifiants (ou le candidat mentionne qu'on lui a demandé).
+- Si le candidat demande "est-ce normal?": rassurer que OUI
+- Expliquer clairement pourquoi on a besoin des identifiants
+- Donner la procédure de création de compte si pas encore fait
+"""
+
+        user_prompt = f"""{context_note}
+
+MESSAGE DU CANDIDAT:
+{customer_message}
+
+Génère une réponse email complète qui:
+1. Accuse réception de TOUTES ses demandes (préférences de cours, questions, etc.)
+2. Explique pourquoi on a besoin de ses identifiants ExamT3P
+3. Demande ses identifiants
+4. Inclut la procédure de création de compte (au cas où)
+5. Précise qu'on traitera ses autres demandes dès qu'on aura accès à son dossier
+
+IMPORTANT: La réponse doit commencer par "Bonjour" (pas de prénom si pas connu)."""
+
+        try:
+            response = self.client.messages.create(
+                model=self.model,
+                max_tokens=1500,
+                temperature=0.3,
+                system=system_prompt,
+                messages=[{"role": "user", "content": user_prompt}]
+            )
+            candidate_message = response.content[0].text.strip()
+            logger.info(f"  Claude a généré une réponse contextuelle ({len(candidate_message)} caractères)")
+
+        except Exception as e:
+            logger.error(f"  Erreur Claude API: {e}")
+            # Fallback sur le message pré-généré si disponible
             if exament3p_data and exament3p_data.get('candidate_response_message'):
                 candidate_message = exament3p_data['candidate_response_message']
             else:
                 candidate_message = """Bonjour,
 
-Nous avons tenté d'accéder à votre dossier sur la plateforme ExamenT3P avec les identifiants que vous nous avez transmis, mais la connexion a échoué.
+Nous avons bien reçu votre message.
 
-**Pouvez-vous vérifier vos identifiants et nous les retransmettre ?**
+Pour pouvoir traiter votre demande et avancer sur votre dossier, nous avons besoin d'accéder à votre compte ExamT3P.
 
-Si vous avez modifié votre mot de passe ou si vous n'êtes pas certain de vos identifiants, vous pouvez :
+**Pourquoi avons-nous besoin de vos identifiants ?**
+Sans accès à votre compte, il nous est impossible de :
+- Vérifier l'état de votre dossier auprès de la CMA
+- Procéder au paiement de vos frais d'examen
+- Vous inscrire à une date d'examen
 
-1. Vous rendre sur **https://www.exament3p.fr**
-2. Cliquer sur "Me connecter"
-3. Utiliser le lien **"Mot de passe oublié ?"**
-4. Suivre les instructions pour réinitialiser votre mot de passe
-5. Nous transmettre vos nouveaux identifiants par email
+**Merci de nous transmettre vos identifiants de connexion ExamT3P :**
+- Identifiant (généralement votre email)
+- Mot de passe
 
-**Important :** Nous ne pouvons pas avancer sur votre dossier tant que nous n'avons pas accès à votre compte ExamenT3P.
+**Vous n'avez pas encore de compte ExamT3P ?**
+1. Rendez-vous sur https://www.exament3p.fr/id/14
+2. Cliquez sur "S'inscrire"
+3. Complétez le formulaire
+4. Transmettez-nous vos identifiants par retour de mail
 
-Dans l'attente de votre retour.
+Dès réception de vos identifiants, nous pourrons traiter l'ensemble de vos demandes.
 
-Bien cordialement,
-
+Cordialement,
 L'équipe Cab Formations"""
 
         return {

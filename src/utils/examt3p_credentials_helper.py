@@ -370,9 +370,18 @@ def get_credentials_with_validation(
         if detect_credentials_request_in_history(threads):
             logger.warning("⚠️  Identifiants non trouvés MAIS demande d'identifiants déjà faite!")
             logger.info("→ On doit redemander les identifiants au candidat")
+
+            # Détecter si le candidat a exprimé une préférence de cours
+            session_preference = detect_session_preference_in_threads(threads)
+            if session_preference:
+                logger.info(f"  📚 Préférence de cours détectée: {session_preference}")
+
             result['should_respond_to_candidate'] = True
-            result['candidate_response_message'] = generate_credentials_request_followup_response()
+            result['candidate_response_message'] = generate_credentials_request_followup_response(
+                include_session_preference=session_preference
+            )
             result['credentials_request_sent'] = True  # Flag pour traçabilité
+            result['session_preference'] = session_preference  # Pour traçabilité
             return result
 
         # CAS 2: On a demandé de créer le compte
@@ -533,6 +542,58 @@ def detect_account_creation_request_in_history(threads: List[Dict]) -> bool:
                 return True
 
     return False
+
+
+def detect_session_preference_in_threads(threads: List[Dict]) -> Optional[str]:
+    """
+    Détecte si le candidat a exprimé une préférence pour les cours du jour ou du soir
+    dans ses messages.
+
+    Returns:
+        "cours du soir" ou "cours du jour" si détecté, None sinon
+    """
+    from src.utils.text_utils import get_clean_thread_content
+
+    for thread in threads:
+        # Uniquement les messages ENTRANTS (du candidat)
+        if thread.get('direction') != 'in':
+            continue
+
+        content = get_clean_thread_content(thread)
+        content_lower = content.lower()
+
+        # Patterns pour cours du soir
+        soir_patterns = [
+            r'cours\s+du\s+soir',
+            r'soir',
+            r'18h',
+            r'apr[èe]s\s+le\s+travail',
+            r'le\s+soir',
+            r'en\s+soir[ée]e',
+        ]
+
+        # Patterns pour cours du jour
+        jour_patterns = [
+            r'cours\s+du\s+jour',
+            r'journ[ée]e',
+            r'matin',
+            r'apr[èe]s.midi',
+            r'en\s+journ[ée]e',
+        ]
+
+        # Vérifier cours du soir en premier (plus commun)
+        for pattern in soir_patterns:
+            if re.search(pattern, content_lower, re.IGNORECASE):
+                logger.info(f"🔍 Préférence détectée: cours du soir (pattern: {pattern})")
+                return "cours du soir"
+
+        # Vérifier cours du jour
+        for pattern in jour_patterns:
+            if re.search(pattern, content_lower, re.IGNORECASE):
+                logger.info(f"🔍 Préférence détectée: cours du jour (pattern: {pattern})")
+                return "cours du jour"
+
+    return None
 
 
 def detect_credentials_request_in_history(threads: List[Dict]) -> bool:
