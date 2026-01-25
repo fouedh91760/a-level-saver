@@ -321,12 +321,14 @@ class DOCTicketWorkflow:
         subject = ticket.get('subject', '')
         email = ticket.get('email', '')
 
-        # Get first customer message
-        threads = self.desk_client.get_ticket_threads(ticket_id)
+        # Get first customer message with FULL content
+        from src.utils.text_utils import get_clean_thread_content
+
+        threads = self.desk_client.get_all_threads_with_full_content(ticket_id)
         customer_message = ""
-        for thread in threads.get('data', []):
+        for thread in threads:
             if thread.get('direction') == 'in':
-                customer_message = thread.get('content', '')
+                customer_message = get_clean_thread_content(thread)
                 break
 
         # Apply triage rules (simplified - full logic would check all 7 rules)
@@ -407,9 +409,8 @@ class DOCTicketWorkflow:
         # Import du helper pour la gestion des identifiants
         from src.utils.examt3p_credentials_helper import get_credentials_with_validation
 
-        # Récupérer les threads du ticket
-        threads = self.desk_client.get_ticket_threads(ticket_id)
-        threads_data = threads.get('data', [])
+        # Récupérer les threads du ticket avec contenu complet
+        threads_data = self.desk_client.get_all_threads_with_full_content(ticket_id)
 
         # Workflow complet de validation des identifiants
         credentials_result = get_credentials_with_validation(
@@ -526,11 +527,13 @@ class DOCTicketWorkflow:
         # Get ticket info
         ticket = self.desk_client.get_ticket(ticket_id)
 
-        # Extract customer message
+        # Extract customer message with proper content extraction
+        from src.utils.text_utils import get_clean_thread_content
+
         customer_message = ""
         for thread in analysis_result.get('threads', []):
             if thread.get('direction') == 'in':
-                customer_message = thread.get('content', '')
+                customer_message = get_clean_thread_content(thread)
                 break
 
         # Generate response
