@@ -975,9 +975,13 @@ L'équipe Cab Formations"""
 
             response_message = f"""Bonjour,
 
-Nous avons bien pris connaissance de votre situation concernant la formation que vous n'avez pas pu suivre.
+Nous avons bien pris connaissance de votre message concernant la formation.
 
-**Votre examen est prévu le {exam_date}.** Vous avez deux options :
+**⚠️ Information importante : Vous êtes inscrit(e) à l'examen VTC du {exam_date}.**
+
+La formation en visioconférence et le e-learning sont des outils de préparation, mais votre inscription à l'examen est déjà validée auprès de la CMA (Chambre des Métiers et de l'Artisanat).
+
+Vous avez deux possibilités :
 
 ---
 
@@ -987,24 +991,28 @@ Si vous estimez que le **e-learning** (formation à distance) vous a permis d'ac
 
 📚 **Rappel** : Vous avez accès aux cours en ligne sur : **https://elearning.cab-formations.fr**
 
+La formation en visioconférence est un complément, mais n'est pas obligatoire pour se présenter à l'examen.
+
 ---
 
 ## Option B : Reporter votre examen
 
-Si vous souhaitez reporter votre examen, **un justificatif de force majeure est obligatoire** (certificat médical, etc.).
+Si vous souhaitez reporter votre examen, **un justificatif de force majeure couvrant la date du {exam_date} est obligatoire**.
 
-En cas de report accepté par la CMA, vous serez repositionné sur le {next_exam_date}.
+⚠️ **Attention** : Le certificat médical doit couvrir **le jour de l'examen** ({exam_date}), pas seulement la période de la formation.
+
+En cas de report accepté par la CMA, vous serez repositionné(e) sur le {next_exam_date}.
 
 **Pour demander un report :**
-1. Envoyez-nous votre **certificat médical** ou justificatif de force majeure
+1. Envoyez-nous un **certificat médical** (ou autre justificatif de force majeure) **couvrant la date du {exam_date}**
 2. Nous transmettrons votre demande à la CMA
 3. La CMA vous repositionnera sur la prochaine date d'examen disponible
 
-⚠️ **Important** : Le simple fait de ne pas avoir suivi la formation n'est **pas** un motif valable de report. Seule la force majeure (maladie, accident, décès d'un proche, etc.) permet de reporter un examen.
+⚠️ **Important** : Le simple fait de ne pas avoir suivi la formation n'est **pas** un motif valable de report auprès de la CMA. Seule la force majeure (maladie le jour de l'examen, accident, décès d'un proche, etc.) permet de reporter.
 
 ---
 
-**Merci de nous indiquer votre choix** afin que nous puissions poursuivre le traitement de votre dossier.
+**Merci de nous indiquer votre choix** afin que nous puissions vous accompagner au mieux.
 
 Cordialement,
 L'équipe Cab Formations"""
