@@ -103,6 +103,8 @@ def get_next_exam_dates(
                     # Parser la date (format ISO ou datetime)
                     if 'T' in str(date_cloture_str):
                         date_cloture = datetime.fromisoformat(date_cloture_str.replace('Z', '+00:00'))
+                        # Rendre la date naive pour comparaison (supprimer le timezone)
+                        date_cloture = date_cloture.replace(tzinfo=None)
                     else:
                         date_cloture = datetime.strptime(str(date_cloture_str), "%Y-%m-%d")
 
@@ -186,6 +188,8 @@ def get_next_exam_dates_any_department(
                 try:
                     if 'T' in str(date_cloture_str):
                         date_cloture = datetime.fromisoformat(date_cloture_str.replace('Z', '+00:00'))
+                        # Rendre la date naive pour comparaison (supprimer le timezone)
+                        date_cloture = date_cloture.replace(tzinfo=None)
                     else:
                         date_cloture = datetime.strptime(str(date_cloture_str), "%Y-%m-%d")
 
