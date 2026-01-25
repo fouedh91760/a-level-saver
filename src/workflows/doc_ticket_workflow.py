@@ -29,6 +29,7 @@ sys.path.insert(0, str(project_root))
 
 from src.agents.response_generator_agent import ResponseGeneratorAgent
 from src.agents.deal_linking_agent import DealLinkingAgent
+from src.agents.examt3p_agent import ExamT3PAgent
 from src.zoho_client import ZohoDeskClient, ZohoCRMClient
 from knowledge_base.scenarios_mapping import (
     detect_scenario_from_text,
@@ -50,6 +51,7 @@ class DOCTicketWorkflow:
         self.crm_client = ZohoCRMClient()
         self.response_generator = ResponseGeneratorAgent()
         self.deal_linker = DealLinkingAgent()
+        self.examt3p_agent = ExamT3PAgent()
 
         logger.info("✅ DOCTicketWorkflow initialized")
 
@@ -391,7 +393,7 @@ class DOCTicketWorkflow:
         else:
             logger.warning("  ⚠️  No deal found for this ticket")
 
-        # Source 2: ExamenT3P (would use ExamT3PAgent here)
+        # Source 2: ExamenT3P
         logger.info("  🌐 Source 2/6: ExamenT3P...")
         exament3p_data = {
             'compte_existe': False,
@@ -401,8 +403,32 @@ class DOCTicketWorkflow:
             'documents_manquants': [],
             'paiement_cma_status': 'N/A'
         }
-        # TODO: Call ExamT3PAgent to scrape data
-        # exament3p_data = await self.examt3p_agent.scrape_candidate(email)
+
+        # Extract credentials from CRM deal if available
+        identifiant_evalbox = deal_data.get('IDENTIFIANT_EVALBOX')
+        mdp_evalbox = deal_data.get('MDP_EVALBOX')
+
+        if identifiant_evalbox and mdp_evalbox:
+            logger.info(f"  📧 Identifiants trouvés dans le CRM: {identifiant_evalbox}")
+            try:
+                # Call ExamT3PAgent to scrape data
+                examt3p_result = self.examt3p_agent.process({
+                    'username': identifiant_evalbox,
+                    'password': mdp_evalbox
+                })
+
+                if examt3p_result.get('success'):
+                    exament3p_data = examt3p_result
+                    logger.info("  ✅ Données ExamenT3P extraites avec succès")
+                else:
+                    logger.warning(f"  ⚠️  Échec extraction ExamenT3P: {examt3p_result.get('error')}")
+                    exament3p_data['extraction_error'] = examt3p_result.get('error')
+            except Exception as e:
+                logger.error(f"  ❌ Erreur lors de l'extraction ExamenT3P: {e}")
+                exament3p_data['extraction_error'] = str(e)
+        else:
+            logger.warning("  ⚠️  Identifiants ExamenT3P non disponibles dans le CRM")
+            exament3p_data['extraction_error'] = "Identifiants manquants dans le CRM"
 
         # Source 3: Evalbox (Google Sheet)
         logger.info("  📊 Source 3/6: Evalbox...")
@@ -572,6 +598,8 @@ class DOCTicketWorkflow:
             self.desk_client.close()
         if hasattr(self, 'crm_client'):
             self.crm_client.close()
+        if hasattr(self, 'examt3p_agent'):
+            self.examt3p_agent.close()
 
 
 def test_workflow():

@@ -34,6 +34,7 @@ logger = logging.getLogger(__name__)
 from src.zoho_client import ZohoDeskClient, ZohoCRMClient
 from src.agents.deal_linking_agent import DealLinkingAgent
 from src.agents.response_generator_agent import ResponseGeneratorAgent
+from src.agents.examt3p_agent import ExamT3PAgent
 from src.utils.text_utils import clean_html_content
 
 
@@ -72,6 +73,7 @@ def test_draft_generation(ticket_id: str):
     crm_client = ZohoCRMClient()
     deal_linker = DealLinkingAgent()
     response_generator = ResponseGeneratorAgent()
+    examt3p_agent = ExamT3PAgent()
 
     try:
         # ================================================================
@@ -121,19 +123,55 @@ def test_draft_generation(ticket_id: str):
             print("   ⚠️  Aucun deal trouvé")
 
         # ================================================================
-        # ÉTAPE 3: Données ExamenT3P (simulées pour ce test)
+        # ÉTAPE 3: Données ExamenT3P
         # ================================================================
         print("\n3️⃣  Données ExamenT3P...")
-        print("   ℹ️  Données simulées (ExamT3PAgent pas encore intégré)")
 
         exament3p_data = {
-            'compte_existe': False,  # Simulé
+            'compte_existe': False,
             'identifiant': None,
             'mot_de_passe': None,
             'documents': [],
             'documents_manquants': [],
             'paiement_cma_status': 'N/A'
         }
+
+        # Extract credentials from CRM deal if available
+        identifiant_evalbox = deal_data.get('IDENTIFIANT_EVALBOX') if deal_data else None
+        mdp_evalbox = deal_data.get('MDP_EVALBOX') if deal_data else None
+
+        if identifiant_evalbox and mdp_evalbox:
+            print(f"   📧 Identifiants trouvés: {identifiant_evalbox}")
+            print("   🌐 Extraction des données depuis exament3p.fr...")
+            try:
+                # Call ExamT3PAgent to scrape data
+                examt3p_result = examt3p_agent.process({
+                    'username': identifiant_evalbox,
+                    'password': mdp_evalbox
+                })
+
+                if examt3p_result.get('success'):
+                    exament3p_data = examt3p_result
+                    print("   ✅ Données ExamenT3P extraites avec succès")
+                    # Display some key info
+                    if exament3p_data.get('num_dossier'):
+                        print(f"   📋 Dossier: {exament3p_data.get('num_dossier')}")
+                    if exament3p_data.get('statut_dossier'):
+                        print(f"   📊 Statut: {exament3p_data.get('statut_dossier')}")
+                    if exament3p_data.get('date_examen'):
+                        print(f"   📅 Date examen: {exament3p_data.get('date_examen')}")
+                else:
+                    print(f"   ⚠️  Échec extraction: {examt3p_result.get('error')}")
+                    print("   ℹ️  Utilisation de données vides")
+                    exament3p_data['extraction_error'] = examt3p_result.get('error')
+            except Exception as e:
+                print(f"   ❌ Erreur lors de l'extraction: {e}")
+                print("   ℹ️  Utilisation de données vides")
+                exament3p_data['extraction_error'] = str(e)
+        else:
+            print("   ⚠️  Identifiants ExamenT3P non disponibles dans le CRM")
+            print("   ℹ️  Utilisation de données vides")
+            exament3p_data['extraction_error'] = "Identifiants manquants dans le CRM"
 
         # ================================================================
         # ÉTAPE 4: Données Evalbox (simulées)
@@ -282,6 +320,7 @@ def test_draft_generation(ticket_id: str):
         desk_client.close()
         crm_client.close()
         deal_linker.close()
+        examt3p_agent.close()
 
 
 def main():
