@@ -35,6 +35,7 @@ NOTE: "Documents manquants" et "Documents refusés" sont utilisés
 Autres champs synchronisés:
 - identifiant                   → IDENTIFIANT_EVALBOX (si vide)
 - mot_de_passe                  → MDP_EVALBOX (si vide)
+- departement                   → CMA_de_depot (si vide ou différent)
 - date_examen + departement     → Date_examen_VTC (lookup vers session CRM)
 """
 import logging
@@ -263,7 +264,41 @@ def sync_examt3p_to_crm(
         })
 
     # ================================================================
-    # 3. VÉRIFICATION RÈGLES CRITIQUES POUR DATE EXAMEN
+    # 3. SYNCHRONISATION CMA_de_depot (département)
+    # ================================================================
+    crm_cma_depot = deal_data.get('CMA_de_depot', '')
+    examt3p_departement = examt3p_data.get('departement', '')
+
+    if examt3p_departement:
+        # Formater le département pour le CRM (format: numéro simple ou "CMA XX")
+        # On vérifie si le département ExamT3P est différent de celui du CRM
+        import re
+        crm_dept_num = None
+        if crm_cma_depot:
+            match = re.search(r'\b(\d{2,3})\b', str(crm_cma_depot))
+            if match:
+                crm_dept_num = match.group(1)
+
+        examt3p_dept_num = None
+        match = re.search(r'\b(\d{2,3})\b', str(examt3p_departement))
+        if match:
+            examt3p_dept_num = match.group(1)
+
+        # Mettre à jour si vide OU si différent
+        if examt3p_dept_num and (not crm_cma_depot or crm_dept_num != examt3p_dept_num):
+            # Utiliser le même format que le CRM s'il existe, sinon juste le numéro
+            new_cma_depot = examt3p_dept_num
+            logger.info(f"  📍 CMA_de_depot: '{crm_cma_depot or 'VIDE'}' → '{new_cma_depot}'")
+            updates_to_apply['CMA_de_depot'] = new_cma_depot
+            result['changes_made'].append({
+                'field': 'CMA_de_depot',
+                'old_value': crm_cma_depot or '',
+                'new_value': new_cma_depot,
+                'source': 'examt3p'
+            })
+
+    # ================================================================
+    # 4. VÉRIFICATION RÈGLES CRITIQUES POUR DATE EXAMEN
     # ================================================================
     # Note: La modification de Date_examen_VTC est faite par sync_exam_date_from_examt3p()
     # qui est appelée séparément dans le workflow. On vérifie ici si on est dans un état bloqué
@@ -282,7 +317,7 @@ def sync_examt3p_to_crm(
         logger.warning(f"  🔒 {reason}")
 
     # ================================================================
-    # 4. APPLIQUER LES MISES À JOUR
+    # 5. APPLIQUER LES MISES À JOUR
     # ================================================================
     if updates_to_apply and not dry_run:
         try:
@@ -305,7 +340,7 @@ def sync_examt3p_to_crm(
         result['crm_updated'] = False
 
     # ================================================================
-    # 5. GÉNÉRER CONTENU POUR NOTE CRM
+    # 6. GÉNÉRER CONTENU POUR NOTE CRM
     # ================================================================
     if result['changes_made'] or result['blocked_changes']:
         note_lines = ["📊 SYNC EXAMT3P → CRM", f"Date: {datetime.now().strftime('%d/%m/%Y %H:%M')}"]
