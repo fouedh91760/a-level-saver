@@ -66,16 +66,15 @@ def get_sessions_for_exam_date(
         url = f"{settings.zoho_crm_api_url}/Sessions1/search"
 
         # Critère:
-        # - Statut = PLANIFIÉ
+        # - Statut = PLANIFIÉ (ou null)
         # - Date_fin dans la plage (proche de l'examen)
         # - Date_debut >= aujourd'hui (pas encore commencée)
-        # - Lieu_de_formation = VISIO Zoom VTC (sessions Uber uniquement)
+        # Note: Filtrage Lieu_de_formation = VISIO Zoom VTC fait en Python après récupération
         criteria = (
-            f"((Statut:equals:PLANIFIÉ)"
+            f"(((Statut:equals:PLANIFIÉ)or(Statut:equals:null))"
             f"and(Date_fin:greater_equal:{min_end_date.strftime('%Y-%m-%d')})"
             f"and(Date_fin:less_equal:{max_end_date.strftime('%Y-%m-%d')})"
-            f"and(Date_d_but:greater_equal:{today_str})"
-            f"and(Lieu_de_formation.name:equals:VISIO Zoom VTC))"
+            f"and(Date_d_but:greater_equal:{today_str}))"
         )
 
         # Pagination
@@ -108,13 +107,36 @@ def get_sessions_for_exam_date(
             logger.warning(f"Aucune session trouvée pour l'examen du {exam_date}")
             return []
 
-        logger.info(f"  Total: {len(all_sessions)} session(s) trouvée(s)")
+        logger.info(f"  Total: {len(all_sessions)} session(s) trouvée(s) (avant filtrage Lieu)")
+
+        # Filtrer par Lieu_de_formation = VISIO Zoom VTC (sessions Uber uniquement)
+        uber_sessions = []
+        for session in all_sessions:
+            lieu = session.get('Lieu_de_formation')
+            lieu_name = ""
+            if isinstance(lieu, dict):
+                lieu_name = lieu.get('name', '')
+            elif lieu:
+                lieu_name = str(lieu)
+
+            # Garder uniquement les sessions VISIO Zoom VTC
+            if 'VISIO' in lieu_name.upper() and 'VTC' in lieu_name.upper():
+                uber_sessions.append(session)
+                logger.debug(f"  Session Uber: {session.get('Name')} - Lieu: {lieu_name}")
+            else:
+                logger.debug(f"  Session ignorée (lieu={lieu_name}): {session.get('Name')}")
+
+        if not uber_sessions:
+            logger.warning(f"Aucune session Uber (VISIO Zoom VTC) trouvée pour l'examen du {exam_date}")
+            return []
+
+        logger.info(f"  ✅ {len(uber_sessions)} session(s) Uber (VISIO Zoom VTC)")
 
         # Filtrer et catégoriser par type (CDJ/CDS)
         sessions_jour = []
         sessions_soir = []
 
-        for session in all_sessions:
+        for session in uber_sessions:
             session_name = session.get('Name', '').lower()
             date_fin = session.get('Date_fin', '')
 
