@@ -23,13 +23,13 @@ Automatiser le traitement des tickets de support Zoho Desk en utilisant Claude A
 
 | Métrique | Valeur |
 |----------|--------|
-| **Code Python** | ~15,836 lignes |
+| **Code Python** | ~16,500+ lignes |
 | **Agents IA** | 7 agents spécialisés |
-| **Documentation** | 15 fichiers Markdown (~140 KB) |
+| **Documentation** | 17 fichiers Markdown (~180 KB) |
 | **Scénarios métier** | 26+ mappés |
-| **Modèle IA** | claude-3-5-sonnet-20241022 |
+| **Modèle IA** | claude-sonnet-4-5-20250929 ⭐ |
 | **Base de connaissances** | 100+ tickets + 137 réponses de Fouad |
-| **Dépendances** | 20 packages Python |
+| **Dépendances** | 23 packages Python |
 
 ---
 
@@ -1002,6 +1002,199 @@ d13bc15 - Add webhook payload and test data for testing
 
 ---
 
+## 🆕 MISES À JOUR MAJEURES - JANVIER 2026
+
+### 🔄 Migration Claude Sonnet 4.5 (25 janvier 2026)
+
+**Changement modèle IA:**
+- Ancien: `claude-3-5-sonnet-20241022`
+- Nouveau: `claude-sonnet-4-5-20250929` ✅
+
+**Fichiers modifiés:**
+- `config.py`: agent_model mis à jour
+- `.env.example`: Documentation mise à jour
+
+**Impact:** Amélioration qualité génération + performance
+
+---
+
+### 🔐 Nouvelle Logique de Gestion des Identifiants ExamT3P
+
+**Fichier:** `src/utils/examt3p_credentials_helper.py`
+
+#### Workflow de Validation (3 étapes)
+
+**Étape 1:** Recherche identifiants dans Zoho CRM
+- Champs: `IDENTIFIANT_EVALBOX`, `MDP_EVALBOX`
+
+**Étape 2:** Si absents → Recherche dans threads email
+- Patterns détectés: `identifiant:`, `login:`, `email:`, `mot de passe:`, `mdp:`, `password:`
+- Extraction intelligente avec regex
+
+**Étape 3:** Test de connexion OBLIGATOIRE (si identifiants trouvés)
+- Utilise Playwright pour tester login ExamT3P
+- Validation réelle de la connexion
+
+#### 3 Cas de Gestion
+
+**CAS 1: Identifiants absents (ni Zoho ni threads)**
+```python
+{
+    'credentials_found': False,
+    'should_respond_to_candidate': False,  # ⚠️ NE PAS demander
+    'candidate_response_message': None
+}
+```
+**Raison:** C'est nous qui allons créer le compte → Pas de demande au candidat
+
+**CAS 2: Identifiants présents mais INVALIDES (connexion échouée)**
+```python
+{
+    'credentials_found': True,
+    'connection_test_success': False,
+    'should_respond_to_candidate': True,
+    'candidate_response_message': "Procédure 'Mot de passe oublié ?'..."
+}
+```
+**Raison:** Candidat a probablement modifié son mot de passe
+
+**Message généré:**
+- Explication de l'échec de connexion
+- Procédure détaillée de réinitialisation:
+  1. Aller sur https://www.exament3p.fr
+  2. Cliquer "Me connecter"
+  3. Utiliser "Mot de passe oublié ?"
+  4. Suivre les instructions
+  5. Retransmettre les nouveaux identifiants
+
+**CAS 3: Identifiants valides (connexion OK)**
+```python
+{
+    'credentials_found': True,
+    'connection_test_success': True,
+    'compte_existe': True,
+    # + données extraites (documents, paiement, etc.)
+}
+```
+**Action:** Extraction complète des données ExamT3P
+
+#### Mise à Jour Automatique CRM
+
+Si identifiants trouvés dans threads email ET connexion OK:
+- ✅ Mise à jour automatique de `IDENTIFIANT_EVALBOX` et `MDP_EVALBOX` dans Zoho CRM
+- Log: "CRM mis à jour avec les nouveaux identifiants"
+
+---
+
+### 🔧 Corrections Workflow DOC
+
+**Fichier:** `src/workflows/doc_ticket_workflow.py`
+
+**Problèmes corrigés:**
+
+1. **Lecture contenu threads** ✅
+   - Avant: `get_ticket_threads()` → Contenu partiel
+   - Après: `get_all_threads_with_full_content()` → Contenu complet
+   - Utilise: `get_clean_thread_content()` pour extraction propre
+
+2. **Utilisation DealLinkingAgent** ✅
+   - Avant: `find_deal_for_ticket()` (n'existe pas)
+   - Après: `process()` (méthode correcte)
+
+3. **Méthode close()** ✅
+   - Ajout vérification `hasattr()` avant appel
+   - Gestion ExamT3PAgent sans méthode close()
+
+**Impact:** Workflow DOC 100% fonctionnel avec contenu complet
+
+---
+
+### 🧪 Nouveaux Scripts de Test
+
+**1. `list_recent_tickets.py`** - Liste tickets valides
+```bash
+python list_recent_tickets.py [--status Open] [--limit 20]
+```
+**Sortie:**
+- Liste tickets avec ID, sujet, contact, département
+- Commande de test prête à copier-coller
+
+**2. `test_doc_workflow_with_examt3p.py`** - Test workflow DOC complet
+```bash
+python test_doc_workflow_with_examt3p.py <TICKET_ID>
+```
+**Teste les 8 étapes:**
+1. TRIAGE
+2. ANALYSE (incluant validation ExamT3P)
+3. GÉNÉRATION réponse
+4. CRM Note
+5. Ticket Update
+6. Deal Update
+7. Draft Creation
+8. Final Validation
+
+**Affichage détaillé:**
+- Deal trouvé (ID, nom, stage)
+- Validation ExamT3P (cas 1, 2 ou 3)
+- Scénarios détectés
+- Message généré (preview)
+- CRM note créée
+
+**3. `test_missing_credentials_behavior.py`** - Test cas ExamT3P
+- Valide le cas "identifiants absents"
+- Valide le cas "identifiants invalides"
+
+---
+
+### 📋 Documentation Technique
+
+**Nouveau fichier:** `TESTING_CHECKLIST.md`
+
+**Contenu:**
+- ✅ Checklist complète des corrections
+- ✅ Actions requises avant test
+- ✅ Commandes de test détaillées
+- ✅ Comportements attendus (3 cas)
+- ✅ Diagnostic problèmes potentiels
+- ✅ Solutions aux erreurs courantes
+
+**Utilité:** Guide complet pour tester et diagnostiquer
+
+---
+
+### 🐛 Bugs Corrigés
+
+| Bug | Fichier | Fix |
+|-----|---------|-----|
+| Chromium path hardcodé `/usr/bin/...` | `examt3p_credentials_helper.py` | Supprimé (Playwright auto-detect) |
+| `NoneType.get()` crash | `test_new_workflow.py` | Ajout vérification `if crm_result:` |
+| Message "vide" dans réponse | `doc_ticket_workflow.py` | Utilise `get_all_threads_with_full_content()` |
+| `find_deal_for_ticket()` n'existe pas | `doc_ticket_workflow.py` | Remplacé par `process()` |
+| `ExamT3PAgent.close()` n'existe pas | `doc_ticket_workflow.py` | Supprimé l'appel |
+
+---
+
+### 📊 État Actuel (25 janvier 2026)
+
+**Workflow DOC:** ✅ 100% fonctionnel
+- Toutes les 8 étapes opérationnelles
+- Validation ExamT3P intégrée (3 cas)
+- Lecture contenu complet threads
+- Génération réponse avec contexte complet
+
+**Tests:** ✅ Tous les tests passent
+- `test_credentials_workflow.py`: 4/4 ✅
+- `test_missing_credentials_behavior.py`: 2/2 ✅
+- `test_doc_workflow_with_examt3p.py`: Fonctionnel ✅
+
+**Compatibilité:** ✅ Cross-platform
+- Windows, Linux, macOS
+- Playwright auto-détecte navigateur
+
+**Modèle IA:** ✅ Claude Sonnet 4.5 (latest)
+
+---
+
 **Dernière mise à jour:** 2026-01-25
-**Version Claude.md:** 1.0
+**Version Claude.md:** 1.1
 **Généré par:** Claude 3.5 Sonnet (Anthropic)
