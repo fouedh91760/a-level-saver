@@ -35,6 +35,7 @@ NOTE: "Documents manquants" et "Documents refusés" sont utilisés
 Autres champs synchronisés:
 - identifiant                   → IDENTIFIANT_EVALBOX (si vide)
 - mot_de_passe                  → MDP_EVALBOX (si vide)
+- date_examen + departement     → Date_examen_VTC (lookup vers session CRM)
 """
 import logging
 from datetime import datetime
@@ -264,9 +265,9 @@ def sync_examt3p_to_crm(
     # ================================================================
     # 3. VÉRIFICATION RÈGLES CRITIQUES POUR DATE EXAMEN
     # ================================================================
-    # Note: La modification de Date_examen_VTC n'est PAS faite automatiquement
-    # depuis ExamT3P. Elle est gérée par ticket_info_extractor.py
-    # Mais on vérifie quand même si on est dans un état bloqué
+    # Note: La modification de Date_examen_VTC est faite par sync_exam_date_from_examt3p()
+    # qui est appelée séparément dans le workflow. On vérifie ici si on est dans un état bloqué
+    # pour l'indiquer dans les blocked_changes
 
     effective_evalbox = new_evalbox or current_evalbox
     can_modify, reason = can_modify_exam_date(effective_evalbox, current_date_cloture)
@@ -368,3 +369,310 @@ Nous soumettrons votre demande à la CMA pour validation.
 **Important :** Sans justificatif valide, des frais de réinscription de 241€ seront à prévoir pour une nouvelle inscription."""
 
     return None
+
+
+def find_exam_session_by_date_and_dept(
+    crm_client,
+    exam_date: str,
+    departement: str
+) -> Optional[Dict[str, Any]]:
+    """
+    Recherche une session d'examen dans le CRM par date et département.
+
+    Args:
+        crm_client: Client CRM Zoho
+        exam_date: Date d'examen au format "dd/mm/yyyy" ou "yyyy-mm-dd"
+        departement: Numéro de département (ex: "75", "93")
+
+    Returns:
+        Session trouvée ou None
+    """
+    from config import settings
+    import re
+
+    if not exam_date or not departement:
+        return None
+
+    # Normaliser la date au format yyyy-mm-dd pour la recherche CRM
+    try:
+        if '/' in str(exam_date):
+            # Format dd/mm/yyyy
+            date_obj = datetime.strptime(str(exam_date), "%d/%m/%Y")
+        else:
+            # Format yyyy-mm-dd
+            date_obj = datetime.strptime(str(exam_date), "%Y-%m-%d")
+        date_iso = date_obj.strftime("%Y-%m-%d")
+        date_formatted = date_obj.strftime("%d/%m/%Y")
+    except ValueError as e:
+        logger.warning(f"  ⚠️ Format de date invalide: {exam_date} - {e}")
+        return None
+
+    logger.info(f"  🔍 Recherche session: date={date_formatted}, département={departement}")
+
+    try:
+        url = f"{settings.zoho_crm_api_url}/Dates_Examens_VTC_TAXI/search"
+
+        # Critères: Date_Examen = date ET Departement = dept
+        criteria = f"((Date_Examen:equals:{date_iso})and(Departement:equals:{departement}))"
+
+        params = {
+            "criteria": criteria,
+            "per_page": 10
+        }
+
+        response = crm_client._make_request("GET", url, params=params)
+        sessions = response.get("data", [])
+
+        if sessions:
+            session = sessions[0]
+            logger.info(f"  ✅ Session trouvée: {session.get('Name')} (ID: {session.get('id')})")
+            return session
+        else:
+            logger.warning(f"  ⚠️ Aucune session trouvée pour {date_formatted} / département {departement}")
+            return None
+
+    except Exception as e:
+        logger.error(f"  ❌ Erreur recherche session: {e}")
+        return None
+
+
+def get_crm_exam_date(deal_data: Dict[str, Any]) -> Optional[str]:
+    """
+    Extrait la date d'examen du deal CRM au format dd/mm/yyyy.
+
+    Returns:
+        Date formatée ou None
+    """
+    import re
+
+    date_examen_vtc = deal_data.get('Date_examen_VTC')
+    if not date_examen_vtc:
+        return None
+
+    if isinstance(date_examen_vtc, dict):
+        # Lookup - extraire la date
+        date_value = date_examen_vtc.get('Date_Examen') or date_examen_vtc.get('name', '')
+
+        # Essayer d'extraire une date au format dd/mm/yyyy
+        if date_value and '/' in str(date_value):
+            match = re.search(r'(\d{2}/\d{2}/\d{4})', str(date_value))
+            if match:
+                return match.group(1)
+
+        # Essayer format yyyy-mm-dd
+        if date_value and len(str(date_value)) == 10 and '-' in str(date_value):
+            try:
+                date_obj = datetime.strptime(str(date_value), "%Y-%m-%d")
+                return date_obj.strftime("%d/%m/%Y")
+            except:
+                pass
+
+    return None
+
+
+def get_examt3p_exam_date(examt3p_data: Dict[str, Any]) -> Optional[str]:
+    """
+    Extrait la date d'examen des données ExamT3P au format dd/mm/yyyy.
+
+    Returns:
+        Date formatée ou None
+    """
+    date_examen = (
+        examt3p_data.get('date_examen') or
+        examt3p_data.get('examens', {}).get('date')
+    )
+
+    if not date_examen:
+        return None
+
+    # Normaliser au format dd/mm/yyyy
+    if '/' in str(date_examen):
+        return str(date_examen)
+    elif '-' in str(date_examen):
+        try:
+            date_obj = datetime.strptime(str(date_examen), "%Y-%m-%d")
+            return date_obj.strftime("%d/%m/%Y")
+        except:
+            return str(date_examen)
+
+    return None
+
+
+def sync_exam_date_from_examt3p(
+    deal_id: str,
+    deal_data: Dict[str, Any],
+    examt3p_data: Dict[str, Any],
+    crm_client,
+    dry_run: bool = False
+) -> Dict[str, Any]:
+    """
+    Synchronise la date d'examen depuis ExamT3P vers le CRM.
+
+    Logique:
+    1. Compare la date ExamT3P avec celle du CRM
+    2. Si différentes ET pas bloqué → recherche la session correspondante
+    3. Met à jour Date_examen_VTC avec l'ID de la session trouvée
+
+    RÈGLE CRITIQUE:
+    - Si Evalbox ∈ {"VALIDE CMA", "Convoc CMA reçue"} ET clôture passée
+    - → NE PAS modifier (action humaine requise)
+
+    Args:
+        deal_id: ID du deal CRM
+        deal_data: Données actuelles du deal
+        examt3p_data: Données extraites d'ExamT3P
+        crm_client: Client CRM Zoho
+        dry_run: Si True, ne fait pas les mises à jour
+
+    Returns:
+        {
+            'sync_performed': bool,
+            'date_changed': bool,
+            'old_date': str or None,
+            'new_date': str or None,
+            'session_id': str or None,
+            'blocked': bool,
+            'blocked_reason': str or None,
+            'error': str or None
+        }
+    """
+    result = {
+        'sync_performed': False,
+        'date_changed': False,
+        'old_date': None,
+        'new_date': None,
+        'session_id': None,
+        'blocked': False,
+        'blocked_reason': None,
+        'error': None
+    }
+
+    if not examt3p_data or not examt3p_data.get('compte_existe'):
+        return result
+
+    # ================================================================
+    # 1. RÉCUPÉRER LES DATES
+    # ================================================================
+    crm_date = get_crm_exam_date(deal_data)
+    examt3p_date = get_examt3p_exam_date(examt3p_data)
+
+    result['old_date'] = crm_date
+
+    if not examt3p_date:
+        logger.debug("  ℹ️ Pas de date d'examen dans ExamT3P")
+        return result
+
+    logger.info(f"  📅 Comparaison dates: CRM={crm_date or 'N/A'} vs ExamT3P={examt3p_date}")
+
+    # ================================================================
+    # 2. COMPARER LES DATES
+    # ================================================================
+    if crm_date == examt3p_date:
+        logger.info(f"  ✅ Dates synchronisées: {crm_date}")
+        result['sync_performed'] = True
+        return result
+
+    # Les dates sont différentes
+    logger.info(f"  📊 Dates différentes: CRM={crm_date or 'VIDE'} → ExamT3P={examt3p_date}")
+
+    # ================================================================
+    # 3. VÉRIFIER RÈGLES DE BLOCAGE
+    # ================================================================
+    evalbox_status = deal_data.get('Evalbox', '')
+    current_date_cloture = None
+
+    date_examen_vtc = deal_data.get('Date_examen_VTC')
+    if date_examen_vtc and isinstance(date_examen_vtc, dict):
+        current_date_cloture = date_examen_vtc.get('Date_Cloture_Inscription')
+
+    can_modify, reason = can_modify_exam_date(evalbox_status, current_date_cloture)
+
+    if not can_modify:
+        logger.warning(f"  🔒 BLOCAGE: {reason}")
+        result['blocked'] = True
+        result['blocked_reason'] = reason
+        result['sync_performed'] = True
+        return result
+
+    # ================================================================
+    # 4. RÉCUPÉRER LE DÉPARTEMENT
+    # ================================================================
+    # Priorité: ExamT3P > CRM
+    departement = (
+        examt3p_data.get('departement') or
+        deal_data.get('CMA_de_depot', '')
+    )
+
+    # Extraire le numéro de département
+    import re
+    if departement:
+        match = re.search(r'\b(\d{2,3})\b', str(departement))
+        if match:
+            departement = match.group(1)
+        else:
+            # Mappings connus
+            dept_mapping = {
+                'idf': '75', 'ile de france': '75', 'paris': '75',
+                'paca': '13', 'marseille': '13',
+                'rhone': '69', 'lyon': '69'
+            }
+            dept_lower = str(departement).lower()
+            for key, value in dept_mapping.items():
+                if key in dept_lower:
+                    departement = value
+                    break
+
+    if not departement:
+        logger.warning("  ⚠️ Département non trouvé - impossible de chercher la session")
+        result['error'] = "Département non trouvé"
+        return result
+
+    logger.info(f"  📍 Département: {departement}")
+
+    # ================================================================
+    # 5. RECHERCHER LA SESSION CORRESPONDANTE
+    # ================================================================
+    session = find_exam_session_by_date_and_dept(crm_client, examt3p_date, departement)
+
+    if not session:
+        logger.warning(f"  ⚠️ Session non trouvée pour {examt3p_date} / {departement}")
+        result['error'] = f"Session non trouvée: {examt3p_date} / département {departement}"
+        return result
+
+    session_id = session.get('id')
+    result['session_id'] = session_id
+    result['new_date'] = examt3p_date
+
+    # ================================================================
+    # 6. METTRE À JOUR LE CRM
+    # ================================================================
+    if dry_run:
+        logger.info(f"  🔍 DRY RUN: Date_examen_VTC serait mis à jour vers {session.get('Name')}")
+        result['date_changed'] = True
+        result['sync_performed'] = True
+        return result
+
+    try:
+        from config import settings
+        url = f"{settings.zoho_crm_api_url}/Deals/{deal_id}"
+        payload = {
+            "data": [{
+                "Date_examen_VTC": session_id
+            }]
+        }
+
+        response = crm_client._make_request("PUT", url, json=payload)
+
+        if response.get('data'):
+            logger.info(f"  ✅ Date_examen_VTC mis à jour: {crm_date or 'VIDE'} → {examt3p_date}")
+            result['date_changed'] = True
+            result['sync_performed'] = True
+        else:
+            logger.error(f"  ❌ Échec mise à jour Date_examen_VTC: {response}")
+            result['error'] = f"Échec mise à jour CRM: {response}"
+
+    except Exception as e:
+        logger.error(f"  ❌ Erreur mise à jour Date_examen_VTC: {e}")
+        result['error'] = str(e)
+
+    return result

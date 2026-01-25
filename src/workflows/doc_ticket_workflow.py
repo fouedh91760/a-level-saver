@@ -531,7 +531,7 @@ class DOCTicketWorkflow:
         # 2. Passer le test de sélection (Date_test_selection non vide)
         # Si ces étapes ne sont pas complétées, on ne peut pas les inscrire à l'examen
         from src.utils.uber_eligibility_helper import analyze_uber_eligibility
-        from src.utils.examt3p_crm_sync import sync_examt3p_to_crm
+        from src.utils.examt3p_crm_sync import sync_examt3p_to_crm, sync_exam_date_from_examt3p
         from src.utils.ticket_info_extractor import extract_confirmations_from_threads
         from src.utils.crm_note_logger import (
             log_examt3p_sync, log_ticket_update, log_uber_eligibility_check
@@ -559,6 +559,34 @@ class DOCTicketWorkflow:
                     deal_data = updated_deal
             # Log la sync dans une note CRM
             log_examt3p_sync(deal_id, self.crm_client, sync_result)
+
+            # ================================================================
+            # SYNC DATE D'EXAMEN DEPUIS EXAMT3P
+            # ================================================================
+            # Si la date d'examen ExamT3P diffère du CRM → mettre à jour automatiquement
+            # (sauf si règle de blocage: VALIDE CMA + clôture passée)
+            logger.info("  📅 Synchronisation date d'examen ExamT3P → CRM...")
+            date_sync_result = sync_exam_date_from_examt3p(
+                deal_id=deal_id,
+                deal_data=deal_data,
+                examt3p_data=exament3p_data,
+                crm_client=self.crm_client,
+                dry_run=False
+            )
+
+            if date_sync_result.get('date_changed'):
+                logger.info(f"  ✅ Date_examen_VTC mis à jour: {date_sync_result['old_date'] or 'VIDE'} → {date_sync_result['new_date']}")
+                # Recharger deal_data après mise à jour
+                updated_deal = self.crm_client.get_deal(deal_id)
+                if updated_deal:
+                    deal_data = updated_deal
+                # Ajouter au sync_result pour la note CRM
+                sync_result['date_sync'] = date_sync_result
+            elif date_sync_result.get('blocked'):
+                logger.warning(f"  🔒 Date_examen_VTC non modifiée: {date_sync_result['blocked_reason']}")
+                sync_result['date_sync'] = date_sync_result
+            elif date_sync_result.get('error'):
+                logger.warning(f"  ⚠️ Erreur sync date: {date_sync_result['error']}")
 
         # ================================================================
         # EXTRACTION CONFIRMATIONS DU TICKET
