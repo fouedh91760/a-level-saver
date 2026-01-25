@@ -50,6 +50,8 @@ def get_sessions_for_exam_date(
     try:
         # Parser la date d'examen
         exam_date_obj = datetime.strptime(exam_date, "%Y-%m-%d")
+        today = datetime.now()
+        today_str = today.strftime('%Y-%m-%d')
 
         # Calculer la plage de dates pour la fin de formation
         # La session doit se terminer entre (exam - MAX_DAYS) et (exam - MIN_DAYS)
@@ -57,12 +59,14 @@ def get_sessions_for_exam_date(
         max_end_date = exam_date_obj - timedelta(days=MIN_DAYS_BEFORE_EXAM)
 
         logger.info(f"  Recherche sessions se terminant entre {min_end_date.strftime('%Y-%m-%d')} et {max_end_date.strftime('%Y-%m-%d')}")
+        logger.info(f"  Filtrage: Date_debut >= {today_str} (sessions non commencées)")
 
         # Rechercher les sessions planifiées
         url = f"{settings.zoho_crm_api_url}/Sessions1/search"
 
-        # Critère: Statut = PLANIFIÉ et Date_fin dans la plage
-        criteria = f"((Statut:equals:PLANIFIÉ)and(Date_fin:greater_equal:{min_end_date.strftime('%Y-%m-%d')})and(Date_fin:less_equal:{max_end_date.strftime('%Y-%m-%d')}))"
+        # Critère: Statut = PLANIFIÉ et Date_fin dans la plage et Date_debut >= aujourd'hui
+        # (session pas encore commencée)
+        criteria = f"((Statut:equals:PLANIFIÉ)and(Date_fin:greater_equal:{min_end_date.strftime('%Y-%m-%d')})and(Date_fin:less_equal:{max_end_date.strftime('%Y-%m-%d')})and(Date_d_but:greater_equal:{today_str}))"
 
         # Pagination
         all_sessions = []
@@ -322,25 +326,28 @@ def detect_session_preference_from_threads(threads: List[Dict]) -> Optional[str]
     """
     import re
 
+    # Patterns plus spécifiques - éviter les faux positifs
     patterns_jour = [
         r"cours du jour",
-        r"en journ[ée]e",
-        r"la journ[ée]e",
-        r"le matin",
-        r"8h30",
-        r"9h",
-        r"journée",
+        r"en journée",
+        r"la journée",
+        r"formation.{0,20}jour",  # "formation en jour", "formation du jour"
+        r"préfère.{0,20}jour",
+        r"choisis.{0,20}jour",
     ]
 
     patterns_soir = [
         r"cours du soir",
         r"le soir",
-        r"en soir[ée]e",
-        r"18h",
-        r"19h",
-        r"après le travail",
-        r"après mon travail",
+        r"en soirée",
+        r"formation.{0,20}soir",  # "formation du soir"
+        r"préfère.{0,20}soir",
+        r"choisis.{0,20}soir",
+        r"après.{0,10}travail",
     ]
+
+    found_jour = False
+    found_soir = False
 
     for thread in threads:
         if thread.get('direction') != 'in':
@@ -351,13 +358,28 @@ def detect_session_preference_from_threads(threads: List[Dict]) -> Optional[str]
 
         for pattern in patterns_jour:
             if re.search(pattern, content_lower):
-                logger.info(f"Préférence 'jour' détectée: pattern '{pattern}'")
-                return 'jour'
+                logger.info(f"Pattern 'jour' trouvé: '{pattern}'")
+                found_jour = True
+                break
 
         for pattern in patterns_soir:
             if re.search(pattern, content_lower):
-                logger.info(f"Préférence 'soir' détectée: pattern '{pattern}'")
-                return 'soir'
+                logger.info(f"Pattern 'soir' trouvé: '{pattern}'")
+                found_soir = True
+                break
+
+    # Si les deux sont trouvés, c'est ambigu (peut-être email quoté)
+    if found_jour and found_soir:
+        logger.warning("Préférence ambiguë: patterns jour ET soir trouvés")
+        return None
+
+    if found_soir:
+        logger.info("Préférence 'soir' détectée")
+        return 'soir'
+
+    if found_jour:
+        logger.info("Préférence 'jour' détectée")
+        return 'jour'
 
     return None
 
