@@ -384,19 +384,21 @@ class DOCTicketWorkflow:
 
         # Source 1: CRM - Find contact and deal
         logger.info("  📊 Source 1/6: CRM Zoho...")
-        deal_id = self.deal_linker.find_deal_for_ticket(ticket_id, email)
+
+        # Use DealLinkingAgent.process() to find deal
+        linking_result = self.deal_linker.process({"ticket_id": ticket_id})
+
+        deal_id = linking_result.get('deal_id')
+        deal_data = linking_result.get('selected_deal') or linking_result.get('deal') or {}
 
         contact_data = {}
-        deal_data = {}
-
-        if deal_id:
-            deal = self.crm_client.get_deal(deal_id)
-            deal_data = deal
+        if email:
             contact_data = {
                 'email': email,
-                'contact_id': deal.get('Contact_Name', {}).get('id')
+                'contact_id': deal_data.get('Contact_Name', {}).get('id') if deal_data else None
             }
-        else:
+
+        if not deal_id:
             logger.warning("  ⚠️  No deal found for this ticket")
 
         # Source 2: ExamenT3P avec gestion complète des identifiants
@@ -638,8 +640,9 @@ class DOCTicketWorkflow:
             self.desk_client.close()
         if hasattr(self, 'crm_client'):
             self.crm_client.close()
-        if hasattr(self, 'examt3p_agent'):
-            self.examt3p_agent.close()
+        if hasattr(self, 'deal_linker') and hasattr(self.deal_linker, 'close'):
+            self.deal_linker.close()
+        # ExamT3PAgent doesn't have close() method, skip it
 
 
 def test_workflow():

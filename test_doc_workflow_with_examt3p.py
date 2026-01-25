@@ -189,7 +189,10 @@ def test_doc_workflow(ticket_id: str):
         return None
 
     finally:
-        workflow.close()
+        try:
+            workflow.close()
+        except Exception as e:
+            logger.warning(f"Error closing workflow: {e}")
 
 
 def main():
