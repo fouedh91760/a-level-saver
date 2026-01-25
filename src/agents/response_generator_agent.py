@@ -715,14 +715,25 @@ Génère uniquement le contenu de la réponse (pas de métadonnées)."""
                 Si 'has_consistency_issue' est True, utilise le message pré-généré.
         """
         # ================================================================
-        # CAS SPÉCIAL #0: CAS A ou CAS B Uber (AVANT identifiants!)
+        # CAS SPÉCIAL #0: Prospect ou CAS A/B Uber (AVANT identifiants!)
         # ================================================================
+        # PROSPECT: Candidat intéressé mais paiement non effectué
         # CAS A: Candidat a payé 20€ mais n'a pas finalisé son inscription
         # CAS B: Candidat a envoyé documents mais n'a pas passé le test
         # → Utiliser le message pré-généré (PAS demande identifiants ExamT3P!)
-        if uber_eligibility_data and uber_eligibility_data.get('is_uber_20_deal'):
+        if uber_eligibility_data:
             uber_case = uber_eligibility_data.get('case')
-            if uber_case in ['A', 'B']:
+            is_uber_deal = uber_eligibility_data.get('is_uber_20_deal')
+            is_prospect = uber_eligibility_data.get('is_uber_prospect')
+
+            if uber_case == 'PROSPECT' and is_prospect:
+                logger.info("🚨 MODE PROSPECT: Candidat intéressé, paiement non effectué")
+                return self._generate_uber_prospect_response(
+                    uber_eligibility_data=uber_eligibility_data,
+                    customer_message=customer_message,
+                    threads=threads
+                )
+            elif uber_case in ['A', 'B'] and is_uber_deal:
                 logger.info(f"🚨 MODE CAS {uber_case}: Utilisation message pré-généré Uber")
                 return self._generate_uber_case_a_b_response(
                     uber_eligibility_data=uber_eligibility_data,
@@ -991,6 +1002,130 @@ L'équipe Cab Formations"""
                     break  # Ne compter qu'une fois par thread
 
         return count
+
+    def _generate_uber_prospect_response(
+        self,
+        uber_eligibility_data: Dict,
+        customer_message: str = "",
+        threads: Optional[List] = None
+    ) -> Dict:
+        """
+        Génère une réponse pour les PROSPECTS Uber (paiement non effectué).
+
+        Le candidat a créé son compte mais n'a pas encore payé les 20€.
+        → Répondre à sa question
+        → Expliquer l'offre et ses avantages
+        → L'encourager à finaliser son paiement
+        """
+        logger.info("Generating Uber PROSPECT response")
+
+        system_prompt = """Tu es un assistant de Cab Formations, centre de formation VTC.
+Tu dois générer une réponse email professionnelle, rassurante et commerciale.
+
+CONTEXTE:
+- Le candidat a créé son compte mais n'a PAS encore payé les 20€
+- Il pose probablement une question générale sur l'offre ou la formation
+- Tu dois RÉPONDRE À SA QUESTION et l'ENCOURAGER À FINALISER SON PAIEMENT
+
+L'OFFRE UBER 20€ COMPREND:
+1. **Paiement des frais d'examen de 241€** à la CMA - PAYÉ PAR CAB FORMATIONS (économie de 241€!)
+2. **Formation en visio-conférence de 40 heures** avec un formateur professionnel
+   - À HORAIRES FIXES (pas à la demande!)
+   - 2 options pour s'adapter aux contraintes:
+     * Cours du JOUR: 8h30-16h30, durée 1 SEMAINE (lundi-vendredi)
+     * Cours du SOIR: 18h00-22h00, durée 2 SEMAINES (soirs du lundi-vendredi)
+3. **Accès illimité au e-learning** pour réviser à son rythme
+4. **Accompagnement personnalisé** jusqu'à l'obtention de la carte VTC
+
+RÈGLES DE RÉDACTION:
+- TOUJOURS répondre à la question posée par le candidat en PREMIER
+- Ensuite mettre en avant les avantages de l'offre (notamment les 241€ de frais d'examen payés!)
+- Être rassurant et enthousiaste
+- Créer un sentiment d'urgence: "Les places sont limitées", "Les dates se remplissent vite"
+- Encourager à finaliser le paiement: "Finalisez votre inscription dès maintenant"
+- Formater avec du markdown (gras, listes, emojis)
+- Ne JAMAIS mentionner de dates d'examen spécifiques
+- Ne JAMAIS demander d'identifiants ExamT3P
+- Terminer par "Cordialement, L'équipe Cab Formations"
+
+DURÉES DE FORMATION - ABSOLUMENT CORRECT:
+- Cours du jour: 1 SEMAINE (pas 2!)
+- Cours du soir: 2 SEMAINES (pas 4!)"""
+
+        user_prompt = f"""MESSAGE DU CANDIDAT:
+{customer_message}
+
+Génère une réponse email complète qui:
+1. Répond à sa question spécifique (sur les horaires, l'offre, etc.)
+2. Met en avant les avantages de l'offre (241€ économisés!)
+3. L'encourage à finaliser son paiement de 20€
+
+Commence par "Bonjour," (pas de prénom)."""
+
+        try:
+            response = self.anthropic_client.messages.create(
+                model=self.model,
+                max_tokens=1500,
+                temperature=0.3,
+                system=system_prompt,
+                messages=[{"role": "user", "content": user_prompt}]
+            )
+            response_message = response.content[0].text.strip()
+            logger.info(f"  Claude a généré une réponse PROSPECT ({len(response_message)} caractères)")
+
+        except Exception as e:
+            logger.error(f"  Erreur Claude API: {e}")
+            # Fallback sur message par défaut
+            pre_generated = uber_eligibility_data.get('response_message', '')
+            response_message = f"""Bonjour,
+
+Merci pour votre message et votre intérêt pour notre formation VTC !
+
+{pre_generated if pre_generated else '''Pour répondre à votre question : nos formations se déroulent à **horaires fixes** selon un planning établi. Nous proposons **deux types de sessions** pour nous adapter au mieux à vos contraintes :
+
+📅 **Cours du jour** : 8h30 - 16h30
+   → Durée : **1 semaine** (du lundi au vendredi)
+
+🌙 **Cours du soir** : 18h00 - 22h00
+   → Durée : **2 semaines** (soirées du lundi au vendredi)
+
+**Ce que comprend l'offre à 20€ :**
+
+✅ **Paiement des frais d'examen de 241€** à la CMA - entièrement pris en charge par CAB Formations
+✅ **Formation en visio-conférence de 40 heures** avec un formateur professionnel
+✅ **Accès illimité au e-learning** pour réviser à votre rythme
+✅ **Accompagnement personnalisé** jusqu'à l'obtention de votre carte VTC
+
+**Pour profiter de cette offre exceptionnelle, il vous suffit de finaliser votre paiement de 20€** sur notre plateforme.
+
+N'attendez plus pour démarrer votre parcours vers la carte VTC ! Les places sont limitées et les dates d'examen se remplissent vite.'''}
+
+Cordialement,
+L'équipe Cab Formations"""
+
+        logger.info(f"  Message généré: {len(response_message)} caractères")
+
+        return {
+            'response_text': response_message,
+            'detected_scenarios': ['SC-UBER_PROSPECT'],
+            'similar_tickets': [],
+            'validation': {
+                'SC-UBER_PROSPECT': {
+                    'compliant': True,
+                    'missing_blocks': [],
+                    'forbidden_terms_found': []
+                }
+            },
+            'requires_crm_update': False,
+            'crm_update_fields': [],
+            'should_stop_workflow': False,
+            'metadata': {
+                'input_tokens': 0,
+                'output_tokens': len(response_message),
+                'model': self.model,
+                'uber_prospect_mode': True
+            }
+        }
 
     def _generate_uber_case_a_b_response(
         self,

@@ -38,20 +38,22 @@ logger = logging.getLogger(__name__)
 
 def is_uber_20_deal(deal_data: Dict[str, Any]) -> bool:
     """
-    Vérifie si le deal est une opportunité Uber à 20€.
+    Vérifie si le deal est une opportunité Uber à 20€ GAGNÉE (paiement effectué).
 
-    Critères (élargis pour couvrir tous les cas):
-    - Amount = 20€ (ou proche) ET:
-      * Stage = GAGNÉ, ou
-      * Stage = EN ATTENTE (candidat a payé mais dossier pas encore reçu), ou
-      * Deal_Name contient "BFS" ou "NP" (indicateurs offre partenaire)
+    Critères:
+    - Stage = GAGNÉ (paiement des 20€ effectué)
+    - Amount = 20 (ou proche de 20€)
+
+    Note: Stage "EN ATTENTE" = prospect qui n'a pas encore payé (pas CAS A/B)
     """
     if not deal_data:
         return False
 
     stage = deal_data.get('Stage', '')
     amount = deal_data.get('Amount', 0)
-    deal_name = deal_data.get('Deal_Name', '')
+
+    # Vérifier si le stage est gagné (paiement effectué)
+    stage_is_won = stage and 'GAGN' in str(stage).upper()
 
     # Vérifier si le montant est 20€ (avec tolérance)
     try:
@@ -60,20 +62,37 @@ def is_uber_20_deal(deal_data: Dict[str, Any]) -> bool:
     except (ValueError, TypeError):
         amount_is_20 = False
 
-    # Si pas 20€, ce n'est pas un deal Uber
-    if not amount_is_20:
+    return stage_is_won and amount_is_20
+
+
+def is_uber_prospect(deal_data: Dict[str, Any]) -> bool:
+    """
+    Vérifie si le deal est un prospect Uber (EN ATTENTE, pas encore payé).
+
+    Critères:
+    - Stage = EN ATTENTE (ou similaire)
+    - Amount = 20 (ou proche de 20€)
+
+    Ces prospects posent des questions générales sur l'offre avant de payer.
+    """
+    if not deal_data:
         return False
 
-    # Vérifier le stage (GAGNÉ ou EN ATTENTE)
+    stage = deal_data.get('Stage', '')
+    amount = deal_data.get('Amount', 0)
+
+    # Vérifier si le stage est en attente
     stage_upper = str(stage).upper()
-    stage_is_valid = 'GAGN' in stage_upper or 'ATTENTE' in stage_upper
+    stage_is_pending = 'ATTENTE' in stage_upper or 'PENDING' in stage_upper
 
-    # Vérifier le nom du deal (BFS = offre partenaire, NP = nouveau partenaire?)
-    deal_name_upper = str(deal_name).upper()
-    name_indicates_partner = 'BFS' in deal_name_upper or ' NP ' in deal_name_upper or deal_name_upper.startswith('NP ')
+    # Vérifier si le montant est 20€ (avec tolérance)
+    try:
+        amount_float = float(amount) if amount else 0
+        amount_is_20 = 15 <= amount_float <= 25
+    except (ValueError, TypeError):
+        amount_is_20 = False
 
-    # C'est un deal Uber si le stage est valide OU si le nom indique partenaire
-    return stage_is_valid or name_indicates_partner
+    return stage_is_pending and amount_is_20
 
 
 def analyze_uber_eligibility(deal_data: Dict[str, Any]) -> Dict[str, Any]:
@@ -96,6 +115,7 @@ def analyze_uber_eligibility(deal_data: Dict[str, Any]) -> Dict[str, Any]:
     """
     result = {
         'is_uber_20_deal': False,
+        'is_uber_prospect': False,
         'case': 'NOT_UBER',
         'case_description': '',
         'should_include_in_response': False,
@@ -106,7 +126,19 @@ def analyze_uber_eligibility(deal_data: Dict[str, Any]) -> Dict[str, Any]:
 
     logger.info("🔍 Analyse de l'éligibilité Uber 20€...")
 
-    # Vérifier si c'est un deal Uber 20€
+    # ================================================================
+    # CAS PROSPECT: Deal EN ATTENTE (pas encore payé)
+    # ================================================================
+    if is_uber_prospect(deal_data):
+        result['is_uber_prospect'] = True
+        result['case'] = 'PROSPECT'
+        result['case_description'] = "Prospect Uber - Paiement non effectué"
+        result['should_include_in_response'] = True
+        result['response_message'] = generate_prospect_message()
+        logger.info("  ➡️ PROSPECT Uber: En attente de paiement")
+        return result
+
+    # Vérifier si c'est un deal Uber 20€ GAGNÉ
     if not is_uber_20_deal(deal_data):
         result['case'] = 'NOT_UBER'
         result['case_description'] = "Pas une opportunité Uber 20€"
@@ -170,6 +202,42 @@ def format_date_for_display(date_str: str) -> str:
         return date_obj.strftime("%d/%m/%Y")
     except:
         return str(date_str)
+
+
+def generate_prospect_message() -> str:
+    """
+    Génère le message pour les PROSPECTS: candidat intéressé mais paiement non effectué.
+
+    Répond aux questions générales et encourage à finaliser le paiement.
+    """
+    return """Merci pour votre intérêt pour notre formation VTC en partenariat avec Uber !
+
+**Concernant votre question sur les formations :**
+
+Nos formations de 40 heures en visio-conférence se déroulent à **horaires fixes** selon un planning établi. Nous proposons **deux types de sessions** pour nous adapter au mieux à vos contraintes :
+
+📅 **Cours du jour** : 8h30 - 16h30
+   → Durée : **1 semaine** (du lundi au vendredi)
+
+🌙 **Cours du soir** : 18h00 - 22h00
+   → Durée : **2 semaines** (soirées du lundi au vendredi)
+
+**Ce que comprend l'offre à 20€ :**
+
+✅ **Paiement des frais d'examen de 241€** à la CMA - entièrement pris en charge par CAB Formations
+✅ **Formation en visio-conférence de 40 heures** avec un formateur professionnel
+✅ **Accès illimité au e-learning** pour réviser à votre rythme
+✅ **Accompagnement personnalisé** jusqu'à l'obtention de votre carte VTC
+
+**Pour profiter de cette offre exceptionnelle, il vous suffit de :**
+
+1. **Finaliser votre paiement de 20€** sur notre plateforme
+2. Nous envoyer vos documents (pièce d'identité, justificatif de domicile, etc.)
+3. Passer un test de sélection simple
+
+Dès réception de votre paiement et de vos documents, nous pourrons vous proposer les prochaines dates d'examen disponibles dans votre région.
+
+**N'attendez plus** pour démarrer votre parcours vers la carte VTC ! Les places sont limitées et les dates d'examen se remplissent vite."""
 
 
 def generate_documents_missing_message() -> str:
