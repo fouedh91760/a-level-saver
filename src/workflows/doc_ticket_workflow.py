@@ -141,17 +141,17 @@ class DOCTicketWorkflow:
             analysis_result = self._run_analysis(ticket_id, triage_result)
             result['analysis_result'] = analysis_result
 
-            # Check VÉRIFICATION #0: ANCIEN DOSSIER
-            if analysis_result.get('ancien_dossier'):
-                logger.warning("⚠️  ANCIEN DOSSIER (avant 01/11/2025) → Alerte interne")
-                logger.warning("🛑 STOP WORKFLOW (créer draft d'alerte interne)")
-                result['workflow_stage'] = 'STOPPED_ANCIEN_DOSSIER'
-                # TODO: Create internal alert draft
+            # Check VÉRIFICATION #0: Connexion ExamT3P (SEUL critère de blocage)
+            exament3p_data = analysis_result.get('exament3p_data', {})
+            if not exament3p_data.get('compte_existe') and not exament3p_data.get('extraction_success', True):
+                logger.warning("⚠️  ÉCHEC CONNEXION EXAMENT3P → Alerte interne")
+                logger.warning("🛑 STOP WORKFLOW (impossible d'extraire les données ExamT3P)")
+                result['workflow_stage'] = 'STOPPED_EXAMT3P_FAILED'
                 result['success'] = True
                 return result
 
             # Check VÉRIFICATION #1: Identifiants ExamenT3P
-            exament3p_data = analysis_result.get('exament3p_data', {})
+            # exament3p_data already retrieved above
             if exament3p_data.get('should_respond_to_candidate'):
                 logger.warning("⚠️  IDENTIFIANTS EXAMENT3P INVALIDES OU MANQUANTS")
                 logger.info("→ L'agent rédacteur intégrera la demande d'identifiants dans la réponse globale")
@@ -748,13 +748,13 @@ class DOCTicketWorkflow:
         elif skip_date_session_analysis:
             logger.info(f"  📚 Recherche sessions... SKIPPED (raison: {skip_reason})")
 
-        # VÉRIFICATION #0: ANCIEN DOSSIER
+        # INFO: Ancien dossier (pour information uniquement, ne bloque plus)
         ancien_dossier = False
         if deal_data.get('Date_de_depot_CMA'):
             date_depot = deal_data['Date_de_depot_CMA']
             if date_depot < '2025-11-01':
                 ancien_dossier = True
-                logger.warning("⚠️  ANCIEN DOSSIER détecté (avant 01/11/2025)")
+                logger.info("ℹ️  Ancien dossier (avant 01/11/2025) - traitement normal")
 
         return {
             'contact_data': contact_data,
