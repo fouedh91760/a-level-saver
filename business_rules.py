@@ -114,6 +114,30 @@ class BusinessRules:
 
         # Étape 4: Si deal 20€ trouvé, déterminer DOC ou REFUS CMA
         if selected_deal:
+            # RÈGLE PRIORITAIRE: Si deal 20€ existe MAIS candidat demande autre service → Contact
+            # Mots-clés à détecter dans le sujet et/ou dernier thread
+            other_service_keywords = [
+                "autre formation",
+                "formation pratique",
+                "double commande",
+                "location véhicule",
+                "location de véhicule",
+                "cpf",
+                "formation cpf",
+                "mon compte cpf"
+            ]
+
+            # Vérifier sujet et dernier thread
+            combined_content = ""
+            if ticket.get("subject"):
+                combined_content += ticket["subject"].lower() + " "
+            if last_thread_content:
+                combined_content += last_thread_content.lower()
+
+            # Si demande autre service détectée → Contact (malgré deal 20€)
+            if any(keyword in combined_content for keyword in other_service_keywords):
+                return "Contact"
+
             evalbox = selected_deal.get("Evalbox", "")
 
             # Conditions Refus CMA
