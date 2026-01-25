@@ -30,7 +30,7 @@ class Settings(BaseSettings):
     anthropic_api_key: str
 
     # Agent configuration
-    agent_model: str = "claude-3-5-sonnet-20241022"
+    agent_model: str = "claude-sonnet-4-5-20250929"  # Claude Sonnet 4.5
     agent_max_tokens: int = 4096
     agent_temperature: float = 0.7
 
