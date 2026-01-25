@@ -34,7 +34,7 @@ logger = logging.getLogger(__name__)
 from src.zoho_client import ZohoDeskClient, ZohoCRMClient
 from src.agents.deal_linking_agent import DealLinkingAgent
 from src.agents.response_generator_agent import ResponseGeneratorAgent
-from src.utils.text_utils import clean_html
+from src.utils.text_utils import clean_html_content
 
 
 def extract_customer_message(threads):
@@ -44,7 +44,7 @@ def extract_customer_message(threads):
         if thread.get('direction') == 'in':
             content = thread.get('content', '')
             # Nettoyer le HTML pour obtenir le texte brut
-            cleaned_content = clean_html(content) if content else ''
+            cleaned_content = clean_html_content(content) if content else ''
             customer_messages.append({
                 'content': cleaned_content,
                 'created_time': thread.get('createdTime', '')
