@@ -50,9 +50,8 @@ EXAMT3P_STATUT_DOSSIER_MAPPING = {
     'EN COURS DE COMPOSITION': 'Dossier crée',
     'En attente de paiement': 'Pret a payer',
     'EN ATTENTE DE PAIEMENT': 'Pret a payer',
-    'En cours d\'instruction': 'Dossier Synchronisé',
-    'EN COURS D\'INSTRUCTION': 'Dossier Synchronisé',
-    'En cours d'instruction': 'Dossier Synchronisé',  # Apostrophe typographique
+    "En cours d'instruction": 'Dossier Synchronisé',
+    "EN COURS D'INSTRUCTION": 'Dossier Synchronisé',
     'Incomplet': 'Refusé CMA',
     'INCOMPLET': 'Refusé CMA',
     'Valide': 'VALIDE CMA',
