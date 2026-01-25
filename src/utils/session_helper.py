@@ -60,13 +60,23 @@ def get_sessions_for_exam_date(
 
         logger.info(f"  Recherche sessions se terminant entre {min_end_date.strftime('%Y-%m-%d')} et {max_end_date.strftime('%Y-%m-%d')}")
         logger.info(f"  Filtrage: Date_debut >= {today_str} (sessions non commencées)")
+        logger.info(f"  Filtrage: Lieu_de_formation = VISIO Zoom VTC (sessions Uber uniquement)")
 
         # Rechercher les sessions planifiées
         url = f"{settings.zoho_crm_api_url}/Sessions1/search"
 
-        # Critère: Statut = PLANIFIÉ et Date_fin dans la plage et Date_debut >= aujourd'hui
-        # (session pas encore commencée)
-        criteria = f"((Statut:equals:PLANIFIÉ)and(Date_fin:greater_equal:{min_end_date.strftime('%Y-%m-%d')})and(Date_fin:less_equal:{max_end_date.strftime('%Y-%m-%d')})and(Date_d_but:greater_equal:{today_str}))"
+        # Critère:
+        # - Statut = PLANIFIÉ
+        # - Date_fin dans la plage (proche de l'examen)
+        # - Date_debut >= aujourd'hui (pas encore commencée)
+        # - Lieu_de_formation = VISIO Zoom VTC (sessions Uber uniquement)
+        criteria = (
+            f"((Statut:equals:PLANIFIÉ)"
+            f"and(Date_fin:greater_equal:{min_end_date.strftime('%Y-%m-%d')})"
+            f"and(Date_fin:less_equal:{max_end_date.strftime('%Y-%m-%d')})"
+            f"and(Date_d_but:greater_equal:{today_str})"
+            f"and(Lieu_de_formation.name:equals:VISIO Zoom VTC))"
+        )
 
         # Pagination
         all_sessions = []
