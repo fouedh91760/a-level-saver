@@ -178,10 +178,13 @@ def test_full_workflow(ticket_id: str):
         # CRM update
         crm_result = result.get('crm_result', {})
         print(f"\n   💼 CRM UPDATE:")
-        if crm_result.get('skipped'):
-            print(f"      Skipped: {crm_result.get('reason')}")
+        if crm_result:
+            if crm_result.get('skipped'):
+                print(f"      Skipped: {crm_result.get('reason')}")
+            else:
+                print(f"      Updated: Yes")
         else:
-            print(f"      Updated: {'Yes' if crm_result else 'No'}")
+            print(f"      Updated: No")
 
         print("\n" + "=" * 80)
         return result
