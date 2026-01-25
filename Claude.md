@@ -1398,6 +1398,317 @@ python extract_crm_schema.py --module Deals
 
 ---
 
+## 📅 LOGIQUE DATES D'EXAMEN ET SESSIONS DE FORMATION (CRUCIAL)
+
+### Architecture des Dépendances
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                         WORKFLOW DOC - ÉTAPE ANALYSE                        │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  1. DEAL CRM                                                                │
+│     ├── Date_examen_VTC (lookup) ──────► Dates_Examens_VTC_TAXI            │
+│     ├── Evalbox (picklist) ────────────► Statut du dossier                 │
+│     ├── CMA_de_depot (text) ───────────► Département candidat              │
+│     └── Session (lookup) ──────────────► Sessions1                         │
+│                                                                             │
+│  2. ANALYSE DATE EXAMEN (date_examen_vtc_helper.py)                         │
+│     └── Détermine CAS 1-8 selon Date_examen_VTC + Evalbox                  │
+│         └── Récupère next_dates si nécessaire                              │
+│                                                                             │
+│  3. ANALYSE SESSIONS (session_helper.py)                                    │
+│     └── SI next_dates disponibles:                                         │
+│         ├── Cherche sessions AVANT Date_Examen                             │
+│         ├── Filtre: Lieu_de_formation = VISIO Zoom VTC (Uber)              │
+│         ├── Détecte préférence (jour/soir) depuis deal + threads           │
+│         └── Propose sessions CDJ et/ou CDS                                 │
+│                                                                             │
+│  4. GÉNÉRATION RÉPONSE                                                      │
+│     └── Inclut dates examen + sessions associées + règles métier           │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+### 📊 Modules CRM Impliqués
+
+#### Module `Deals` (Opportunities)
+
+| Champ API | Type | Description |
+|-----------|------|-------------|
+| `Date_examen_VTC` | lookup | Lien vers `Dates_Examens_VTC_TAXI` |
+| `Evalbox` | picklist | Statut du dossier ExamT3P |
+| `CMA_de_depot` | text | CMA/Département du candidat (ex: "CMA 75", "93") |
+| `Session` | lookup | Session de formation actuelle |
+| `Session_souhait_e` | text | Préférence jour/soir du candidat |
+
+**Valeurs Evalbox:**
+- `Dossier crée` → Compte créé sur ExamT3P
+- `Documents manquants` → Pièces à fournir
+- `Documents refusés` → Pièces à corriger
+- `Pret a payer` / `Pret a payer par cheque` → En attente paiement
+- `Dossier Synchronisé` → Transmis à la CMA, en instruction
+- `VALIDE CMA` → Dossier validé par la CMA ✅
+- `Refusé CMA` → Pièces refusées par la CMA ❌
+- `Convoc CMA reçue` → Convocation reçue
+
+#### Module `Dates_Examens_VTC_TAXI`
+
+| Champ API | Type | Description |
+|-----------|------|-------------|
+| `Date_Examen` | date | Date de l'examen (YYYY-MM-DD) |
+| `Date_Cloture_Inscription` | datetime | Date limite d'inscription |
+| `Departement` | integer | Numéro département (75, 93, etc.) |
+| `Statut` | picklist | Actif, Complet, Cloturé, Annulé |
+| `Libelle_Affichage` | text | Libellé pour affichage candidat |
+| `Adresse_Centre` | text | Adresse du centre d'examen |
+
+#### Module `Sessions1` (Sessions de Formation)
+
+| Champ API | Type | Description |
+|-----------|------|-------------|
+| `Name` | text | Nom de la session (cdj-*, cds-*) |
+| `Date_d_but` | date | Date de début |
+| `Date_fin` | date | Date de fin |
+| `Lieu_de_formation` | lookup | Lieu (VISIO Zoom VTC pour Uber) |
+| `Statut` | picklist | PLANIFIÉ, EN COURS, TERMINÉ |
+| `Type_de_cours` | text | Type de formation |
+
+---
+
+### 🎯 Les 8 Cas de Gestion Date d'Examen
+
+**Fichier:** `src/utils/date_examen_vtc_helper.py`
+
+| CAS | Condition | Action | Message |
+|-----|-----------|--------|---------|
+| **1** | `Date_examen_VTC` = vide | Proposer 2 prochaines dates | "Nous n'avons pas de date d'examen enregistrée..." |
+| **2** | Date passée + Evalbox ≠ VALIDE CMA/Dossier Sync | Proposer 2 prochaines dates | "La date d'examen est passée..." |
+| **3** | Evalbox = `Refusé CMA` | Informer refus + pièces + prochaine date | "La CMA a refusé certaines pièces..." |
+| **4** | Date future + Evalbox = `VALIDE CMA` | Rassurer | "Bonne nouvelle ! Dossier validé, convocation ~10j avant" |
+| **5** | Date future + Evalbox = `Dossier Synchronisé` | Prévenir instruction en cours | "Surveiller emails, corriger si demandé..." |
+| **6** | Date future + Evalbox autre + clôture future | Pas d'action spéciale | Ne rien ajouter (en attente) |
+| **7** | Date passée + Evalbox ∈ {VALIDE CMA, Dossier Sync} | Examen probablement passé | Demander clarification si indices contraires |
+| **8** | Date future + **clôture passée** + Evalbox ≠ VALIDE/Sync | Deadline ratée → report | "Inscriptions clôturées, report automatique..." |
+
+**Fonction principale:**
+```python
+from src.utils.date_examen_vtc_helper import analyze_exam_date_situation
+
+result = analyze_exam_date_situation(
+    deal_data=deal_data,
+    threads=threads_data,
+    crm_client=crm_client,
+    examt3p_data=examt3p_data
+)
+
+# Résultat:
+{
+    'case': 1,  # Numéro du cas (1-8)
+    'case_description': '...',
+    'should_include_in_response': True,  # Ajouter à la réponse?
+    'response_message': '...',  # Message à intégrer
+    'next_dates': [...],  # Prochaines dates disponibles
+    'date_cloture': '2026-02-15'
+}
+```
+
+---
+
+### 📚 Logique Sessions de Formation
+
+**Fichier:** `src/utils/session_helper.py`
+
+#### Règles Métier Essentielles
+
+1. **Timing:** La session de formation doit se terminer **AVANT** la date d'examen
+   - Minimum: 3 jours avant (MIN_DAYS_BEFORE_EXAM)
+   - Maximum: 60 jours avant (MAX_DAYS_BEFORE_EXAM)
+
+2. **Convention de nommage:**
+   - `cdj-*` → **Cours Du Jour** (ex: "cdj-janvier-2026")
+   - `cds-*` → **Cours Du Soir** (ex: "cds-janvier-2026")
+
+3. **Filtrage Uber:** Seules les sessions avec `Lieu_de_formation` contenant "VISIO" ET "VTC" sont proposées (sessions partenariat Uber)
+
+4. **Détection préférence jour/soir:**
+   - Depuis le Deal: champs `Session` et `Session_souhait_e`
+   - Depuis les threads: patterns comme "cours du soir", "en journée", "après travail"
+   - Si préférence détectée → proposer uniquement ce type
+   - Si aucune préférence → proposer les deux options
+
+#### Fonction Principale
+
+```python
+from src.utils.session_helper import analyze_session_situation
+
+session_data = analyze_session_situation(
+    deal_data=deal_data,
+    exam_dates=next_dates,  # Issues de date_examen_vtc_helper
+    threads=threads_data,
+    crm_client=crm_client
+)
+
+# Résultat:
+{
+    'session_preference': 'soir',  # ou 'jour', ou None
+    'current_session': {...},  # Session actuelle du deal
+    'current_session_is_past': False,  # Session terminée?
+    'refresh_session_available': True,  # Rafraîchissement proposé?
+    'refresh_session': {...},  # Détails session de rafraîchissement
+    'proposed_options': [
+        {
+            'exam_info': {...},  # Date d'examen
+            'sessions': [...]    # Sessions associées
+        }
+    ],
+    'message': '...'  # Message formaté pour le candidat
+}
+```
+
+#### Critères de Recherche Sessions
+
+```python
+# Critère API Zoho CRM (Sessions1/search):
+criteria = (
+    f"(((Statut:equals:PLANIFIÉ)or(Statut:equals:null))"
+    f"and(Date_fin:greater_equal:{min_end_date})"  # Fin >= exam - 60j
+    f"and(Date_fin:less_equal:{max_end_date})"      # Fin <= exam - 3j
+    f"and(Date_d_but:greater_equal:{today}))"        # Début >= aujourd'hui
+)
+
+# Filtrage Python (après récupération):
+if 'VISIO' in lieu_name.upper() and 'VTC' in lieu_name.upper():
+    # C'est une session Uber → garder
+```
+
+---
+
+### 🔄 Cas Spécial: Session de Rafraîchissement
+
+**Condition:**
+- Le candidat a DÉJÀ suivi une formation (session passée/terminée)
+- Son examen est dans le FUTUR
+- Une nouvelle session est disponible AVANT l'examen
+
+**Action:** Proposer GRATUITEMENT de rejoindre la prochaine session pour rafraîchir ses connaissances
+
+**Message type:**
+```
+📚 **PROPOSITION DE RAFRAÎCHISSEMENT (sans frais supplémentaires)**
+
+Nous avons constaté que vous avez déjà suivi votre formation, mais votre examen est prévu pour le [DATE].
+
+**Pour nous, votre réussite est notre priorité.** Plus vos connaissances sont fraîches au moment de l'examen, plus vos chances de succès sont élevées.
+
+C'est pourquoi nous vous proposons, **sans aucun coût additionnel**, de rejoindre la prochaine session de formation pour rafraîchir vos acquis.
+```
+
+**Détection:**
+```python
+# Dans analyze_session_situation():
+if result['current_session_is_past'] and result['proposed_options']:
+    # Session passée + examen futur avec options disponibles
+    result['refresh_session_available'] = True
+    result['refresh_session'] = {...}  # Meilleure session trouvée
+```
+
+---
+
+### ⚠️ Règle Critique: Lien Visio
+
+**NE JAMAIS** dire "nous venons de vous envoyer un lien d'invitation" ou similaire SI:
+- On propose **plusieurs dates d'examen** au choix
+- On propose **plusieurs sessions de formation** au choix
+
+**Le lien visio n'est envoyé QUE** quand:
+- La date d'examen est **confirmée** (une seule date)
+- ET la session de formation est **confirmée** (une seule session)
+
+**Implémentation:** Règle ajoutée dans le system prompt de `response_generator_agent.py`
+
+---
+
+### 🔗 Chaîne de Dépendances Complète
+
+```
+1. Ticket DOC reçu
+        ↓
+2. Récupération Deal CRM
+   ├── Date_examen_VTC
+   ├── Evalbox
+   ├── CMA_de_depot
+   └── Session
+        ↓
+3. analyze_exam_date_situation()
+   ├── Détermine le CAS (1-8)
+   ├── Récupère next_dates (si besoin)
+   └── Génère response_message (date examen)
+        ↓
+4. SI next_dates disponibles:
+   └── analyze_session_situation()
+       ├── Détecte préférence (deal + threads)
+       ├── Cherche sessions AVANT chaque date d'examen
+       ├── Filtre: VISIO Zoom VTC uniquement
+       ├── Détecte si rafraîchissement possible
+       └── Génère message complet (dates + sessions)
+        ↓
+5. ResponseGeneratorAgent
+   ├── Reçoit date_examen_result
+   ├── Reçoit session_data
+   └── Intègre dans la réponse
+        ↓
+6. Réponse finale au candidat
+   ├── Dates d'examen proposées
+   ├── Sessions de formation associées
+   ├── Message rafraîchissement (si applicable)
+   └── Demande de confirmation préférence
+```
+
+---
+
+### 📝 Exemple de Réponse Générée
+
+```
+📅 **Examen du 15/03/2026** (clôture inscriptions: 01/03/2026)
+   Sessions de formation disponibles :
+   • **Cours du jour** : du 24/02/2026 au 28/02/2026
+   • **Cours du soir** : du 17/02/2026 au 07/03/2026
+
+📅 **Examen du 29/03/2026** (clôture inscriptions: 15/03/2026)
+   Sessions de formation disponibles :
+   • **Cours du jour** : du 10/03/2026 au 14/03/2026
+   • **Cours du soir** : du 03/03/2026 au 21/03/2026
+
+Merci de nous indiquer votre préférence (cours du jour ou cours du soir) ainsi que la date d'examen qui vous convient.
+```
+
+---
+
+### 🧪 Tests et Validation
+
+**Scripts de test:**
+- `test_doc_workflow_with_examt3p.py` → Test complet workflow DOC avec dates
+- `list_recent_tickets.py` → Trouver des tickets de test
+
+**Logs à vérifier:**
+```
+🔍 Analyse de la situation date d'examen VTC...
+  Date_examen_VTC: {...}
+  Evalbox: VALIDE CMA
+  CMA_de_depot: CMA 75 (département: 75)
+  ➡️ CAS 4: Date future + VALIDE CMA
+
+🔍 Analyse de la situation session de formation...
+  Session actuelle: cds-janvier-2026
+  Préférence détectée: soir
+  ✅ 2 session(s) sélectionnée(s) pour l'examen du 2026-03-15
+```
+
+---
+
 **Dernière mise à jour:** 2026-01-25
-**Version Claude.md:** 1.1
-**Généré par:** Claude 3.5 Sonnet (Anthropic)
+**Version Claude.md:** 1.2
+**Généré par:** Claude Opus 4.5 (Anthropic)
