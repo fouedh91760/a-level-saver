@@ -531,7 +531,7 @@ class DOCTicketWorkflow:
         # 2. Passer le test de sélection (Date_test_selection non vide)
         # Si ces étapes ne sont pas complétées, on ne peut pas les inscrire à l'examen
         from src.utils.uber_eligibility_helper import analyze_uber_eligibility
-        from src.utils.examt3p_crm_sync import sync_examt3p_to_crm, detect_exam_date_desync, format_desync_note
+        from src.utils.examt3p_crm_sync import sync_examt3p_to_crm
         from src.utils.ticket_info_extractor import extract_confirmations_from_threads
         from src.utils.crm_note_logger import (
             log_examt3p_sync, log_ticket_update, log_uber_eligibility_check
@@ -559,30 +559,6 @@ class DOCTicketWorkflow:
                     deal_data = updated_deal
             # Log la sync dans une note CRM
             log_examt3p_sync(deal_id, self.crm_client, sync_result)
-
-            # ================================================================
-            # DÉTECTION DÉSYNCHRONISATION DATE D'EXAMEN
-            # ================================================================
-            # Compare la date d'examen ExamT3P vs CRM
-            # Cas typique: candidat reporté sur ExamT3P mais CRM pas à jour
-            desync_result = detect_exam_date_desync(deal_data, exament3p_data)
-            if desync_result.get('has_desync'):
-                logger.warning(f"  🚨 DÉSYNC DÉTECTÉE: CRM={desync_result['crm_date_formatted']} vs ExamT3P={desync_result['examt3p_date_formatted']}")
-                if desync_result.get('requires_human_action'):
-                    logger.warning("  🔧 ACTION HUMAINE REQUISE pour corriger Date_examen_VTC")
-                # Ajouter au sync_result pour traçabilité
-                sync_result['date_desync'] = desync_result
-                # Log la désync dans une note CRM
-                desync_note = format_desync_note(desync_result)
-                if desync_note:
-                    try:
-                        from config import settings
-                        note_url = f"{settings.zoho_crm_api_url}/Deals/{deal_id}/Notes"
-                        self.crm_client._make_request("POST", note_url, json={
-                            "data": [{"Note_Title": "⚠️ Désync Date Examen", "Note_Content": desync_note}]
-                        })
-                    except Exception as e:
-                        logger.error(f"  ❌ Erreur création note désync: {e}")
 
         # ================================================================
         # EXTRACTION CONFIRMATIONS DU TICKET
