@@ -270,6 +270,26 @@ class DOCTicketWorkflow:
                 )
                 logger.info("✅ DRAFT CREATION → Brouillon créé dans Zoho Desk")
                 result['draft_created'] = True
+
+                # Log la réponse dans une note CRM
+                if analysis_result.get('deal_id'):
+                    from src.utils.crm_note_logger import log_response_sent
+                    # Créer un résumé de la réponse (premiers 150 caractères)
+                    response_summary = response_result.get('response_text', '')[:150]
+                    date_examen_case = analysis_result.get('date_examen_vtc_result', {}).get('case')
+                    uber_case = analysis_result.get('uber_eligibility_result', {}).get('case')
+                    evalbox = analysis_result.get('deal_data', {}).get('Evalbox')
+
+                    log_response_sent(
+                        deal_id=analysis_result['deal_id'],
+                        crm_client=self.crm_client,
+                        ticket_id=ticket_id,
+                        response_summary=response_summary,
+                        case_handled=str(date_examen_case) if date_examen_case else None,
+                        uber_case=uber_case,
+                        evalbox_status=evalbox
+                    )
+                    logger.info("✅ DRAFT CREATION → Note CRM créée")
             else:
                 logger.info("✅ DRAFT CREATION → Préparé (pas d'auto-create)")
 
@@ -511,9 +531,61 @@ class DOCTicketWorkflow:
         # 2. Passer le test de sélection (Date_test_selection non vide)
         # Si ces étapes ne sont pas complétées, on ne peut pas les inscrire à l'examen
         from src.utils.uber_eligibility_helper import analyze_uber_eligibility
+        from src.utils.examt3p_crm_sync import sync_examt3p_to_crm
+        from src.utils.ticket_info_extractor import extract_confirmations_from_threads
+        from src.utils.crm_note_logger import (
+            log_examt3p_sync, log_ticket_update, log_uber_eligibility_check
+        )
+
+        # ================================================================
+        # SYNC EXAMT3P → CRM (AVANT toute analyse)
+        # ================================================================
+        # ExamT3P est la SOURCE DE VÉRITÉ - on synchronise d'abord vers CRM
+        sync_result = None
+        if exament3p_data.get('compte_existe') and deal_id:
+            logger.info("  🔄 Synchronisation ExamT3P → CRM...")
+            sync_result = sync_examt3p_to_crm(
+                deal_id=deal_id,
+                deal_data=deal_data,
+                examt3p_data=exament3p_data,
+                crm_client=self.crm_client,
+                dry_run=False
+            )
+            if sync_result.get('crm_updated'):
+                logger.info("  ✅ CRM synchronisé avec ExamT3P")
+                # Recharger deal_data après mise à jour
+                updated_deal = self.crm_client.get_deal(deal_id)
+                if updated_deal:
+                    deal_data = updated_deal
+            # Log la sync dans une note CRM
+            log_examt3p_sync(deal_id, self.crm_client, sync_result)
+
+        # ================================================================
+        # EXTRACTION CONFIRMATIONS DU TICKET
+        # ================================================================
+        ticket_confirmations = None
+        if threads_data and deal_id:
+            logger.info("  📥 Extraction des confirmations du ticket...")
+            ticket_confirmations = extract_confirmations_from_threads(
+                threads=threads_data,
+                deal_data=deal_data
+            )
+            if ticket_confirmations.get('raw_confirmations'):
+                logger.info(f"  📋 {len(ticket_confirmations['raw_confirmations'])} confirmation(s) détectée(s)")
+                # Log les confirmations dans une note CRM
+                log_ticket_update(deal_id, self.crm_client, ticket_id, ticket_confirmations)
+
+            # Alerter sur les mises à jour bloquées (règle critique)
+            if ticket_confirmations.get('blocked_updates'):
+                for blocked in ticket_confirmations['blocked_updates']:
+                    logger.warning(f"  🔒 BLOCAGE: {blocked['reason']}")
 
         logger.info("  🚗 Vérification éligibilité Uber 20€...")
         uber_eligibility_result = analyze_uber_eligibility(deal_data)
+
+        # Log éligibilité Uber si applicable
+        if uber_eligibility_result.get('is_uber_20_deal') and deal_id:
+            log_uber_eligibility_check(deal_id, self.crm_client, uber_eligibility_result, ticket_id)
 
         if uber_eligibility_result.get('is_uber_20_deal'):
             if uber_eligibility_result.get('case') in ['A', 'B']:
@@ -578,7 +650,10 @@ class DOCTicketWorkflow:
             'evalbox_data': evalbox_data,
             'session_data': session_data,
             'threads': threads_data,  # threads_data déjà récupérés au début
-            'ancien_dossier': ancien_dossier
+            'ancien_dossier': ancien_dossier,
+            # Nouveaux champs pour traçabilité
+            'sync_result': sync_result,  # Résultat sync ExamT3P → CRM
+            'ticket_confirmations': ticket_confirmations,  # Confirmations extraites du ticket
         }
 
     def _run_response_generation(

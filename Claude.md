@@ -1631,6 +1631,177 @@ Nous ne pouvons pas procéder à votre inscription tant que vous n'avez pas réu
 
 ---
 
+## 🚨 RÈGLES CRITIQUES DE MODIFICATION (OBLIGATOIRES)
+
+### Architecture de Synchronisation
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                    WORKFLOW DOC - ORDRE D'EXÉCUTION                          │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  1. RÉCUPÉRATION DEAL CRM                                                   │
+│     └── Données actuelles du deal                                          │
+│                     ↓                                                       │
+│  2. SYNC EXAMT3P → CRM (examt3p_crm_sync.py) ⚡ PRIORITAIRE                │
+│     ├── ExamT3P est la SOURCE DE VÉRITÉ                                   │
+│     ├── Mapping statuts → Evalbox                                          │
+│     ├── Mise à jour identifiants si vides                                  │
+│     └── LOG dans note CRM                                                  │
+│                     ↓                                                       │
+│  3. EXTRACTION CONFIRMATIONS TICKET (ticket_info_extractor.py)             │
+│     ├── Détection: confirmations date, préférence session, report          │
+│     ├── VALIDATION règles critiques AVANT modification                     │
+│     └── LOG dans note CRM                                                  │
+│                     ↓                                                       │
+│  4. ANALYSE DATE EXAMEN + SESSIONS                                          │
+│     └── Analyse normale avec données à jour                                │
+│                     ↓                                                       │
+│  5. GÉNÉRATION RÉPONSE                                                      │
+│     └── LOG réponse dans note CRM                                          │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### 🔒 Règle Critique #1: JAMAIS Modifier Date_examen_VTC SI...
+
+**Condition de blocage:**
+```
+SI Evalbox ∈ {"VALIDE CMA", "Convoc CMA reçue"}
+ET Date_Cloture_Inscription < aujourd'hui (passée)
+→ JAMAIS MODIFIER Date_examen_VTC automatiquement
+```
+
+**Raison:** Le candidat est inscrit auprès de la CMA. Un report nécessite:
+1. Un justificatif de force majeure (certificat médical, etc.)
+2. OU des frais de réinscription de 241€
+
+**Fichiers concernés:**
+- `src/utils/examt3p_crm_sync.py` → `can_modify_exam_date()`
+- `src/utils/ticket_info_extractor.py` → Validation avant mise à jour
+
+### 🔒 Règle Critique #2: Communication par EMAIL Uniquement
+
+**NE JAMAIS:**
+- Dire "nous contacter" ou "nous appeler"
+- Suggérer de téléphoner
+
+**TOUJOURS:**
+- Demander de transmettre le justificatif **par email**
+- Indiquer la procédure par email
+
+**Message type (demande de report bloquée):**
+```
+Votre dossier a été validé par la CMA et les inscriptions sont clôturées.
+
+**Un report de date d'examen n'est possible qu'avec un justificatif de force majeure.**
+
+Pour demander un report, merci de nous transmettre **par email** :
+1. Votre justificatif de force majeure (certificat médical ou autre document officiel)
+2. Une brève explication de votre situation
+
+Nous soumettrons votre demande à la CMA pour validation du report.
+
+**Sans justificatif valide**, des frais de réinscription de 241€ seront nécessaires.
+```
+
+### 📊 Mapping ExamT3P → Evalbox CRM
+
+**Fichier:** `src/utils/examt3p_crm_sync.py`
+
+| Source ExamT3P | Valeur | → Evalbox CRM |
+|----------------|--------|---------------|
+| `statut_documents` | REFUSÉ | Refusé CMA |
+| `statut_documents` | À VALIDER | Documents manquants |
+| `convocation_disponible` | True | Convoc CMA reçue |
+| `statut_principal` | Valide | VALIDE CMA |
+| `statut_principal` | En cours | Dossier Synchronisé |
+| `paiement_cma.statut` | pending | Pret a payer |
+
+**Ordre de priorité:**
+1. statut_documents (plus spécifique)
+2. convocation_disponible
+3. statut_principal
+4. paiement_status
+
+### 📥 Extraction des Confirmations (Tickets)
+
+**Fichier:** `src/utils/ticket_info_extractor.py`
+
+**Patterns détectés:**
+| Type | Exemples |
+|------|----------|
+| Confirmation date examen | "je confirme pour le 15/03", "ok pour le 15 mars" |
+| Préférence session | "cours du soir", "en journée", "après le travail" |
+| Confirmation session | "ok pour la session du 24/02" |
+| Demande de report | "je souhaite décaler", "reporter mon examen" |
+
+**Workflow:**
+```python
+confirmations = extract_confirmations_from_threads(threads, deal_data)
+
+# Résultat:
+{
+    'date_examen_confirmed': '2026-03-15',  # ou None
+    'session_preference': 'soir',  # ou 'jour', ou None
+    'report_requested': True,  # ou False
+    'blocked_updates': [...],  # Mises à jour bloquées par règle critique
+    'changes_to_apply': [...]  # Changements autorisés
+}
+```
+
+### 📝 Logging Systématique (Notes CRM)
+
+**Fichier:** `src/utils/crm_note_logger.py`
+
+**Types de notes:**
+| Type | Emoji | Description |
+|------|-------|-------------|
+| `SYNC_EXAMT3P` | 🔄 | Synchronisation ExamT3P → CRM |
+| `TICKET_UPDATE` | 📥 | Mise à jour depuis ticket |
+| `RESPONSE_SENT` | 📤 | Réponse envoyée au candidat |
+| `EXAM_DATE_BLOCKED` | 🔒 | Tentative de modification bloquée |
+| `UBER_ELIGIBILITY` | 🚗 | Vérification éligibilité Uber |
+| `SESSION_LINKED` | 📚 | Session de formation liée |
+
+**Format des notes:**
+```
+🔄 SYNC_EXAMT3P - 25/01/2026 14:30
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+✅ CHANGEMENTS APPLIQUÉS:
+  • Evalbox: 'Dossier Synchronisé' → 'VALIDE CMA'
+  • IDENTIFIANT_EVALBOX: '' → 'candidat@email.com'
+
+🔒 CHANGEMENTS BLOQUÉS:
+  • Date_examen_VTC: Clôture passée + VALIDE CMA
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+```
+
+**Fonctions principales:**
+```python
+from src.utils.crm_note_logger import (
+    log_examt3p_sync,
+    log_ticket_update,
+    log_response_sent,
+    log_exam_date_blocked,
+    log_uber_eligibility_check
+)
+
+# Log sync ExamT3P
+log_examt3p_sync(deal_id, crm_client, sync_result)
+
+# Log update depuis ticket
+log_ticket_update(deal_id, crm_client, ticket_id, confirmations)
+
+# Log réponse envoyée
+log_response_sent(deal_id, crm_client, ticket_id, response_summary, case_handled)
+
+# Log blocage modification date
+log_exam_date_blocked(deal_id, crm_client, evalbox, date_cloture, action)
+```
+
+---
+
 #### Détail CAS 9: Convocation CMA Reçue
 
 **Condition:** `Evalbox = "Convoc CMA reçue"`
