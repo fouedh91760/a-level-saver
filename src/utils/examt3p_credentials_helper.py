@@ -4,9 +4,10 @@ Helper pour gérer les identifiants ExamT3P et leur validation.
 Workflow complet :
 1. Recherche identifiants dans Zoho CRM
 2. Si absents, recherche dans les threads de mail
-3. Test de connexion OBLIGATOIRE
-4. Mise à jour Zoho si identifiants trouvés dans les mails
-5. Génération de réponse automatique si échec de connexion
+3. Si aucun identifiant trouvé : Ne PAS demander au candidat (création de compte par nous)
+4. Test de connexion OBLIGATOIRE pour les identifiants trouvés
+5. Mise à jour Zoho si identifiants trouvés dans les mails et connexion OK
+6. Si connexion échoue : Demander au candidat de réinitialiser via "Mot de passe oublié ?"
 """
 import logging
 import re
@@ -358,10 +359,11 @@ def get_credentials_with_validation(
             logger.warning("  ⚠️  Identifiants introuvables dans les threads")
 
     # Si aucun identifiant trouvé, arrêter ici
+    # NOTE: On ne demande PAS les identifiants car c'est nous qui allons créer le compte
     if not identifiant or not mot_de_passe:
-        logger.warning("❌ Identifiants ExamT3P non trouvés")
-        result['should_respond_to_candidate'] = True
-        result['candidate_response_message'] = generate_missing_credentials_response()
+        logger.warning("❌ Identifiants ExamT3P non trouvés - Création de compte nécessaire")
+        result['should_respond_to_candidate'] = False  # Pas de demande au candidat
+        result['candidate_response_message'] = None
         return result
 
     result['identifiant'] = identifiant
@@ -412,26 +414,6 @@ def get_credentials_with_validation(
     return result
 
 
-def generate_missing_credentials_response() -> str:
-    """
-    Génère le message à envoyer au candidat quand les identifiants sont manquants.
-    """
-    return """Bonjour,
-
-Pour assurer le suivi de votre dossier, nous avons besoin de vos identifiants de connexion à la plateforme ExamenT3P.
-
-Pourriez-vous nous transmettre :
-- Votre identifiant de connexion (adresse email)
-- Votre mot de passe
-
-Ces informations nous permettront de vérifier l'état de votre dossier et de vous accompagner au mieux.
-
-Merci de votre collaboration.
-
-Cordialement,
-L'équipe DOC"""
-
-
 def generate_invalid_credentials_response_crm() -> str:
     """
     Génère le message à envoyer au candidat quand les identifiants du CRM ne fonctionnent pas.
@@ -442,11 +424,14 @@ Nous avons tenté d'accéder à votre dossier sur la plateforme ExamenT3P avec l
 
 Il est possible que vous ayez modifié votre mot de passe depuis.
 
-Pour assurer le suivi de votre dossier, pourriez-vous nous transmettre vos identifiants à jour :
-- Votre identifiant de connexion (adresse email)
-- Votre mot de passe actuel
+Pour accéder à votre compte, veuillez suivre la procédure de réinitialisation :
 
-Merci de votre collaboration.
+1. Rendez-vous sur la plateforme ExamenT3P : https://www.exament3p.fr
+2. Cliquez sur "Me connecter"
+3. Utilisez la fonction "Mot de passe oublié ?"
+4. Suivez les instructions pour réinitialiser votre mot de passe
+
+Une fois votre mot de passe réinitialisé, merci de nous transmettre vos nouveaux identifiants afin que nous puissions assurer le suivi de votre dossier.
 
 Cordialement,
 L'équipe DOC"""
@@ -460,13 +445,16 @@ def generate_invalid_credentials_response_email() -> str:
 
 Nous avons tenté d'accéder à votre dossier sur la plateforme ExamenT3P avec les identifiants que vous nous avez transmis, mais la connexion a échoué.
 
-Pourriez-vous vérifier vos identifiants et nous les transmettre à nouveau :
-- Votre identifiant de connexion (adresse email)
-- Votre mot de passe actuel
+Il est possible que vous ayez modifié votre mot de passe ou que les identifiants ne soient plus à jour.
 
-Assurez-vous qu'il s'agit bien des identifiants corrects pour la plateforme ExamenT3P.
+Pour accéder à votre compte, veuillez suivre la procédure de réinitialisation :
 
-Merci de votre collaboration.
+1. Rendez-vous sur la plateforme ExamenT3P : https://www.exament3p.fr
+2. Cliquez sur "Me connecter"
+3. Utilisez la fonction "Mot de passe oublié ?"
+4. Suivez les instructions pour réinitialiser votre mot de passe
+
+Une fois votre mot de passe réinitialisé, merci de nous transmettre vos nouveaux identifiants afin que nous puissions assurer le suivi de votre dossier.
 
 Cordialement,
 L'équipe DOC"""
