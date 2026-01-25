@@ -206,7 +206,8 @@ Tu as accès à des exemples similaires de tes réponses passées pour t'inspire
         exament3p_data: Optional[Dict] = None,
         evalbox_data: Optional[Dict] = None,
         date_examen_vtc_data: Optional[Dict] = None,
-        session_data: Optional[Dict] = None
+        session_data: Optional[Dict] = None,
+        uber_eligibility_data: Optional[Dict] = None
     ) -> str:
         """Build user prompt with context and examples."""
         # Format similar tickets as few-shot examples
@@ -220,7 +221,7 @@ Tu as accès à des exemples similaires de tes réponses passées pour t'inspire
         )
 
         # Format data sources
-        data_summary = self._format_data_sources(crm_data, exament3p_data, evalbox_data, date_examen_vtc_data, session_data)
+        data_summary = self._format_data_sources(crm_data, exament3p_data, evalbox_data, date_examen_vtc_data, session_data, uber_eligibility_data)
 
         user_prompt = f"""## NOUVEAU TICKET À TRAITER
 
@@ -274,10 +275,41 @@ Génère uniquement le contenu de la réponse (pas de métadonnées)."""
         exament3p_data: Optional[Dict],
         evalbox_data: Optional[Dict],
         date_examen_vtc_data: Optional[Dict] = None,
-        session_data: Optional[Dict] = None
+        session_data: Optional[Dict] = None,
+        uber_eligibility_data: Optional[Dict] = None
     ) -> str:
         """Format available data sources for prompt."""
         lines = []
+
+        # ================================================================
+        # ÉLIGIBILITÉ UBER 20€ - PRIORITAIRE
+        # ================================================================
+        # Si le candidat Uber n'est pas éligible (CAS A ou B), c'est la priorité
+        if uber_eligibility_data and uber_eligibility_data.get('is_uber_20_deal'):
+            uber_case = uber_eligibility_data.get('case')
+            if uber_case in ['A', 'B']:
+                lines.append("### 🚗 ÉLIGIBILITÉ UBER 20€ - ACTION PRIORITAIRE :")
+                lines.append(f"  - Cas détecté : CAS {uber_case} - {uber_eligibility_data.get('case_description', '')}")
+                lines.append(f"  - ⚠️ LE CANDIDAT NE PEUT PAS ENCORE ÊTRE INSCRIT À L'EXAMEN")
+
+                if uber_case == 'A':
+                    lines.append("  - Raison : Documents non envoyés / inscription non finalisée")
+                    lines.append("  - Action : Expliquer l'offre et demander de finaliser l'inscription")
+                elif uber_case == 'B':
+                    lines.append("  - Raison : Test de sélection non passé")
+                    lines.append(f"  - Date dossier reçu : {uber_eligibility_data.get('date_dossier_recu', 'N/A')}")
+                    lines.append("  - Action : Demander de passer le test de sélection")
+
+                if uber_eligibility_data.get('response_message'):
+                    lines.append(f"\n  - MESSAGE À INTÉGRER DANS LA RÉPONSE :")
+                    lines.append(f"    {uber_eligibility_data['response_message']}")
+
+                lines.append("\n  ⚠️ IMPORTANT : Ne PAS parler de dates d'examen ou de formation tant que ces étapes ne sont pas complétées !")
+                lines.append("")
+            else:
+                lines.append("### 🚗 Candidat Uber 20€ :")
+                lines.append("  - ✅ Éligible - Peut être inscrit à l'examen")
+                lines.append("")
 
         if crm_data:
             lines.append("### CRM Zoho :")
@@ -421,6 +453,7 @@ Génère uniquement le contenu de la réponse (pas de métadonnées)."""
         evalbox_data: Optional[Dict] = None,
         date_examen_vtc_data: Optional[Dict] = None,
         session_data: Optional[Dict] = None,
+        uber_eligibility_data: Optional[Dict] = None,
         top_k_similar: int = 3,
         temperature: float = 0.3,
         max_tokens: int = 2000
@@ -436,6 +469,7 @@ Génère uniquement le contenu de la réponse (pas de métadonnées)."""
             evalbox_data: Data from Evalbox (Google Sheet)
             date_examen_vtc_data: Data from date examen VTC analysis
             session_data: Data from session analysis (sessions de formation)
+            uber_eligibility_data: Data from Uber 20€ eligibility check
             top_k_similar: Number of similar tickets to use as examples
             temperature: Claude temperature (0-1, lower = more focused)
             max_tokens: Maximum tokens for response
@@ -485,7 +519,8 @@ Génère uniquement le contenu de la réponse (pas de métadonnées)."""
             exament3p_data=exament3p_data,
             evalbox_data=evalbox_data,
             date_examen_vtc_data=date_examen_vtc_data,
-            session_data=session_data
+            session_data=session_data,
+            uber_eligibility_data=uber_eligibility_data
         )
 
         # 5. Call Claude API
@@ -553,6 +588,7 @@ Génère uniquement le contenu de la réponse (pas de métadonnées)."""
         evalbox_data: Optional[Dict] = None,
         date_examen_vtc_data: Optional[Dict] = None,
         session_data: Optional[Dict] = None,
+        uber_eligibility_data: Optional[Dict] = None,
         max_retries: int = 2
     ) -> Dict:
         """
@@ -570,7 +606,8 @@ Génère uniquement le contenu de la réponse (pas de métadonnées)."""
                 exament3p_data=exament3p_data,
                 evalbox_data=evalbox_data,
                 date_examen_vtc_data=date_examen_vtc_data,
-                session_data=session_data
+                session_data=session_data,
+                uber_eligibility_data=uber_eligibility_data
             )
 
             # Check if all validations passed

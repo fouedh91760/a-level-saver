@@ -1497,6 +1497,88 @@ python extract_crm_schema.py --module Deals
 
 ---
 
+### 🚗 Éligibilité Uber 20€ (PRÉREQUIS OBLIGATOIRES)
+
+**Fichier:** `src/utils/uber_eligibility_helper.py`
+
+#### Contexte de l'Offre Uber 20€
+
+L'offre en partenariat avec Uber à 20€ inclut:
+- **Inscription à l'examen VTC** (frais de 241€ payés par CAB Formations)
+- **Accès à la plateforme e-learning**
+- **Formation en visio** avec formateur (cours du jour OU cours du soir)
+
+#### Étapes Obligatoires pour Être Éligible
+
+```
+Paiement 20€ (Opp gagnée)
+        ↓
+[CAS A si manquant]
+        ↓
+1. Envoyer documents + finaliser inscription CAB Formations
+   → Champ: Date_Dossier_re_u non vide
+        ↓
+[CAS B si manquant]
+        ↓
+2. Passer le test de sélection (mail envoyé après étape 1)
+   → Champ: Date_test_selection non vide
+        ↓
+✅ ÉLIGIBLE → Peut être inscrit à l'examen
+```
+
+#### Les 2 Cas de Blocage
+
+| CAS | Condition | Action |
+|-----|-----------|--------|
+| **A** | Opp 20€ gagnée + `Date_Dossier_re_u` vide | Expliquer offre + demander de finaliser inscription |
+| **B** | `Date_Dossier_re_u` OK + `Date_test_selection` vide | Demander de passer le test de sélection |
+
+**Important:** Si CAS A ou B, on ne peut PAS parler de dates d'examen ou de formation !
+
+#### Champs CRM Utilisés
+
+| Champ API | Description |
+|-----------|-------------|
+| `Stage` | Doit être "GAGNÉ" pour identifier une opp gagnée |
+| `Amount` | Doit être ~20€ pour identifier l'offre Uber |
+| `Date_Dossier_re_u` | Date de réception du dossier complet |
+| `Date_test_selection` | Date de passage du test de sélection |
+
+#### Message CAS A (Documents non envoyés)
+
+```
+Nous avons bien reçu votre paiement de 20€ pour l'offre VTC en partenariat avec Uber.
+
+**Ce que comprend votre offre :**
+- Inscription à l'examen VTC incluant les frais de 241€ (pris en charge)
+- Accès à notre plateforme e-learning
+- Formation en visio avec formateur (jour OU soir)
+
+**Pour en bénéficier, il vous reste à :**
+1. Finaliser votre inscription sur la plateforme CAB Formations
+2. Nous transmettre tous vos documents
+3. Passer un test de sélection simple (lien envoyé après finalisation)
+```
+
+#### Message CAS B (Test non passé)
+
+```
+Nous avons bien reçu votre dossier.
+
+**Pour finaliser votre inscription, il vous reste une dernière étape :**
+
+Vous devez passer le **test de sélection**. Un email avec le lien vous a été envoyé.
+
+**À propos du test :**
+- Simple et rapide
+- Ne nécessite pas de consulter les cours
+- Nous permet de déclencher votre inscription à l'examen
+
+Nous ne pouvons pas procéder à votre inscription tant que vous n'avez pas réussi ce test.
+```
+
+---
+
 ### 🗺️ Vision Globale: Parcours Candidat VTC (Evalbox)
 
 ```

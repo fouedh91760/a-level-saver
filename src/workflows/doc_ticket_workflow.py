@@ -504,6 +504,27 @@ class DOCTicketWorkflow:
         # Only if specific documents needed
 
         # ================================================================
+        # VÉRIFICATION ÉLIGIBILITÉ UBER 20€ (PRIORITAIRE)
+        # ================================================================
+        # Pour les candidats Uber 20€, ils doivent d'abord:
+        # 1. Envoyer leurs documents (Date_Dossier_re_u non vide)
+        # 2. Passer le test de sélection (Date_test_selection non vide)
+        # Si ces étapes ne sont pas complétées, on ne peut pas les inscrire à l'examen
+        from src.utils.uber_eligibility_helper import analyze_uber_eligibility
+
+        logger.info("  🚗 Vérification éligibilité Uber 20€...")
+        uber_eligibility_result = analyze_uber_eligibility(deal_data)
+
+        if uber_eligibility_result.get('is_uber_20_deal'):
+            if uber_eligibility_result.get('case') in ['A', 'B']:
+                logger.info(f"  ⚠️ CAS {uber_eligibility_result['case']}: {uber_eligibility_result['case_description']}")
+                logger.info("  ➡️ Candidat Uber doit compléter les étapes préalables")
+            else:
+                logger.info("  ✅ Candidat Uber éligible - peut être inscrit à l'examen")
+        else:
+            logger.info("  ℹ️ Pas une opportunité Uber 20€")
+
+        # ================================================================
         # VÉRIFICATION DATE EXAMEN VTC
         # ================================================================
         logger.info("  📅 Vérification date examen VTC...")
@@ -552,6 +573,7 @@ class DOCTicketWorkflow:
             'deal_id': deal_id,
             'deal_data': deal_data,
             'exament3p_data': exament3p_data,
+            'uber_eligibility_result': uber_eligibility_result,  # Éligibilité Uber 20€
             'date_examen_vtc_result': date_examen_vtc_result,
             'evalbox_data': evalbox_data,
             'session_data': session_data,
@@ -590,7 +612,8 @@ class DOCTicketWorkflow:
             exament3p_data=analysis_result.get('exament3p_data'),
             evalbox_data=analysis_result.get('evalbox_data'),
             date_examen_vtc_data=analysis_result.get('date_examen_vtc_result'),
-            session_data=analysis_result.get('session_data')
+            session_data=analysis_result.get('session_data'),
+            uber_eligibility_data=analysis_result.get('uber_eligibility_result')
         )
 
         return response_result
