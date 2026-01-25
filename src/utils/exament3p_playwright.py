@@ -377,20 +377,61 @@ class ExamenT3PPlaywright:
         # Liste des statuts possibles sur ExamT3P
         # IMPORTANT: Ces statuts sont mappés vers le champ Evalbox du CRM
         # Voir examt3p_crm_sync.py pour le mapping complet
-        statuts_possibles = [
-            'En attente de convocation',      # → Convoc CMA reçue (dans CRM)
-            'En attente d\'instruction des pièces',
-            'En cours d\'instruction',        # → Dossier Synchronisé (dans CRM)
-            'Valide',                         # → VALIDE CMA (dans CRM)
-            'Incomplet',                      # → Refusé CMA (dans CRM)
-            'En attente du paiement',         # → Pret a payer (dans CRM)
-            'Dossier validé',
-            'En cours de composition'         # → Dossier crée (dans CRM)
+        #
+        # ATTENTION: La détection doit être PRÉCISE pour éviter les faux positifs
+        # Par exemple "Valide" peut apparaître dans "Document VALIDÉ" alors que
+        # le statut du dossier est "Incomplet"
+        #
+        # Priorité: Les statuts NÉGATIFS doivent être vérifiés EN PREMIER
+        # car ils sont plus spécifiques et critiques
+        statuts_par_priorite = [
+            # Statuts négatifs/critiques en premier
+            ('Incomplet', [r'statut[:\s]*incomplet', r'dossier[:\s]*incomplet', r'\bincomplet\b(?!\s*validé)']),
+            ('Refusé', [r'statut[:\s]*refusé', r'dossier[:\s]*refusé', r'\brefusé\b']),
+            ('En attente du paiement', [r'en attente du paiement', r'attente[:\s]*paiement']),
+            ('En cours de composition', [r'en cours de composition']),
+            # Statuts intermédiaires
+            ('En attente d\'instruction des pièces', [r"en attente d'instruction", r'instruction des pièces']),
+            ('En cours d\'instruction', [r"en cours d'instruction"]),
+            # Statuts positifs (vérifiés en dernier pour éviter faux positifs)
+            ('En attente de convocation', [r'en attente de convocation', r'attente[:\s]*convocation']),
+            ('Dossier validé', [r'dossier validé', r'dossier[:\s]*validé']),
+            ('Valide', [r'statut[:\s]*valide\b', r'(?<!document[:\s])(?<!pièce[:\s])valide\s*$']),
         ]
-        for statut in statuts_possibles:
-            if statut.lower() in text_content.lower():
-                self.data['statut_dossier'] = statut
+
+        # Chercher le statut avec patterns précis
+        for statut, patterns in statuts_par_priorite:
+            for pattern in patterns:
+                if re.search(pattern, text_content, re.IGNORECASE):
+                    self.data['statut_dossier'] = statut
+                    break
+            if 'statut_dossier' in self.data:
                 break
+
+        # Fallback: recherche simple si aucun pattern trouvé
+        if 'statut_dossier' not in self.data:
+            statuts_simples = [
+                'Incomplet',  # Priorité aux négatifs
+                'Refusé',
+                'En attente du paiement',
+                'En cours de composition',
+                'En attente de convocation',
+                'En attente d\'instruction des pièces',
+                'En cours d\'instruction',
+                'Dossier validé',
+                'Valide',
+            ]
+            for statut in statuts_simples:
+                # Éviter les faux positifs avec "VALIDÉ" des documents
+                if statut.lower() == 'valide':
+                    # Ne pas matcher "validé" seul (souvent documents)
+                    # Chercher contexte "statut valide" ou "dossier valide"
+                    if re.search(r'(statut|dossier)[:\s]*valide', text_content, re.IGNORECASE):
+                        self.data['statut_dossier'] = statut
+                        break
+                elif statut.lower() in text_content.lower():
+                    self.data['statut_dossier'] = statut
+                    break
 
         # Date de réception du dossier
         match = re.search(r'Dossier reçu le\s+(\d{2}/\d{2}/\d{4})', text_content)
