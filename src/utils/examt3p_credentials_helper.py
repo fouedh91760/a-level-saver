@@ -358,10 +358,22 @@ def get_credentials_with_validation(
         else:
             logger.warning("  ⚠️  Identifiants introuvables dans les threads")
 
-    # Si aucun identifiant trouvé, arrêter ici
-    # NOTE: On ne demande PAS les identifiants car c'est nous qui allons créer le compte
+    # Si aucun identifiant trouvé...
     if not identifiant or not mot_de_passe:
-        logger.warning("❌ Identifiants ExamT3P non trouvés - Création de compte nécessaire")
+        # ================================================================
+        # VÉRIFICATION CRITIQUE: Avons-nous déjà demandé au candidat de
+        # créer son compte? Si oui → on doit lui redemander ses identifiants
+        # ================================================================
+        if detect_account_creation_request_in_history(threads):
+            logger.warning("⚠️  Identifiants non trouvés MAIS création de compte déjà demandée!")
+            logger.info("→ On doit redemander au candidat s'il a créé son compte")
+            result['should_respond_to_candidate'] = True
+            result['candidate_response_message'] = generate_account_creation_followup_response()
+            result['account_creation_requested'] = True  # Flag pour traçabilité
+            return result
+
+        # Sinon, c'est nous qui créerons le compte (Uber 20€ par exemple)
+        logger.warning("❌ Identifiants ExamT3P non trouvés - Création de compte par nous")
         result['should_respond_to_candidate'] = False  # Pas de demande au candidat
         result['candidate_response_message'] = None
         return result
@@ -455,6 +467,83 @@ Pour accéder à votre compte, veuillez suivre la procédure de réinitialisatio
 4. Suivez les instructions pour réinitialiser votre mot de passe
 
 Une fois votre mot de passe réinitialisé, merci de nous transmettre vos nouveaux identifiants afin que nous puissions assurer le suivi de votre dossier.
+
+Cordialement,
+L'équipe DOC"""
+
+
+def detect_account_creation_request_in_history(threads: List[Dict]) -> bool:
+    """
+    Détecte si nous (Cab Formations) avons déjà demandé au candidat de créer
+    son compte ExamT3P dans l'historique des échanges.
+
+    Patterns recherchés dans les messages SORTANTS (direction='out'):
+    - "créer votre compte"
+    - "créez votre compte"
+    - "ouvrir un compte"
+    - "création de votre compte"
+    - "inscription sur ExamT3P"
+    - "s'inscrire sur ExamT3P"
+    - "vous inscrire sur exament3p"
+
+    Returns:
+        True si on a demandé au candidat de créer son compte, False sinon
+    """
+    from src.utils.text_utils import get_clean_thread_content
+
+    patterns = [
+        r'cr[ée]er?\s+votre\s+compte',
+        r'cr[ée]ez?\s+votre\s+compte',
+        r'ouvrir\s+un\s+compte',
+        r"création\s+de\s+votre\s+compte",
+        r'inscription\s+sur\s+examen?t3p',
+        r"s'inscrire\s+sur\s+examen?t3p",
+        r'vous\s+inscrire\s+sur\s+examen?t3p',
+        r'cr[ée]er?\s+un\s+compte\s+examen?t3p',
+        r'cr[ée]er?\s+un\s+compte\s+sur\s+examen?t3p',
+        r'ouvrir\s+votre\s+compte\s+examen?t3p',
+        r'inscription\s+à\s+examen?t3p',
+        r'vous\s+devez\s+.*cr[ée]er.*compte',
+    ]
+
+    for thread in threads:
+        # Uniquement les messages SORTANTS (de nous vers le candidat)
+        if thread.get('direction') != 'out':
+            continue
+
+        content = get_clean_thread_content(thread)
+        content_lower = content.lower()
+
+        for pattern in patterns:
+            if re.search(pattern, content_lower, re.IGNORECASE):
+                logger.info(f"🔍 Détecté: demande de création de compte dans l'historique")
+                logger.info(f"   Pattern trouvé: {pattern}")
+                return True
+
+    return False
+
+
+def generate_account_creation_followup_response() -> str:
+    """
+    Génère le message à envoyer au candidat quand on lui avait précédemment
+    demandé de créer son compte ExamT3P et qu'on n'a toujours pas ses identifiants.
+    """
+    return """Bonjour,
+
+Suite à notre précédent échange, nous souhaitions savoir si vous avez pu créer votre compte sur la plateforme ExamT3P.
+
+Si vous avez créé votre compte, merci de nous transmettre vos identifiants de connexion (email et mot de passe) afin que nous puissions assurer le suivi de votre dossier et vérifier que votre inscription est bien complète.
+
+Si vous n'avez pas encore créé votre compte, voici les étapes à suivre :
+
+1. Rendez-vous sur : https://www.exament3p.fr/id/14
+2. Cliquez sur "S'inscrire"
+3. Complétez le formulaire d'inscription
+4. Une fois inscrit, transmettez-nous vos identifiants par retour de mail
+
+⚠️ **Important** : La création du compte ExamT3P est obligatoire pour pouvoir être inscrit à l'examen VTC auprès de la CMA.
+
+En attendant votre retour,
 
 Cordialement,
 L'équipe DOC"""

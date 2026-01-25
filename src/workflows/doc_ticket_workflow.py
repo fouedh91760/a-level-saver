@@ -597,14 +597,20 @@ class DOCTicketWorkflow:
             logger.info("  ℹ️ Pas une opportunité Uber 20€")
 
         # ================================================================
-        # RÈGLE CRITIQUE: SI IDENTIFIANTS INVALIDES → SKIP DATES/SESSIONS
+        # RÈGLE CRITIQUE: SI IDENTIFIANTS NON ACCESSIBLES → SKIP DATES/SESSIONS
         # ================================================================
         # On ne peut RIEN faire tant qu'on n'a pas accès au compte ExamT3P
-        # La seule réponse possible = demander les bons identifiants
+        # Cas possibles:
+        # 1. Identifiants trouvés mais connexion échouée → demander réinitialisation
+        # 2. Création de compte demandée mais pas d'identifiants → relancer le candidat
         skip_date_session_analysis = False
         if exament3p_data.get('should_respond_to_candidate') and not exament3p_data.get('compte_existe'):
-            logger.warning("  🚨 IDENTIFIANTS INVALIDES → SKIP analyse dates/sessions")
-            logger.warning("  → La réponse doit UNIQUEMENT demander les bons identifiants")
+            if exament3p_data.get('account_creation_requested'):
+                logger.warning("  🚨 CRÉATION DE COMPTE DEMANDÉE MAIS PAS D'IDENTIFIANTS REÇUS")
+                logger.warning("  → La réponse doit relancer le candidat sur la création de compte")
+            else:
+                logger.warning("  🚨 IDENTIFIANTS INVALIDES → SKIP analyse dates/sessions")
+                logger.warning("  → La réponse doit UNIQUEMENT demander les bons identifiants")
             skip_date_session_analysis = True
 
         # ================================================================
