@@ -705,20 +705,46 @@ Si vous nous fournissez les documents corrigés avant la date de clôture, nous 
 def generate_valide_cma_message(date_examen_str: str) -> str:
     """
     Génère le message pour un dossier validé CMA (CAS 4).
+
+    Adapte le message selon la proximité de l'examen:
+    - > 10 jours: "vous recevrez la convocation ~10j avant"
+    - ≤ 10 jours: "la convocation devrait être arrivée, vérifiez vos spams"
     """
     date_formatted = ""
+    days_until_exam = None
+
     if date_examen_str:
         try:
             date_obj = datetime.strptime(str(date_examen_str), "%Y-%m-%d")
             date_formatted = date_obj.strftime("%d/%m/%Y")
+            # Calculer le nombre de jours jusqu'à l'examen
+            today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+            days_until_exam = (date_obj - today).days
         except:
             date_formatted = str(date_examen_str)
 
     date_text = f" du {date_formatted}" if date_formatted else ""
 
-    return f"""Bonne nouvelle ! Votre dossier a été validé par la CMA pour l'examen{date_text}.
+    # Message différent selon la proximité de l'examen
+    if days_until_exam is not None and days_until_exam <= 10:
+        # Examen imminent - la convocation devrait déjà être arrivée
+        return f"""Bonne nouvelle ! Votre dossier a été validé par la CMA pour l'examen{date_text}.
+
+**Concernant votre convocation :**
+La convocation officielle est généralement envoyée par la CMA environ 10 jours avant l'examen. Elle devrait donc **déjà être arrivée** dans votre boîte mail.
+
+📧 **Vérifiez impérativement vos spams et courriers indésirables**, car il arrive fréquemment que les emails de la CMA s'y retrouvent.
+
+Si vous n'avez toujours pas reçu votre convocation après avoir vérifié vos spams, merci de nous le signaler rapidement afin que nous puissions contacter la CMA.
+
+En attendant, nous vous conseillons de bien préparer votre examen. N'hésitez pas à nous contacter si vous avez des questions."""
+    else:
+        # Examen dans plus de 10 jours
+        return f"""Bonne nouvelle ! Votre dossier a été validé par la CMA pour l'examen{date_text}.
 
 Vous recevrez votre convocation officielle environ 10 jours avant la date de l'examen. Cette convocation vous sera envoyée directement par la CMA à l'adresse email que vous avez renseignée.
+
+📧 **Pensez à vérifier régulièrement vos spams et courriers indésirables**, car il arrive que les emails de la CMA s'y retrouvent.
 
 En attendant, nous vous conseillons de bien préparer votre examen. N'hésitez pas à nous contacter si vous avez des questions."""
 
