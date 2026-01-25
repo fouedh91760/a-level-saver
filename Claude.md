@@ -1,5 +1,108 @@
 # Claude.md - A-Level Saver Project Context
 
+---
+
+## ⚠️ INSTRUCTIONS GIT CRITIQUES - LIRE EN PREMIER
+
+### 🔄 Synchronisation au début de chaque session
+
+**AVANT de commencer à travailler, TOUJOURS synchroniser avec GitHub :**
+
+```bash
+# 1. Récupérer les dernières modifications de toutes les branches
+git fetch origin
+
+# 2. Voir l'état actuel
+git status
+git branch -a
+
+# 3. Si tu es sur main, merger les changements des branches claude/*
+git checkout main
+git merge origin/main
+
+# 4. Vérifier s'il y a des branches claude/* avec des commits en avance
+git log origin/claude/[nom-branche] --oneline -5
+```
+
+### 📤 Workflow pour pousser les modifications
+
+**Claude pousse sur une branche `claude/*`, l'utilisateur merge sur main :**
+
+```bash
+# Claude fait ses modifications et pousse sur sa branche
+git add .
+git commit -m "Description du changement"
+git push origin main:claude/[session-branch]
+
+# L'utilisateur récupère et merge sur main
+git fetch origin
+git merge origin/claude/[session-branch]
+git push origin main
+```
+
+### 🚨 ERREURS À ÉVITER
+
+| ❌ Ne pas faire | ✅ Faire à la place |
+|-----------------|---------------------|
+| `git reset --hard origin/main` sans vérifier les branches | Vérifier d'abord `git log origin/claude/* --oneline -10` |
+| Travailler sur une branche sans fetch | Toujours `git fetch origin` en premier |
+| Ignorer les branches `claude/*` avec commits en avance | Merger ces branches avant de reset |
+
+### 📋 Checklist de début de session
+
+- [ ] `git fetch origin` - Récupérer les dernières modifications
+- [ ] `git status` - Voir l'état actuel
+- [ ] `git branch -a` - Voir toutes les branches
+- [ ] Vérifier si des branches `claude/*` ont des commits non mergés
+- [ ] Si oui, merger ces branches dans main avant de continuer
+
+---
+
+## 📝 CHANGELOG - ÉVOLUTIONS RÉCENTES (Janvier 2026)
+
+### 25-26 Janvier 2026 - Corrections majeures
+
+#### 🔧 Règles métier corrigées
+
+1. **Justificatif de domicile : 3 mois (pas 6)**
+   - Fichier: `src/agents/response_generator_agent.py`
+   - La CMA exige un justificatif de moins de **3 mois**, pas 6
+
+2. **Dates de formation : utiliser les données CRM**
+   - Ne jamais inventer les dates de formation
+   - Utiliser `Session_choisie` du CRM
+
+3. **Identifiants E-learning ≠ ExamT3P**
+   - ExamT3P : donner identifiants + lien
+   - E-learning : donner **UNIQUEMENT le lien** (candidat a déjà ses identifiants)
+
+#### 🔗 Liens officiels ajoutés
+
+| Plateforme | URL | Texte cliquable |
+|------------|-----|-----------------|
+| ExamenT3P | https://www.exament3p.fr | [Mon espace ExamenT3P] |
+| E-learning | https://cab-formations.fr/user | [Mon E-LEARNING] |
+| Test sélection | https://cab-formations.fr/user/login?destination=/course/test-de-s%C3%A9lection | [Test de sélection] |
+| Inscription Uber | https://cab-formations.fr/uberxcab_welcome | [Plateforme inscription offre Cab Uber] |
+
+#### 💬 Communication diplomatique
+
+- Ne pas dire "erreur de notre part" ou "manque de communication de notre côté"
+- Dire : "Il est probable que cet email se soit retrouvé dans vos spams"
+- Ajouter : "N'hésitez pas à nous alerter dès que vous constatez un manque d'information"
+
+#### 🛑 Règle de blocage modifiée
+
+- **Avant** : Bloquer les anciens dossiers (avant 01/11/2025)
+- **Maintenant** : Bloquer **uniquement si échec connexion ExamT3P**
+
+#### 📄 Détection statut "À CORRIGER"
+
+- Fichier: `src/utils/exament3p_playwright.py`
+- Le statut "À CORRIGER" est maintenant détecté et traité comme "REFUSÉ"
+
+---
+
 ## 🎯 CONTEXTE DU PROJET
 
 **Nom:** A-Level Saver - Automatisation Zoho Desk & CRM
