@@ -238,6 +238,38 @@ class ZohoDeskClient(ZohoAPIClient):
         }
         return self._make_request("POST", url, params=params, json=data)
 
+    def create_ticket_reply_draft(
+        self,
+        ticket_id: str,
+        content: str,
+        content_type: str = "html"
+    ) -> Dict[str, Any]:
+        """
+        Create a draft reply for a ticket.
+
+        This creates a draft email reply that can be reviewed and edited
+        before being sent to the customer.
+
+        Args:
+            ticket_id: The ticket ID
+            content: The draft content (HTML or plain text)
+            content_type: "html" or "plainText" (default: "html")
+
+        Returns:
+            Dict containing the draft thread details
+
+        Documentation:
+            https://desk.zoho.com/DeskAPIDocument#Threads#Threads_CreateDraft
+        """
+        url = f"{settings.zoho_desk_api_url}/tickets/{ticket_id}/draftReply"
+        params = {"orgId": settings.zoho_desk_org_id}
+        data = {
+            "contentType": content_type,
+            "content": content
+        }
+        logger.info(f"Creating draft reply for ticket {ticket_id}")
+        return self._make_request("POST", url, params=params, json=data)
+
     def get_ticket_threads(self, ticket_id: str) -> Dict[str, Any]:
         """
         Get all threads (emails, replies) for a ticket.
