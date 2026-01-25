@@ -17,6 +17,7 @@ CAS GÉRÉS:
 - CAS 7: Date passée + Evalbox = VALIDE CMA/Dossier Synchronisé → Examen passé (sauf indices contraires)
 - CAS 8: Date future + Date_Cloture passée + Evalbox ≠ VALIDE CMA/Dossier Synchronisé → Deadline ratée, proposer prochaines dates
 - CAS 9: Evalbox = Convoc CMA reçue → Transmettre identifiants, lien plateforme, instructions impression + bonne chance
+- CAS 10: Evalbox = Pret a payer → Paiement en cours, surveiller emails, corriger si refus CMA avant clôture
 """
 import logging
 from datetime import datetime, date
@@ -467,6 +468,18 @@ def analyze_exam_date_situation(
             logger.info(f"  ➡️ CAS 9: Convocation CMA reçue")
             return result
 
+        # CAS 10: Prêt à payer - Paiement en cours, instruction CMA à venir
+        if evalbox_status in ['Pret a payer', 'Pret a payer par cheque']:
+            result['case'] = 10
+            result['case_description'] = "Prêt à payer - Paiement en cours, surveiller emails pour instruction CMA"
+            result['should_include_in_response'] = True
+            result['response_message'] = generate_pret_a_payer_message(
+                date_examen_str,
+                result['date_cloture']
+            )
+            logger.info(f"  ➡️ CAS 10: Prêt à payer ({evalbox_status})")
+            return result
+
         # Vérifier si la date de clôture est passée
         date_cloture_is_past = is_date_in_past(result['date_cloture']) if result.get('date_cloture') else False
 
@@ -881,3 +894,60 @@ def generate_convocation_message(
 - Une pièce d'identité en cours de validité (carte d'identité ou passeport)
 
 Nous vous souhaitons bonne chance pour votre examen ! Nous restons à votre disposition si vous avez des questions."""
+
+
+def generate_pret_a_payer_message(
+    date_examen_str: str,
+    date_cloture: str
+) -> str:
+    """
+    Génère le message pour informer que le paiement est en cours (CAS 10).
+
+    Contenu:
+    - Paiement des frais d'examen en cours (prochaines heures/jours)
+    - Une fois payé, la CMA va instruire les pièces
+    - Surveiller emails + spams pour notifications CMA
+    - Si refus de pièces → corriger avant date clôture
+    - Sinon → décalage date examen
+    """
+    # Formater la date d'examen
+    date_examen_formatted = ""
+    if date_examen_str:
+        try:
+            date_obj = datetime.strptime(str(date_examen_str), "%Y-%m-%d")
+            date_examen_formatted = date_obj.strftime("%d/%m/%Y")
+        except:
+            date_examen_formatted = str(date_examen_str)
+
+    # Formater la date de clôture
+    date_cloture_formatted = ""
+    if date_cloture:
+        try:
+            if 'T' in str(date_cloture):
+                date_obj = datetime.fromisoformat(str(date_cloture).replace('Z', '+00:00'))
+            else:
+                date_obj = datetime.strptime(str(date_cloture), "%Y-%m-%d")
+            date_cloture_formatted = date_obj.strftime("%d/%m/%Y")
+        except:
+            date_cloture_formatted = str(date_cloture)
+
+    date_examen_text = f" du **{date_examen_formatted}**" if date_examen_formatted else ""
+    date_cloture_text = f"**{date_cloture_formatted}**" if date_cloture_formatted else "la date de clôture des inscriptions"
+
+    return f"""Votre dossier est complet et prêt pour le paiement des frais d'examen !
+
+Nous allons procéder au règlement des frais d'inscription dans les **prochaines heures/jours**.
+
+**Ce qui va se passer ensuite :**
+
+1. Une fois le paiement effectué, votre dossier sera transmis à la **CMA (Chambre des Métiers et de l'Artisanat)** pour instruction
+
+2. La CMA va examiner vos pièces justificatives
+
+3. **Important - Surveillez vos emails (et vos spams !)** : Si la CMA refuse certaines pièces, vous recevrez une notification par email vous demandant de les corriger
+
+4. En cas de demande de correction, vous devrez nous transmettre les documents corrigés **avant le {date_cloture_text}**
+
+**Attention :** Si les corrections ne sont pas apportées avant la date de clôture, votre inscription sera automatiquement reportée sur la prochaine session d'examen.
+
+Votre examen est prévu pour le{date_examen_text}. Nous restons à votre disposition pour toute question."""

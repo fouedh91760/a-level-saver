@@ -1493,6 +1493,61 @@ python extract_crm_schema.py --module Deals
 | **7** | Date passée + Evalbox ∈ {VALIDE CMA, Dossier Sync} | Examen probablement passé | Demander clarification si indices contraires |
 | **8** | Date future + **clôture passée** + Evalbox ≠ VALIDE/Sync | Deadline ratée → report | "Inscriptions clôturées, report automatique..." |
 | **9** | Evalbox = `Convoc CMA reçue` | Transmettre identifiants + instructions | Lien ExamT3P, identifiants, télécharger/imprimer, pièce d'identité, bonne chance |
+| **10** | Evalbox = `Pret a payer` / `Pret a payer par cheque` | Informer du paiement en cours | Paiement imminent, surveiller emails, corriger si refus avant clôture |
+
+---
+
+### 🗺️ Vision Globale: Parcours Candidat VTC (Evalbox)
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                     PARCOURS CANDIDAT VTC - ÉTATS EVALBOX                    │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  1. CRÉATION COMPTE                                                         │
+│     └── Evalbox = "Dossier crée"                                           │
+│         → Compte créé sur ExamT3P, en attente des documents                │
+│                     ↓                                                       │
+│  2. DOCUMENTS                                                               │
+│     ├── Evalbox = "Documents manquants"                                    │
+│     │   → Pièces à fournir par le candidat                                 │
+│     └── Evalbox = "Documents refusés"                                      │
+│         → Pièces à corriger (rejetées par CAB)                             │
+│                     ↓                                                       │
+│  3. PAIEMENT (CAS 10)                                                       │
+│     └── Evalbox = "Pret a payer" / "Pret a payer par cheque"               │
+│         → CAB va payer les frais d'examen → Instruction CMA                │
+│         → Surveiller emails pour demandes CMA                              │
+│                     ↓                                                       │
+│  4. INSTRUCTION CMA (CAS 5)                                                 │
+│     └── Evalbox = "Dossier Synchronisé"                                    │
+│         → Dossier transmis à la CMA, en cours d'examen                     │
+│         → Peut être accepté ou refusé                                      │
+│                     ↓                                                       │
+│  5a. VALIDATION (CAS 4)              5b. REFUS (CAS 3)                      │
+│      └── Evalbox = "VALIDE CMA"          └── Evalbox = "Refusé CMA"        │
+│          → Dossier OK !                      → Pièces refusées par CMA     │
+│          → Convocation ~10j avant            → Corriger avant clôture      │
+│                     ↓                                    ↓                  │
+│  6. CONVOCATION (CAS 9)                      Retour étape 2 ou 3           │
+│     └── Evalbox = "Convoc CMA reçue"                                       │
+│         → Télécharger sur ExamT3P                                          │
+│         → Imprimer + pièce d'identité                                      │
+│         → BONNE CHANCE !                                                   │
+│                     ↓                                                       │
+│  7. EXAMEN (CAS 7)                                                          │
+│     └── Date passée + Evalbox validé                                       │
+│         → Examen probablement passé                                        │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+**Cas d'erreur/exception:**
+- **CAS 1**: Pas de date d'examen → Proposer dates
+- **CAS 2**: Date passée + non validé → Proposer nouvelles dates
+- **CAS 8**: Deadline clôture passée + non validé → Report automatique
+
+---
 
 #### Détail CAS 9: Convocation CMA Reçue
 
@@ -1524,6 +1579,33 @@ Excellente nouvelle ! Votre convocation pour l'examen VTC du **15/03/2026** est 
 - Une pièce d'identité en cours de validité (carte d'identité ou passeport)
 
 Nous vous souhaitons bonne chance pour votre examen ! Nous restons à votre disposition si vous avez des questions.
+```
+
+#### Détail CAS 10: Prêt à Payer
+
+**Condition:** `Evalbox = "Pret a payer"` ou `"Pret a payer par cheque"`
+
+**Données utilisées:**
+- `Date_Examen` → Date de l'examen prévue
+- `Date_Cloture_Inscription` → Date limite pour corrections
+
+**Message généré:**
+```
+Votre dossier est complet et prêt pour le paiement des frais d'examen !
+
+Nous allons procéder au règlement des frais d'inscription dans les **prochaines heures/jours**.
+
+**Ce qui va se passer ensuite :**
+
+1. Une fois le paiement effectué, votre dossier sera transmis à la **CMA** pour instruction
+
+2. La CMA va examiner vos pièces justificatives
+
+3. **Important - Surveillez vos emails (et vos spams !)** : Si la CMA refuse certaines pièces, vous recevrez une notification par email
+
+4. En cas de demande de correction, vous devrez nous transmettre les documents corrigés **avant le 01/03/2026**
+
+**Attention :** Si les corrections ne sont pas apportées avant la date de clôture, votre inscription sera automatiquement reportée sur la prochaine session d'examen.
 ```
 
 ---
