@@ -53,18 +53,17 @@ def get_next_exam_dates(
 
     try:
         # Construire la requête de recherche
-        # On cherche les sessions actives avec clôture dans le futur pour ce département
+        # On cherche les sessions actives pour ce département
+        # Note: L'API search ne supporte pas sort_by/sort_order sur les modules custom
         url = f"{settings.zoho_crm_api_url}/Dates_Examens_VTC_TAXI/search"
 
-        # Critère: Statut = Actif AND Date_Cloture_Inscription > aujourd'hui AND Departement = X
-        criteria = f"(Statut:equals:Actif)and(Departement:equals:{departement})"
+        # Critère: Statut = Actif AND Departement = X
+        criteria = f"((Statut:equals:Actif)and(Departement:equals:{departement}))"
 
         params = {
             "criteria": criteria,
             "page": 1,
-            "per_page": 50,  # On récupère plus pour filtrer ensuite
-            "sort_by": "Date_Examen",
-            "sort_order": "asc"
+            "per_page": 50  # On récupère plus pour filtrer ensuite (tri fait en Python)
         }
 
         response = crm_client._make_request("GET", url, params=params)
@@ -121,14 +120,13 @@ def get_next_exam_dates_any_department(
 
     try:
         url = f"{settings.zoho_crm_api_url}/Dates_Examens_VTC_TAXI/search"
+        # Note: L'API search ne supporte pas sort_by/sort_order sur les modules custom
         criteria = "(Statut:equals:Actif)"
 
         params = {
             "criteria": criteria,
             "page": 1,
-            "per_page": 50,
-            "sort_by": "Date_Examen",
-            "sort_order": "asc"
+            "per_page": 50  # Tri fait en Python après
         }
 
         response = crm_client._make_request("GET", url, params=params)
