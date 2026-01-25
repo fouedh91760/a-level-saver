@@ -540,20 +540,17 @@ def detect_credentials_request_in_history(threads: List[Dict]) -> bool:
     Détecte si nous (Cab Formations) avons déjà demandé au candidat ses
     identifiants ExamT3P dans l'historique des échanges.
 
-    Patterns recherchés dans les messages SORTANTS (direction='out'):
-    - "transmettre vos identifiants"
-    - "envoyer vos identifiants"
-    - "communiquer vos identifiants"
-    - "nous fournir vos identifiants"
-    - "vos identifiants examt3p"
-    - "email et mot de passe"
+    Vérifie DEUX sources:
+    1. Nos messages SORTANTS (direction='out') avec patterns de demande
+    2. Les messages ENTRANTS (direction='in') où le candidat MENTIONNE qu'on lui a demandé
 
     Returns:
         True si on a demandé les identifiants au candidat, False sinon
     """
     from src.utils.text_utils import get_clean_thread_content
 
-    patterns = [
+    # Patterns dans les messages SORTANTS (de nous vers le candidat)
+    outgoing_patterns = [
         r'transmettre\s+vos\s+identifiants',
         r'envoyer\s+vos\s+identifiants',
         r'communiquer\s+vos\s+identifiants',
@@ -568,19 +565,39 @@ def detect_credentials_request_in_history(threads: List[Dict]) -> bool:
         r'demandons\s+vos\s+identifiants',
     ]
 
-    for thread in threads:
-        # Uniquement les messages SORTANTS (de nous vers le candidat)
-        if thread.get('direction') != 'out':
-            continue
+    # Patterns dans les messages ENTRANTS (le candidat mentionne qu'on lui a demandé)
+    incoming_patterns = [
+        r're[çc]u\s+un\s+mail.*demande.*identifiants',
+        r'demande\s+mes\s+identifiants',
+        r'me\s+demande\s+mes\s+identifiants',
+        r'demand[ée]\s+mes\s+identifiants',
+        r'vous\s+m.*avez\s+demand[ée].*identifiants',
+        r'on\s+m.*a\s+demand[ée].*identifiants',
+        r'mail.*identifiants',
+        r'support.*demande.*identifiants',
+        r'est.ce\s+.*normal.*identifiants',
+    ]
 
+    for thread in threads:
         content = get_clean_thread_content(thread)
         content_lower = content.lower()
+        direction = thread.get('direction')
 
-        for pattern in patterns:
-            if re.search(pattern, content_lower, re.IGNORECASE):
-                logger.info(f"🔍 Détecté: demande d'identifiants dans l'historique")
-                logger.info(f"   Pattern trouvé: {pattern}")
-                return True
+        if direction == 'out':
+            # Vérifier nos messages sortants
+            for pattern in outgoing_patterns:
+                if re.search(pattern, content_lower, re.IGNORECASE):
+                    logger.info(f"🔍 Détecté: demande d'identifiants dans l'historique (message sortant)")
+                    logger.info(f"   Pattern trouvé: {pattern}")
+                    return True
+
+        elif direction == 'in':
+            # Vérifier si le candidat mentionne avoir reçu une demande d'identifiants
+            for pattern in incoming_patterns:
+                if re.search(pattern, content_lower, re.IGNORECASE):
+                    logger.info(f"🔍 Détecté: le candidat mentionne une demande d'identifiants")
+                    logger.info(f"   Pattern trouvé: {pattern}")
+                    return True
 
     return False
 
@@ -611,16 +628,23 @@ Cordialement,
 L'équipe DOC"""
 
 
-def generate_credentials_request_followup_response() -> str:
+def generate_credentials_request_followup_response(include_session_preference: str = None) -> str:
     """
     Génère le message à envoyer au candidat quand on lui avait précédemment
     demandé ses identifiants ExamT3P et qu'on ne les a toujours pas reçus.
 
-    Ce message rassure également le candidat sur le fait que c'est normal
-    que nous demandions ses identifiants.
+    Ce message:
+    1. Rassure le candidat sur le fait que c'est normal
+    2. Explique pourquoi on a besoin des identifiants
+    3. Demande les identifiants
+    4. Inclut la procédure de création de compte au cas où
     """
-    return """Bonjour,
+    session_note = ""
+    if include_session_preference:
+        session_note = f"\n\nNous avons bien noté votre préférence pour les **{include_session_preference}**. Nous pourrons vous proposer les dates de formation adaptées dès que nous aurons accès à votre dossier.\n"
 
+    return f"""Bonjour,
+{session_note}
 Concernant votre question : **oui, c'est tout à fait normal que notre équipe vous demande vos identifiants ExamT3P**.
 
 **Pourquoi avons-nous besoin de vos identifiants ?**
@@ -631,13 +655,25 @@ Sans accès à votre compte ExamT3P, il nous est **impossible** de :
 - Procéder au paiement de vos frais d'examen (si ce n'est pas encore fait)
 - Vous inscrire à une date d'examen
 
-Merci de nous transmettre vos identifiants de connexion ExamT3P :
+**📝 Merci de nous transmettre vos identifiants de connexion ExamT3P :**
 - **Identifiant** (généralement votre adresse email)
 - **Mot de passe**
 
+---
+
+**Vous n'avez pas encore créé votre compte ExamT3P ?**
+
+Pas de souci ! Voici comment faire :
+1. Rendez-vous sur : https://www.exament3p.fr/id/14
+2. Cliquez sur "S'inscrire"
+3. Complétez le formulaire d'inscription avec vos informations personnelles
+4. Une fois inscrit, transmettez-nous vos identifiants par retour de mail
+
+---
+
 ⚠️ **Conseil de sécurité** : Vérifiez toujours que les emails que vous recevez proviennent bien de @cab-formations.fr. En cas de doute, vous pouvez nous contacter directement au 01 74 90 20 82.
 
-Une fois vos identifiants reçus, nous pourrons avancer sur votre dossier.
+Dès réception de vos identifiants, nous pourrons finaliser votre dossier et vous proposer les prochaines dates d'examen disponibles.
 
 Cordialement,
 L'équipe DOC"""
