@@ -134,6 +134,11 @@ Tu réponds aux tickets clients concernant les formations VTC pour Uber avec un 
 - 📧 "Vérifiez vos spams/courriers indésirables" (si email envoyé)
 - ⚠️ Avertissement mot de passe (TOUJOURS)
 
+**Si "PROCHAINES DATES D'EXAMEN À PROPOSER" dans les données** :
+- ⚠️ OBLIGATOIRE : Inclure les dates exactes dans la réponse avec leur format (ex: "31/03/2026", "30/06/2026")
+- Ne jamais paraphraser par "prochaine session disponible" sans donner les dates précises
+- Format : lister les dates avec leurs infos (date examen + date clôture si disponible)
+
 ## SOURCES DE VÉRITÉ :
 
 - **ExamenT3P** : source de vérité pour documents, paiement CMA, statut dossier
@@ -274,10 +279,38 @@ Génère uniquement le contenu de la réponse (pas de métadonnées)."""
             lines.append(f"  - Cas détecté : CAS {date_examen_vtc_data.get('case', 'N/A')} - {date_examen_vtc_data.get('case_description', '')}")
             lines.append(f"  - Statut Evalbox : {date_examen_vtc_data.get('evalbox_status', 'N/A')}")
             if date_examen_vtc_data.get('should_include_in_response'):
-                lines.append(f"  - ⚠️ ACTION REQUISE : Inclure message date examen dans la réponse")
+                lines.append(f"  - ⚠️ ACTION REQUISE : Inclure les informations date examen dans la réponse")
+                # Inclure les prochaines dates disponibles explicitement
+                next_dates = date_examen_vtc_data.get('next_dates', [])
+                if next_dates:
+                    lines.append(f"  - 📆 PROCHAINES DATES D'EXAMEN À PROPOSER :")
+                    for i, date_info in enumerate(next_dates[:2], 1):
+                        date_examen = date_info.get('Date_Examen', 'N/A')
+                        date_cloture = date_info.get('Date_Cloture_Inscription', '')
+                        libelle = date_info.get('Libelle_Affichage', '')
+                        # Formater la date pour affichage
+                        try:
+                            from datetime import datetime
+                            date_obj = datetime.strptime(str(date_examen), "%Y-%m-%d")
+                            date_formatted = date_obj.strftime("%d/%m/%Y")
+                        except:
+                            date_formatted = str(date_examen)
+                        # Formater date clôture
+                        cloture_formatted = ""
+                        if date_cloture:
+                            try:
+                                if 'T' in str(date_cloture):
+                                    cloture_obj = datetime.fromisoformat(str(date_cloture).replace('Z', '+00:00'))
+                                else:
+                                    cloture_obj = datetime.strptime(str(date_cloture), "%Y-%m-%d")
+                                cloture_formatted = f" (clôture: {cloture_obj.strftime('%d/%m/%Y')})"
+                            except:
+                                pass
+                        lines.append(f"      {i}. {date_formatted}{cloture_formatted}")
+                # Inclure le message complet (non tronqué)
                 if date_examen_vtc_data.get('response_message'):
-                    lines.append(f"  - Message à intégrer :")
-                    lines.append(f"    {date_examen_vtc_data['response_message'][:200]}...")
+                    lines.append(f"  - Message suggéré (à adapter) :")
+                    lines.append(f"    {date_examen_vtc_data['response_message']}")
 
         if evalbox_data:
             lines.append("\n### Evalbox (Google Sheet) :")
