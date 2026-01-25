@@ -610,27 +610,13 @@ def sync_exam_date_from_examt3p(
     # Les dates sont différentes
     logger.info(f"  📊 Dates différentes: CRM={crm_date or 'VIDE'} → ExamT3P={examt3p_date}")
 
-    # ================================================================
-    # 3. VÉRIFIER RÈGLES DE BLOCAGE
-    # ================================================================
-    evalbox_status = deal_data.get('Evalbox', '')
-    current_date_cloture = None
-
-    date_examen_vtc = deal_data.get('Date_examen_VTC')
-    if date_examen_vtc and isinstance(date_examen_vtc, dict):
-        current_date_cloture = date_examen_vtc.get('Date_Cloture_Inscription')
-
-    can_modify, reason = can_modify_exam_date(evalbox_status, current_date_cloture)
-
-    if not can_modify:
-        logger.warning(f"  🔒 BLOCAGE: {reason}")
-        result['blocked'] = True
-        result['blocked_reason'] = reason
-        result['sync_performed'] = True
-        return result
+    # NOTE: PAS DE RÈGLE DE BLOCAGE ICI
+    # ExamT3P est la SOURCE DE VÉRITÉ - on synchronise toujours vers le CRM
+    # Les règles de blocage (VALIDE CMA + clôture passée) s'appliquent uniquement
+    # aux demandes de report manuelles (candidat qui demande un changement de date)
 
     # ================================================================
-    # 4. RÉCUPÉRER LE DÉPARTEMENT
+    # 3. RÉCUPÉRER LE DÉPARTEMENT
     # ================================================================
     # Priorité: ExamT3P > CRM
     departement = (
