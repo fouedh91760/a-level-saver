@@ -281,6 +281,72 @@ add_deal_note(deal_id, title, content)   # Ajoute note
 
 ---
 
+### 📋 Schéma CRM Local (RÉFÉRENCE)
+
+**Fichier:** `crm_schema.json` (2.4 MB)
+**Date d'extraction:** 2026-01-25
+
+> ⚠️ **IMPORTANT:** Toujours consulter ce fichier pour obtenir les noms API des modules et champs CRM. Évite d'interroger Zoho à chaque fois.
+
+**Contenu:**
+- Liste complète de tous les modules Zoho CRM
+- Pour chaque module: tous les champs avec leurs métadonnées
+
+**Structure JSON:**
+```json
+{
+  "extraction_date": "2026-01-25T...",
+  "modules": {
+    "Deals": {
+      "module_label": "Opportunities",
+      "api_supported": true,
+      "creatable": true,
+      "editable": true,
+      "fields_count": 127,
+      "fields": [
+        {
+          "api_name": "Date_examen_VTC",
+          "field_label": "Date examen VTC",
+          "data_type": "date",
+          "required": false,
+          "read_only": false,
+          "custom_field": true,
+          "visible": true
+        }
+      ]
+    }
+  }
+}
+```
+
+**Informations disponibles par champ:**
+- `api_name` : Nom API à utiliser dans le code
+- `field_label` : Label affiché dans l'interface Zoho
+- `data_type` : Type (text, date, picklist, lookup, boolean, email, etc.)
+- `required` : Champ obligatoire ou non
+- `read_only` : Lecture seule ou modifiable
+- `custom_field` : Champ personnalisé ou standard
+- `lookup_module` : Module lié (pour les champs de type lookup)
+- `pick_list_values` : Valeurs possibles (pour les picklists)
+
+**Utilisation:**
+```bash
+# Rechercher un champ spécifique dans le schéma
+grep -i "date_examen" crm_schema.json
+
+# Ou utiliser le script extract_crm_schema.py
+python extract_crm_schema.py --search "Date_examen"
+python extract_crm_schema.py --module Deals
+```
+
+**Régénération du schéma:**
+```bash
+python extract_crm_schema.py
+# Sauvegarde automatique dans crm_schema.json
+```
+
+---
+
 ### Anthropic Claude API
 
 **Modèle:** `claude-3-5-sonnet-20241022`
