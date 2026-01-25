@@ -1709,20 +1709,19 @@ Nous soumettrons votre demande à la CMA pour validation du report.
 
 **Fichier:** `src/utils/examt3p_crm_sync.py`
 
-| Source ExamT3P | Valeur | → Evalbox CRM |
-|----------------|--------|---------------|
-| `statut_documents` | REFUSÉ | Refusé CMA |
-| `statut_documents` | À VALIDER | Documents manquants |
-| `convocation_disponible` | True | Convoc CMA reçue |
-| `statut_principal` | Valide | VALIDE CMA |
-| `statut_principal` | En cours | Dossier Synchronisé |
-| `paiement_cma.statut` | pending | Pret a payer |
+Le champ **"Statut du Dossier"** de ExamT3P détermine la valeur Evalbox dans CRM:
 
-**Ordre de priorité:**
-1. statut_documents (plus spécifique)
-2. convocation_disponible
-3. statut_principal
-4. paiement_status
+| ExamT3P (Statut du Dossier) | → Evalbox CRM |
+|-----------------------------|---------------|
+| En cours de composition | Dossier crée |
+| En attente de paiement | Pret a payer |
+| En cours d'instruction | Dossier Synchronisé |
+| Incomplet | Refusé CMA |
+| Valide | VALIDE CMA |
+| En attente de convocation | Convoc CMA reçue |
+
+**Note importante:** Les valeurs "Documents manquants" et "Documents refusés" sont utilisées
+**AVANT** la création du compte ExamT3P (gestion interne CAB Formations)
 
 ### 📥 Extraction des Confirmations (Tickets)
 

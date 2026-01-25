@@ -20,16 +20,21 @@ RÈGLES CRITIQUES DE MODIFICATION:
    - Le candidat sera décalé sur la prochaine session automatiquement
    - SEULEMENT s'il corrige avant la clôture de la nouvelle session
 
-MAPPING EXAMT3P → CRM:
-======================
-- statut_documents = "REFUSÉ"      → Evalbox = "Refusé CMA"
-- convocation_disponible = True     → Evalbox = "Convoc CMA reçue"
-- statut_principal = "Valide"       → Evalbox = "VALIDE CMA"
-- statut_principal = "En cours"     → Evalbox = "Dossier Synchronisé"
-- paiement_cma.statut = pending     → Evalbox = "Pret a payer"
-- statut_documents = "À VALIDER"    → Evalbox = "Documents manquants"
-- identifiant                       → IDENTIFIANT_EVALBOX (si vide)
-- mot_de_passe                      → MDP_EVALBOX (si vide)
+MAPPING EXAMT3P → CRM (Statut du Dossier):
+==========================================
+- "En cours de composition"     → Evalbox = "Dossier crée"
+- "En attente de paiement"      → Evalbox = "Pret a payer"
+- "En cours d'instruction"      → Evalbox = "Dossier Synchronisé"
+- "Incomplet"                   → Evalbox = "Refusé CMA"
+- "Valide"                      → Evalbox = "VALIDE CMA"
+- "En attente de convocation"   → Evalbox = "Convoc CMA reçue"
+
+NOTE: "Documents manquants" et "Documents refusés" sont utilisés
+      AVANT la création du compte ExamT3P (gestion interne CAB).
+
+Autres champs synchronisés:
+- identifiant                   → IDENTIFIANT_EVALBOX (si vide)
+- mot_de_passe                  → MDP_EVALBOX (si vide)
 """
 import logging
 from datetime import datetime
@@ -37,36 +42,23 @@ from typing import Dict, List, Any, Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
-# Mapping ExamT3P → Evalbox CRM (par ordre de priorité)
-EXAMT3P_TO_EVALBOX_MAPPING = {
-    # Priorité 1: Statut documents (plus spécifique)
-    'statut_documents': {
-        'REFUSÉ': 'Refusé CMA',
-        'REFUSE': 'Refusé CMA',
-        'À VALIDER': 'Documents manquants',
-        'A VALIDER': 'Documents manquants',
-        'INCOMPLET': 'Documents manquants',
-    },
-    # Priorité 2: Convocation disponible
-    'convocation_disponible': {
-        True: 'Convoc CMA reçue',
-    },
-    # Priorité 3: Statut principal
-    'statut_principal': {
-        'Valide': 'VALIDE CMA',
-        'VALIDE': 'VALIDE CMA',
-        'En cours de composition': 'Dossier Synchronisé',
-        'En cours': 'Dossier Synchronisé',
-        'EN COURS': 'Dossier Synchronisé',
-        'Incomplet': 'Documents manquants',
-        'INCOMPLET': 'Documents manquants',
-    },
-    # Priorité 4: Paiement
-    'paiement_status': {
-        'pending': 'Pret a payer',
-        'en attente': 'Pret a payer',
-        'En attente du paiement': 'Pret a payer',
-    },
+# Mapping ExamT3P "Statut du Dossier" → Evalbox CRM
+# Basé sur les valeurs réelles de la plateforme ExamT3P
+EXAMT3P_STATUT_DOSSIER_MAPPING = {
+    # Statut exact ExamT3P → Evalbox CRM
+    'En cours de composition': 'Dossier crée',
+    'EN COURS DE COMPOSITION': 'Dossier crée',
+    'En attente de paiement': 'Pret a payer',
+    'EN ATTENTE DE PAIEMENT': 'Pret a payer',
+    'En cours d\'instruction': 'Dossier Synchronisé',
+    'EN COURS D\'INSTRUCTION': 'Dossier Synchronisé',
+    'En cours d'instruction': 'Dossier Synchronisé',  # Apostrophe typographique
+    'Incomplet': 'Refusé CMA',
+    'INCOMPLET': 'Refusé CMA',
+    'Valide': 'VALIDE CMA',
+    'VALIDE': 'VALIDE CMA',
+    'En attente de convocation': 'Convoc CMA reçue',
+    'EN ATTENTE DE CONVOCATION': 'Convoc CMA reçue',
 }
 
 # Statuts qui bloquent la modification de Date_examen_VTC
@@ -117,11 +109,16 @@ def determine_evalbox_from_examt3p(examt3p_data: Dict[str, Any]) -> Optional[str
     """
     Détermine la valeur Evalbox à partir des données ExamT3P.
 
-    Ordre de priorité:
-    1. Statut documents (REFUSÉ, À VALIDER)
-    2. Convocation disponible
-    3. Statut principal
-    4. Paiement
+    Utilise le champ "Statut du Dossier" (statut_dossier ou statut_principal)
+    de la plateforme ExamT3P pour déterminer la valeur Evalbox CRM.
+
+    Mapping:
+    - "En cours de composition"     → "Dossier crée"
+    - "En attente de paiement"      → "Pret a payer"
+    - "En cours d'instruction"      → "Dossier Synchronisé"
+    - "Incomplet"                   → "Refusé CMA"
+    - "Valide"                      → "VALIDE CMA"
+    - "En attente de convocation"   → "Convoc CMA reçue"
 
     Returns:
         Valeur Evalbox ou None si pas de mapping trouvé
@@ -129,37 +126,46 @@ def determine_evalbox_from_examt3p(examt3p_data: Dict[str, Any]) -> Optional[str
     if not examt3p_data:
         return None
 
-    # Priorité 1: Statut documents
-    statut_docs = examt3p_data.get('statut_documents', '').upper()
-    for key, evalbox_value in EXAMT3P_TO_EVALBOX_MAPPING['statut_documents'].items():
-        if key.upper() in statut_docs:
-            logger.info(f"  Mapping statut_documents '{statut_docs}' → Evalbox '{evalbox_value}'")
+    # Récupérer le "Statut du Dossier" de ExamT3P
+    # Le champ peut s'appeler statut_dossier ou statut_principal selon l'extraction
+    statut_dossier = (
+        examt3p_data.get('statut_dossier') or
+        examt3p_data.get('statut_principal') or
+        ''
+    ).strip()
+
+    if not statut_dossier:
+        logger.warning("  ⚠️ Pas de statut_dossier dans les données ExamT3P")
+        return None
+
+    # Chercher le mapping exact
+    for examt3p_value, evalbox_value in EXAMT3P_STATUT_DOSSIER_MAPPING.items():
+        if statut_dossier.lower() == examt3p_value.lower():
+            logger.info(f"  📊 Mapping ExamT3P '{statut_dossier}' → Evalbox '{evalbox_value}'")
             return evalbox_value
 
-    # Priorité 2: Convocation disponible
-    if examt3p_data.get('convocation_disponible') is True:
-        logger.info("  Mapping convocation_disponible=True → Evalbox 'Convoc CMA reçue'")
+    # Chercher une correspondance partielle (au cas où)
+    statut_lower = statut_dossier.lower()
+    if 'composition' in statut_lower:
+        logger.info(f"  📊 Mapping partiel '{statut_dossier}' → Evalbox 'Dossier crée'")
+        return 'Dossier crée'
+    elif 'paiement' in statut_lower:
+        logger.info(f"  📊 Mapping partiel '{statut_dossier}' → Evalbox 'Pret a payer'")
+        return 'Pret a payer'
+    elif 'instruction' in statut_lower:
+        logger.info(f"  📊 Mapping partiel '{statut_dossier}' → Evalbox 'Dossier Synchronisé'")
+        return 'Dossier Synchronisé'
+    elif 'incomplet' in statut_lower:
+        logger.info(f"  📊 Mapping partiel '{statut_dossier}' → Evalbox 'Refusé CMA'")
+        return 'Refusé CMA'
+    elif 'valide' in statut_lower and 'convocation' not in statut_lower:
+        logger.info(f"  📊 Mapping partiel '{statut_dossier}' → Evalbox 'VALIDE CMA'")
+        return 'VALIDE CMA'
+    elif 'convocation' in statut_lower:
+        logger.info(f"  📊 Mapping partiel '{statut_dossier}' → Evalbox 'Convoc CMA reçue'")
         return 'Convoc CMA reçue'
 
-    # Priorité 3: Statut principal
-    statut_principal = examt3p_data.get('statut_principal', '')
-    for key, evalbox_value in EXAMT3P_TO_EVALBOX_MAPPING['statut_principal'].items():
-        if key.lower() in statut_principal.lower():
-            logger.info(f"  Mapping statut_principal '{statut_principal}' → Evalbox '{evalbox_value}'")
-            return evalbox_value
-
-    # Priorité 4: Paiement
-    paiement_info = examt3p_data.get('paiement_cma', {})
-    if isinstance(paiement_info, dict):
-        paiement_status = paiement_info.get('statut', '')
-    else:
-        paiement_status = str(paiement_info)
-
-    for key, evalbox_value in EXAMT3P_TO_EVALBOX_MAPPING['paiement_status'].items():
-        if key.lower() in paiement_status.lower():
-            logger.info(f"  Mapping paiement '{paiement_status}' → Evalbox '{evalbox_value}'")
-            return evalbox_value
-
+    logger.warning(f"  ⚠️ Statut ExamT3P non reconnu: '{statut_dossier}'")
     return None
 
 
