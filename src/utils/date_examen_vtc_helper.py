@@ -16,6 +16,7 @@ CAS GÉRÉS:
 - CAS 6: Date future + Evalbox = autre → En attente
 - CAS 7: Date passée + Evalbox = VALIDE CMA/Dossier Synchronisé → Examen passé (sauf indices contraires)
 - CAS 8: Date future + Date_Cloture passée + Evalbox ≠ VALIDE CMA/Dossier Synchronisé → Deadline ratée, proposer prochaines dates
+- CAS 9: Evalbox = Convoc CMA reçue → Transmettre identifiants, lien plateforme, instructions impression + bonne chance
 """
 import logging
 from datetime import datetime, date
@@ -448,6 +449,24 @@ def analyze_exam_date_situation(
             logger.info(f"  ➡️ CAS 5: Date future + Dossier Synchronisé")
             return result
 
+        # CAS 9: Convocation CMA reçue - Informer le candidat et lui donner ses identifiants
+        if evalbox_status == 'Convoc CMA reçue':
+            result['case'] = 9
+            result['case_description'] = "Convocation CMA reçue - Transmettre identifiants et instructions"
+            result['should_include_in_response'] = True
+
+            # Récupérer les identifiants ExamT3P du deal
+            identifiant = deal_data.get('IDENTIFIANT_EVALBOX', '')
+            mot_de_passe = deal_data.get('MDP_EVALBOX', '')
+
+            result['response_message'] = generate_convocation_message(
+                date_examen_str,
+                identifiant,
+                mot_de_passe
+            )
+            logger.info(f"  ➡️ CAS 9: Convocation CMA reçue")
+            return result
+
         # Vérifier si la date de clôture est passée
         date_cloture_is_past = is_date_in_past(result['date_cloture']) if result.get('date_cloture') else False
 
@@ -801,3 +820,64 @@ Nous allons vous recontacter rapidement pour vous proposer les prochaines dates 
     return f"""Nous vous informons que les inscriptions pour l'examen{date_examen_text} sont maintenant clôturées{date_cloture_text}.
 
 Votre dossier n'ayant pas été validé avant cette date limite, vous ne pourrez malheureusement pas passer l'examen sur cette session. Votre inscription sera automatiquement reportée sur la prochaine session disponible.{next_dates_text}"""
+
+
+def generate_convocation_message(
+    date_examen_str: str,
+    identifiant: str,
+    mot_de_passe: str
+) -> str:
+    """
+    Génère le message pour informer que la convocation est disponible (CAS 9).
+
+    Contenu:
+    - Convocation disponible sur ExamT3P
+    - Lien vers la plateforme
+    - Identifiants de connexion
+    - Instructions: télécharger, imprimer, pièce d'identité
+    - Souhait de bonne chance
+    """
+    # Formater la date d'examen
+    date_formatted = ""
+    if date_examen_str:
+        try:
+            date_obj = datetime.strptime(str(date_examen_str), "%Y-%m-%d")
+            date_formatted = date_obj.strftime("%d/%m/%Y")
+        except:
+            date_formatted = str(date_examen_str)
+
+    date_text = f" du **{date_formatted}**" if date_formatted else ""
+
+    # Construire la section identifiants
+    identifiants_text = ""
+    if identifiant and mot_de_passe:
+        identifiants_text = f"""
+**Vos identifiants de connexion :**
+- Identifiant : **{identifiant}**
+- Mot de passe : **{mot_de_passe}**
+"""
+    elif identifiant:
+        identifiants_text = f"""
+**Votre identifiant de connexion :** {identifiant}
+(Si vous avez oublié votre mot de passe, utilisez la fonction "Mot de passe oublié" sur la plateforme)
+"""
+    else:
+        identifiants_text = """
+(Vos identifiants vous ont été communiqués lors de la création de votre compte. Si vous les avez oubliés, utilisez la fonction "Mot de passe oublié" sur la plateforme)
+"""
+
+    return f"""Excellente nouvelle ! Votre convocation pour l'examen VTC{date_text} est maintenant disponible !
+
+**Pour récupérer votre convocation :**
+
+1. Connectez-vous sur la plateforme ExamT3P : **https://www.exament3p.fr**
+{identifiants_text}
+2. Une fois connecté, téléchargez votre convocation officielle
+
+3. **Imprimez votre convocation** - elle est obligatoire le jour de l'examen
+
+**Le jour de l'examen, présentez-vous avec :**
+- Votre convocation imprimée
+- Une pièce d'identité en cours de validité (carte d'identité ou passeport)
+
+Nous vous souhaitons bonne chance pour votre examen ! Nous restons à votre disposition si vous avez des questions."""

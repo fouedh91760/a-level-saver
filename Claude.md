@@ -1492,6 +1492,41 @@ python extract_crm_schema.py --module Deals
 | **6** | Date future + Evalbox autre + clôture future | Pas d'action spéciale | Ne rien ajouter (en attente) |
 | **7** | Date passée + Evalbox ∈ {VALIDE CMA, Dossier Sync} | Examen probablement passé | Demander clarification si indices contraires |
 | **8** | Date future + **clôture passée** + Evalbox ≠ VALIDE/Sync | Deadline ratée → report | "Inscriptions clôturées, report automatique..." |
+| **9** | Evalbox = `Convoc CMA reçue` | Transmettre identifiants + instructions | Lien ExamT3P, identifiants, télécharger/imprimer, pièce d'identité, bonne chance |
+
+#### Détail CAS 9: Convocation CMA Reçue
+
+**Condition:** `Evalbox = "Convoc CMA reçue"`
+
+**Données utilisées:**
+- `IDENTIFIANT_EVALBOX` (Deal) → Identifiant ExamT3P du candidat
+- `MDP_EVALBOX` (Deal) → Mot de passe ExamT3P du candidat
+- `Date_Examen` → Date de l'examen
+
+**Message généré:**
+```
+Excellente nouvelle ! Votre convocation pour l'examen VTC du **15/03/2026** est maintenant disponible !
+
+**Pour récupérer votre convocation :**
+
+1. Connectez-vous sur la plateforme ExamT3P : **https://www.exament3p.fr**
+
+**Vos identifiants de connexion :**
+- Identifiant : **candidat@email.com**
+- Mot de passe : **MotDePasse123**
+
+2. Une fois connecté, téléchargez votre convocation officielle
+
+3. **Imprimez votre convocation** - elle est obligatoire le jour de l'examen
+
+**Le jour de l'examen, présentez-vous avec :**
+- Votre convocation imprimée
+- Une pièce d'identité en cours de validité (carte d'identité ou passeport)
+
+Nous vous souhaitons bonne chance pour votre examen ! Nous restons à votre disposition si vous avez des questions.
+```
+
+---
 
 **Fonction principale:**
 ```python
