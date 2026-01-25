@@ -213,8 +213,13 @@ class TicketDealLinker:
         2. Get all Deals associated with that Contact
         3. Return the most recent deal (preferring open deals)
         """
-        contact = ticket.get("contact", {})
-        email = contact.get("email") or contact.get("emailId")
+        # Zoho Desk API can return email in two formats:
+        # 1. Directly in ticket: ticket["email"]
+        # 2. In contact object: ticket["contact"]["email"]
+        email = ticket.get("email")
+        if not email:
+            contact = ticket.get("contact", {})
+            email = contact.get("email") or contact.get("emailId")
 
         if not email:
             logger.debug("No contact email found in ticket")
@@ -272,8 +277,13 @@ class TicketDealLinker:
         """
         Strategy 4: Search deals by contact phone number.
         """
-        contact = ticket.get("contact", {})
-        phone = contact.get("phone") or contact.get("mobile")
+        # Zoho Desk API can return phone in two formats:
+        # 1. Directly in ticket: ticket["phone"]
+        # 2. In contact object: ticket["contact"]["phone"]
+        phone = ticket.get("phone")
+        if not phone:
+            contact = ticket.get("contact", {})
+            phone = contact.get("phone") or contact.get("mobile")
 
         if not phone:
             logger.debug("No contact phone found in ticket")
@@ -327,8 +337,13 @@ class TicketDealLinker:
         This is a fallback that gets the most recently modified deal
         for the contact, regardless of stage.
         """
-        contact = ticket.get("contact", {})
-        email = contact.get("email") or contact.get("emailId")
+        # Zoho Desk API can return email in two formats:
+        # 1. Directly in ticket: ticket["email"]
+        # 2. In contact object: ticket["contact"]["email"]
+        email = ticket.get("email")
+        if not email:
+            contact = ticket.get("contact", {})
+            email = contact.get("email") or contact.get("emailId")
 
         if not email:
             logger.debug("No contact email for recent deal search")
