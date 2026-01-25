@@ -15,6 +15,7 @@ CAS GÉRÉS:
 - CAS 5: Date future + Evalbox = Dossier Synchronisé → Prévenir (instruction en cours)
 - CAS 6: Date future + Evalbox = autre → En attente
 - CAS 7: Date passée + Evalbox = VALIDE CMA/Dossier Synchronisé → Examen passé (sauf indices contraires)
+- CAS 8: Date future + Date_Cloture passée + Evalbox ≠ VALIDE CMA/Dossier Synchronisé → Deadline ratée, proposer prochaines dates
 """
 import logging
 from datetime import datetime, date
@@ -400,7 +401,29 @@ def analyze_exam_date_situation(
             logger.info(f"  ➡️ CAS 5: Date future + Dossier Synchronisé")
             return result
 
-        # CAS 6: Date future + autre statut
+        # Vérifier si la date de clôture est passée
+        date_cloture_is_past = is_date_in_past(result['date_cloture']) if result.get('date_cloture') else False
+
+        # CAS 8: Date future + Date_Cloture passée + Evalbox ≠ VALIDE CMA/Dossier Synchronisé
+        # = Le candidat a raté la date limite d'inscription, il sera reporté sur la prochaine session
+        if date_cloture_is_past:
+            result['case'] = 8
+            result['case_description'] = "Date future + Deadline passée + dossier non validé - Report sur prochaine session"
+            result['should_include_in_response'] = True
+
+            if crm_client and departement:
+                result['next_dates'] = get_next_exam_dates(crm_client, departement, limit=2)
+
+            result['response_message'] = generate_deadline_missed_message(
+                date_examen_str,
+                result['date_cloture'],
+                evalbox_status,
+                result['next_dates']
+            )
+            logger.info(f"  ➡️ CAS 8: Date future + Deadline passée + non validé ({evalbox_status})")
+            return result
+
+        # CAS 6: Date future + autre statut + deadline pas encore passée
         result['case'] = 6
         result['case_description'] = "Date future + autre statut - En attente"
         result['should_include_in_response'] = False
@@ -669,3 +692,65 @@ def generate_clarification_exam_message() -> str:
 Pourriez-vous nous confirmer si vous avez bien pu passer votre examen ?
 
 Si ce n'est pas le cas, merci de nous en informer afin que nous puissions vous proposer une nouvelle date d'inscription."""
+
+
+def generate_deadline_missed_message(
+    date_examen_str: str,
+    date_cloture: str,
+    evalbox_status: str,
+    next_dates: List[Dict]
+) -> str:
+    """
+    Génère le message informant que la deadline est passée et le candidat sera reporté (CAS 8).
+
+    Ce cas se produit quand:
+    - La date d'examen est dans le futur
+    - MAIS la date de clôture des inscriptions est passée
+    - ET le dossier n'a pas été validé (Evalbox ≠ VALIDE CMA/Dossier Synchronisé)
+
+    Conséquence: Le candidat a raté la deadline et sera automatiquement reporté
+    sur la prochaine session disponible.
+    """
+    # Formater la date d'examen
+    date_examen_formatted = ""
+    if date_examen_str:
+        try:
+            date_obj = datetime.strptime(str(date_examen_str), "%Y-%m-%d")
+            date_examen_formatted = date_obj.strftime("%d/%m/%Y")
+        except:
+            date_examen_formatted = str(date_examen_str)
+
+    # Formater la date de clôture
+    date_cloture_formatted = ""
+    if date_cloture:
+        try:
+            if 'T' in str(date_cloture):
+                date_obj = datetime.fromisoformat(str(date_cloture).replace('Z', '+00:00'))
+            else:
+                date_obj = datetime.strptime(str(date_cloture), "%Y-%m-%d")
+            date_cloture_formatted = date_obj.strftime("%d/%m/%Y")
+        except:
+            date_cloture_formatted = str(date_cloture)
+
+    date_examen_text = f" du {date_examen_formatted}" if date_examen_formatted else ""
+    date_cloture_text = f" (clôturées le {date_cloture_formatted})" if date_cloture_formatted else ""
+
+    # Formater les prochaines dates
+    next_dates_text = ""
+    if next_dates:
+        dates_formatted = "\n".join([format_exam_date_for_display(d) for d in next_dates])
+        next_dates_text = f"""
+
+Voici les prochaines dates d'examen disponibles :
+
+{dates_formatted}
+
+Merci de nous confirmer la date qui vous convient afin que nous puissions vous inscrire sur cette nouvelle session."""
+    else:
+        next_dates_text = """
+
+Nous allons vous recontacter rapidement pour vous proposer les prochaines dates disponibles."""
+
+    return f"""Nous vous informons que les inscriptions pour l'examen{date_examen_text} sont maintenant clôturées{date_cloture_text}.
+
+Votre dossier n'ayant pas été validé avant cette date limite, vous ne pourrez malheureusement pas passer l'examen sur cette session. Votre inscription sera automatiquement reportée sur la prochaine session disponible.{next_dates_text}"""

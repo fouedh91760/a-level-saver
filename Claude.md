@@ -1174,7 +1174,7 @@ Inscrire le candidat à son examen VTC en s'assurant que la date d'examen est re
 - `Statut` (picklist) → Actif, Complet, Cloturé, Annulé
 - `Libelle_Affichage` (text) → Libellé pour affichage candidat
 
-#### Les 7 Cas de Gestion
+#### Les 8 Cas de Gestion
 
 | CAS | Condition | Action dans la réponse |
 |-----|-----------|------------------------|
@@ -1183,8 +1183,9 @@ Inscrire le candidat à son examen VTC en s'assurant que la date d'examen est re
 | **3** | `Evalbox` = "Refusé CMA" | Informer du refus + lister pièces refusées (ExamT3P) + date clôture + prochaine date |
 | **4** | Date future + `Evalbox` = "VALIDE CMA" | Rassurer : dossier validé, convocation ~10j avant examen |
 | **5** | Date future + `Evalbox` = "Dossier Synchronisé" | Prévenir : instruction en cours, surveiller mails, corriger avant clôture sinon décalé |
-| **6** | Date future + `Evalbox` = autre | En attente (pas d'action spéciale) |
+| **6** | Date future + `Evalbox` = autre + clôture future | En attente (pas d'action spéciale) |
 | **7** | Date passée + `Evalbox` ∈ {VALIDE CMA, Dossier Synchronisé} | Examen passé, SAUF indices thread → demander clarification |
+| **8** | Date future + **clôture passée** + `Evalbox` ≠ VALIDE CMA/Dossier Synchronisé | Deadline ratée → Informer du report + proposer 2 prochaines dates |
 
 #### Valeurs Evalbox
 
@@ -1211,7 +1212,7 @@ result = analyze_exam_date_situation(
 
 # Résultat
 {
-    'case': 1,  # Numéro du cas (1-7)
+    'case': 1,  # Numéro du cas (1-8)
     'case_description': 'Date examen VTC vide - Proposer 2 prochaines dates',
     'should_include_in_response': True,  # Doit-on ajouter info à la réponse?
     'response_message': '...',  # Message à intégrer
