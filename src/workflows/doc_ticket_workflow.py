@@ -615,14 +615,30 @@ class DOCTicketWorkflow:
         if uber_eligibility_result.get('is_uber_20_deal') and deal_id:
             log_uber_eligibility_check(deal_id, self.crm_client, uber_eligibility_result, ticket_id)
 
+        # ================================================================
+        # FLAG: Blocage dates/sessions si CAS A ou B (dossier non reçu)
+        # ================================================================
+        uber_case_blocks_dates = False
         if uber_eligibility_result.get('is_uber_20_deal'):
             if uber_eligibility_result.get('case') in ['A', 'B']:
-                logger.info(f"  ⚠️ CAS {uber_eligibility_result['case']}: {uber_eligibility_result['case_description']}")
-                logger.info("  ➡️ Candidat Uber doit compléter les étapes préalables")
+                logger.warning(f"  🚨 CAS {uber_eligibility_result['case']}: {uber_eligibility_result['case_description']}")
+                logger.warning("  ⛔ BLOCAGE DATES/SESSIONS: Candidat doit compléter les étapes préalables")
+                uber_case_blocks_dates = True
             else:
                 logger.info("  ✅ Candidat Uber éligible - peut être inscrit à l'examen")
         else:
             logger.info("  ℹ️ Pas une opportunité Uber 20€")
+
+        # ================================================================
+        # RÈGLE GÉNÉRALE: Si pas de Date_Dossier_re_u → pas de dates/sessions
+        # ================================================================
+        # Même pour les deals NON-Uber, sans dossier reçu on ne peut pas proposer de dates
+        dossier_not_received_blocks_dates = False
+        date_dossier_recu = deal_data.get('Date_Dossier_re_u')
+        if not date_dossier_recu:
+            logger.warning("  🚨 PAS DE DATE_DOSSIER_RECU: Dossier non reçu")
+            logger.warning("  ⛔ BLOCAGE DATES/SESSIONS: On ne peut pas proposer de dates sans dossier")
+            dossier_not_received_blocks_dates = True
 
         # ================================================================
         # RÈGLE CRITIQUE: SI IDENTIFIANTS NON ACCESSIBLES → SKIP DATES/SESSIONS
@@ -632,6 +648,9 @@ class DOCTicketWorkflow:
         # 1. Identifiants trouvés mais connexion échouée → demander réinitialisation
         # 2. Création de compte demandée mais pas d'identifiants → relancer le candidat
         skip_date_session_analysis = False
+        skip_reason = None
+
+        # Raison 1: Identifiants non accessibles
         if exament3p_data.get('should_respond_to_candidate') and not exament3p_data.get('compte_existe'):
             if exament3p_data.get('credentials_request_sent'):
                 logger.warning("  🚨 DEMANDE D'IDENTIFIANTS DÉJÀ ENVOYÉE MAIS PAS DE RÉPONSE")
@@ -643,6 +662,19 @@ class DOCTicketWorkflow:
                 logger.warning("  🚨 IDENTIFIANTS INVALIDES → SKIP analyse dates/sessions")
                 logger.warning("  → La réponse doit UNIQUEMENT demander les bons identifiants")
             skip_date_session_analysis = True
+            skip_reason = 'credentials_invalid'
+
+        # Raison 2: CAS A ou B (dossier non reçu / test non passé pour Uber)
+        if uber_case_blocks_dates:
+            skip_date_session_analysis = True
+            skip_reason = skip_reason or 'uber_case_a_or_b'
+            logger.warning("  → La réponse doit UNIQUEMENT traiter CAS A/B (finaliser inscription ou passer test)")
+
+        # Raison 3: Dossier non reçu (pour tous les deals)
+        if dossier_not_received_blocks_dates and not skip_date_session_analysis:
+            skip_date_session_analysis = True
+            skip_reason = skip_reason or 'dossier_not_received'
+            logger.warning("  → La réponse doit demander de finaliser l'inscription / envoyer le dossier")
 
         # ================================================================
         # VÉRIFICATION DATE EXAMEN VTC
@@ -714,7 +746,7 @@ class DOCTicketWorkflow:
             if session_data.get('proposed_options'):
                 logger.info(f"  ✅ {len(session_data['proposed_options'])} option(s) de session proposée(s)")
         elif skip_date_session_analysis:
-            logger.info("  📚 Recherche sessions... SKIPPED (identifiants invalides)")
+            logger.info(f"  📚 Recherche sessions... SKIPPED (raison: {skip_reason})")
 
         # VÉRIFICATION #0: ANCIEN DOSSIER
         ancien_dossier = False
@@ -740,6 +772,9 @@ class DOCTicketWorkflow:
             'ticket_confirmations': ticket_confirmations,  # Confirmations extraites du ticket
             # Flag critique: identifiants invalides = SEUL sujet de la réponse
             'credentials_only_response': skip_date_session_analysis,
+            'skip_reason': skip_reason,  # Raison du skip (credentials_invalid, uber_case_a_or_b, dossier_not_received)
+            'dossier_not_received': dossier_not_received_blocks_dates,
+            'uber_case_blocks_dates': uber_case_blocks_dates,
             # Cohérence formation/examen (cas manqué formation + examen imminent)
             'training_exam_consistency_result': training_exam_consistency_result,
         }

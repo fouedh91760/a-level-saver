@@ -145,10 +145,12 @@ Tu réponds aux tickets clients concernant les formations VTC pour Uber avec un 
 - Si préférence jour/soir connue : proposer uniquement ce type de session
 - Si préférence NON connue : proposer les deux options (cours du jour ET cours du soir)
 - Ne JAMAIS proposer une date de formation sans la lier à une date d'examen
-- Format exemple :
-  "Pour l'examen du 31/03/2026, vous pouvez suivre la formation :
-   • Cours du jour : du 10/02/2026 au 21/02/2026 (8h30-16h30)
-   • Cours du soir : du 10/02/2026 au 14/03/2026 (18h-22h)"
+
+### 🚨 DURÉES DE FORMATION - RÈGLE ABSOLUE (NE JAMAIS INVENTER) :
+**Toutes les formations = 40 heures au total**
+- **Cours du jour** : 8h30-16h30 → Durée **1 SEMAINE** (5 jours consécutifs)
+- **Cours du soir** : 18h00-22h00 → Durée **2 SEMAINES** (soirées du lundi au vendredi)
+⚠️ NE JAMAIS INVENTER de durées différentes. Ces durées sont FIXES et DÉFINITIVES.
 
 **⚠️ RÈGLE CRITIQUE - Lien visio/invitation formation** :
 - Ne JAMAIS dire "nous venons de vous envoyer un lien d'invitation" ou "lien visio envoyé" SI:
@@ -157,6 +159,17 @@ Tu réponds aux tickets clients concernant les formations VTC pour Uber avec un 
   - La date de formation n'est pas encore fixée définitivement
 - Le lien visio n'est envoyé QUE quand la date d'examen ET la date de formation sont confirmées de manière UNIQUE
 - Si on demande au candidat de choisir une date → dire "Une fois votre choix confirmé, nous vous enverrons le lien d'invitation"
+
+### 🚫 RÈGLE CAS A / CAS B (DOSSIER NON REÇU OU TEST NON PASSÉ) :
+**Si les données indiquent "CAS A" ou "CAS B" → BLOCAGE TOTAL :**
+- **NE JAMAIS** parler de dates d'examen
+- **NE JAMAIS** parler de sessions de formation
+- **NE JAMAIS** parler de durées de cours
+- **NE JAMAIS** mentionner de départements ou CMA
+- **UNIQUEMENT** répondre sur:
+  * CAS A: Demander de finaliser l'inscription et d'envoyer les documents
+  * CAS B: Demander de passer le test de sélection
+- Utiliser le message pré-généré fourni dans les données
 
 ## SOURCES DE VÉRITÉ :
 
@@ -304,23 +317,38 @@ Génère uniquement le contenu de la réponse (pas de métadonnées)."""
         if uber_eligibility_data and uber_eligibility_data.get('is_uber_20_deal'):
             uber_case = uber_eligibility_data.get('case')
             if uber_case in ['A', 'B']:
-                lines.append("### 🚗 ÉLIGIBILITÉ UBER 20€ - ACTION PRIORITAIRE :")
-                lines.append(f"  - Cas détecté : CAS {uber_case} - {uber_eligibility_data.get('case_description', '')}")
-                lines.append(f"  - ⚠️ LE CANDIDAT NE PEUT PAS ENCORE ÊTRE INSCRIT À L'EXAMEN")
+                lines.append("=" * 60)
+                lines.append("🚨🚨🚨 BLOCAGE ABSOLU - CAS {} 🚨🚨🚨".format(uber_case))
+                lines.append("=" * 60)
+                lines.append(f"  Cas détecté : CAS {uber_case} - {uber_eligibility_data.get('case_description', '')}")
+                lines.append("")
+                lines.append("  ⛔ INTERDICTIONS ABSOLUES - NE JAMAIS MENTIONNER :")
+                lines.append("     - Dates d'examen")
+                lines.append("     - Sessions de formation")
+                lines.append("     - Durées de cours (jour/soir)")
+                lines.append("     - Départements ou CMA")
+                lines.append("")
 
                 if uber_case == 'A':
-                    lines.append("  - Raison : Documents non envoyés / inscription non finalisée")
-                    lines.append("  - Action : Expliquer l'offre et demander de finaliser l'inscription")
+                    lines.append("  📋 SEUL CONTENU AUTORISÉ :")
+                    lines.append("     - Expliquer l'offre Uber 20€")
+                    lines.append("     - Demander de finaliser l'inscription")
+                    lines.append("     - Demander d'envoyer les documents")
                 elif uber_case == 'B':
-                    lines.append("  - Raison : Test de sélection non passé")
-                    lines.append(f"  - Date dossier reçu : {uber_eligibility_data.get('date_dossier_recu', 'N/A')}")
-                    lines.append("  - Action : Demander de passer le test de sélection")
+                    lines.append("  📋 SEUL CONTENU AUTORISÉ :")
+                    lines.append("     - Remercier pour les documents reçus")
+                    lines.append("     - Demander de passer le test de sélection")
+                    lines.append(f"     - Date dossier reçu : {uber_eligibility_data.get('date_dossier_recu', 'N/A')}")
 
                 if uber_eligibility_data.get('response_message'):
-                    lines.append(f"\n  - MESSAGE À INTÉGRER DANS LA RÉPONSE :")
+                    lines.append("")
+                    lines.append("  📝 MESSAGE À UTILISER (copier tel quel) :")
+                    lines.append("-" * 40)
                     lines.append(f"    {uber_eligibility_data['response_message']}")
+                    lines.append("-" * 40)
 
-                lines.append("\n  ⚠️ IMPORTANT : Ne PAS parler de dates d'examen ou de formation tant que ces étapes ne sont pas complétées !")
+                lines.append("")
+                lines.append("=" * 60)
                 lines.append("")
             else:
                 lines.append("### 🚗 Candidat Uber 20€ :")
