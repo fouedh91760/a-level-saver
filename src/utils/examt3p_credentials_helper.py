@@ -147,9 +147,9 @@ def test_examt3p_connection(identifiant: str, mot_de_passe: str) -> Tuple[bool, 
         try:
             async with async_playwright() as p:
                 # Lancer le navigateur en mode headless
+                # Note: Playwright trouvera automatiquement le navigateur installé (cross-platform)
                 browser = await p.chromium.launch(
                     headless=True,
-                    executable_path='/usr/bin/chromium-browser',
                     args=['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage']
                 )
 
