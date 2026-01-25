@@ -34,6 +34,7 @@ logger = logging.getLogger(__name__)
 from src.zoho_client import ZohoDeskClient, ZohoCRMClient
 from src.agents.deal_linking_agent import DealLinkingAgent
 from src.agents.response_generator_agent import ResponseGeneratorAgent
+from src.utils.text_utils import clean_html
 
 
 def extract_customer_message(threads):
@@ -41,8 +42,11 @@ def extract_customer_message(threads):
     customer_messages = []
     for thread in threads.get('data', []):
         if thread.get('direction') == 'in':
+            content = thread.get('content', '')
+            # Nettoyer le HTML pour obtenir le texte brut
+            cleaned_content = clean_html(content) if content else ''
             customer_messages.append({
-                'content': thread.get('content', ''),
+                'content': cleaned_content,
                 'created_time': thread.get('createdTime', '')
             })
 
@@ -84,7 +88,11 @@ def test_draft_generation(ticket_id: str):
 
         print(f"   ✅ Sujet: {subject}")
         print(f"   ✅ Email: {email}")
-        print(f"   ✅ Message client: {customer_message[:100]}...")
+        if customer_message:
+            preview = customer_message[:200] + "..." if len(customer_message) > 200 else customer_message
+            print(f"   ✅ Message client: {preview}")
+        else:
+            print(f"   ⚠️  Message client: (vide ou non disponible)")
 
         # ================================================================
         # ÉTAPE 2: Recherche du deal CRM
