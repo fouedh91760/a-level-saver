@@ -368,3 +368,186 @@ Nous soumettrons votre demande à la CMA pour validation.
 **Important :** Sans justificatif valide, des frais de réinscription de 241€ seront à prévoir pour une nouvelle inscription."""
 
     return None
+
+
+def detect_exam_date_desync(
+    deal_data: Dict[str, Any],
+    examt3p_data: Dict[str, Any]
+) -> Dict[str, Any]:
+    """
+    Détecte une désynchronisation entre la date d'examen ExamT3P et celle du CRM.
+
+    Cas typique: ExamT3P montre février, CRM montre janvier
+    → Le candidat a probablement été reporté sur ExamT3P mais le CRM n'est pas à jour
+
+    Args:
+        deal_data: Données du deal CRM
+        examt3p_data: Données extraites d'ExamT3P
+
+    Returns:
+        {
+            'has_desync': bool,
+            'crm_date': str or None,
+            'crm_date_formatted': str or None,
+            'examt3p_date': str or None,
+            'examt3p_date_formatted': str or None,
+            'severity': str ('info', 'warning', 'critical'),
+            'message': str,
+            'requires_human_action': bool
+        }
+    """
+    result = {
+        'has_desync': False,
+        'crm_date': None,
+        'crm_date_formatted': None,
+        'examt3p_date': None,
+        'examt3p_date_formatted': None,
+        'severity': 'info',
+        'message': '',
+        'requires_human_action': False
+    }
+
+    if not examt3p_data or not examt3p_data.get('compte_existe'):
+        return result
+
+    # ================================================================
+    # 1. RÉCUPÉRER LA DATE D'EXAMEN DU CRM
+    # ================================================================
+    crm_date_examen = None
+    crm_date_formatted = None
+
+    date_examen_vtc = deal_data.get('Date_examen_VTC')
+    if date_examen_vtc:
+        if isinstance(date_examen_vtc, dict):
+            # C'est un lookup vers une session
+            crm_date_examen = date_examen_vtc.get('Date_Examen') or date_examen_vtc.get('name', '')
+            # Essayer d'extraire la date du name (ex: "VTC 75 - 27/01/2025")
+            if crm_date_examen and '/' in str(crm_date_examen):
+                import re
+                match = re.search(r'(\d{2}/\d{2}/\d{4})', str(crm_date_examen))
+                if match:
+                    crm_date_formatted = match.group(1)
+            elif crm_date_examen and '-' in str(crm_date_examen) and len(str(crm_date_examen)) == 10:
+                # Format YYYY-MM-DD
+                try:
+                    date_obj = datetime.strptime(str(crm_date_examen), "%Y-%m-%d")
+                    crm_date_formatted = date_obj.strftime("%d/%m/%Y")
+                except:
+                    pass
+        else:
+            crm_date_examen = date_examen_vtc
+
+    result['crm_date'] = crm_date_examen
+    result['crm_date_formatted'] = crm_date_formatted
+
+    # ================================================================
+    # 2. RÉCUPÉRER LA DATE D'EXAMEN D'EXAMT3P
+    # ================================================================
+    examt3p_date = examt3p_data.get('date_examen') or examt3p_data.get('examens', {}).get('date')
+    examt3p_date_formatted = None
+
+    if examt3p_date:
+        # Normaliser le format (peut être "27/01/2025" ou "2025-01-27")
+        if '/' in str(examt3p_date):
+            examt3p_date_formatted = str(examt3p_date)
+        elif '-' in str(examt3p_date):
+            try:
+                date_obj = datetime.strptime(str(examt3p_date), "%Y-%m-%d")
+                examt3p_date_formatted = date_obj.strftime("%d/%m/%Y")
+            except:
+                examt3p_date_formatted = str(examt3p_date)
+
+    result['examt3p_date'] = examt3p_date
+    result['examt3p_date_formatted'] = examt3p_date_formatted
+
+    # ================================================================
+    # 3. COMPARER LES DATES
+    # ================================================================
+    if not crm_date_formatted or not examt3p_date_formatted:
+        # Pas assez d'infos pour comparer
+        logger.debug("  ℹ️ Pas de date d'examen à comparer (CRM ou ExamT3P vide)")
+        return result
+
+    # Normaliser les deux dates au format dd/mm/yyyy pour comparaison
+    try:
+        crm_date_obj = datetime.strptime(crm_date_formatted, "%d/%m/%Y")
+        examt3p_date_obj = datetime.strptime(examt3p_date_formatted, "%d/%m/%Y")
+    except ValueError as e:
+        logger.warning(f"  ⚠️ Erreur parsing dates: {e}")
+        return result
+
+    # Comparer
+    if crm_date_obj.date() == examt3p_date_obj.date():
+        logger.info(f"  ✅ Dates d'examen synchronisées: {crm_date_formatted}")
+        return result
+
+    # ================================================================
+    # 4. DÉSYNCHRONISATION DÉTECTÉE
+    # ================================================================
+    result['has_desync'] = True
+
+    # Déterminer la sévérité
+    evalbox_status = deal_data.get('Evalbox', '')
+    days_diff = (examt3p_date_obj - crm_date_obj).days
+
+    if days_diff > 0:
+        # ExamT3P est PLUS TARD que CRM → Le candidat a probablement été reporté
+        if evalbox_status in BLOCKING_EVALBOX_STATUSES:
+            result['severity'] = 'critical'
+            result['requires_human_action'] = True
+            result['message'] = (
+                f"⚠️ DÉSYNC CRITIQUE: CRM={crm_date_formatted}, ExamT3P={examt3p_date_formatted}. "
+                f"Le candidat semble avoir été reporté sur ExamT3P mais le CRM indique "
+                f"toujours l'ancienne date. Evalbox={evalbox_status}. "
+                f"ACTION HUMAINE REQUISE: Vérifier et mettre à jour Date_examen_VTC dans le CRM."
+            )
+        else:
+            result['severity'] = 'warning'
+            result['message'] = (
+                f"⚠️ DÉSYNC: CRM={crm_date_formatted}, ExamT3P={examt3p_date_formatted}. "
+                f"La date sur ExamT3P est plus récente ({days_diff} jours de différence). "
+                f"Le CRM devrait être mis à jour."
+            )
+    else:
+        # ExamT3P est PLUS TÔT que CRM → Cas inhabituel
+        result['severity'] = 'warning'
+        result['requires_human_action'] = True
+        result['message'] = (
+            f"⚠️ DÉSYNC INHABITUELLE: CRM={crm_date_formatted}, ExamT3P={examt3p_date_formatted}. "
+            f"La date CRM est plus récente que ExamT3P ({abs(days_diff)} jours). "
+            f"Situation anormale - vérification manuelle requise."
+        )
+
+    logger.warning(f"  {result['message']}")
+
+    return result
+
+
+def format_desync_note(desync_result: Dict[str, Any]) -> str:
+    """
+    Formate le résultat de détection de désync pour une note CRM.
+    """
+    if not desync_result.get('has_desync'):
+        return ""
+
+    severity_emoji = {
+        'info': 'ℹ️',
+        'warning': '⚠️',
+        'critical': '🚨'
+    }
+
+    emoji = severity_emoji.get(desync_result['severity'], '⚠️')
+
+    note = f"""{emoji} DÉSYNCHRONISATION DATE D'EXAMEN DÉTECTÉE
+Date: {datetime.now().strftime('%d/%m/%Y %H:%M')}
+
+📅 Date CRM: {desync_result['crm_date_formatted'] or 'N/A'}
+📅 Date ExamT3P: {desync_result['examt3p_date_formatted'] or 'N/A'}
+
+{desync_result['message']}
+"""
+
+    if desync_result['requires_human_action']:
+        note += "\n🔧 ACTION REQUISE: Mettre à jour Date_examen_VTC dans le CRM"
+
+    return note
