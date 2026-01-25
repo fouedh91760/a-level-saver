@@ -374,27 +374,36 @@ def analyze_exam_date_situation(
 
     # CAS 3: Evalbox = Refusé CMA (prioritaire car peut arriver avec date passée ou future)
     # Statut "Incomplet" sur ExamT3P = certaines pièces refusées par la CMA
+    # En cas de refus, le candidat est automatiquement repositionné sur la PROCHAINE date d'examen
     if evalbox_status == 'Refusé CMA':
         result['case'] = 3
-        result['case_description'] = "Refusé CMA - Informer du refus et prochaines dates"
+        result['case_description'] = "Refusé CMA - Pièces refusées, repositionnement sur prochaine date"
         result['should_include_in_response'] = True
 
         # Récupérer les pièces refusées depuis ExamT3P (noms + détails)
         if examt3p_data:
-            result['pieces_refusees'] = examt3p_data.get('pieces_refusees', [])
+            result['pieces_refusees'] = examt3p_data.get('documents_refuses', [])
             # Récupérer les détails complets (nom, motif, solution)
             result['pieces_refusees_details'] = examt3p_data.get('pieces_refusees_details', [])
 
+        # Récupérer UNE SEULE prochaine date (positionnement automatique)
+        next_exam_date = None
+        next_date_cloture = None
         if crm_client and departement:
-            result['next_dates'] = get_next_exam_dates(crm_client, departement, limit=2)
+            next_dates = get_next_exam_dates(crm_client, departement, limit=1)
+            if next_dates:
+                next_exam_date = next_dates[0]
+                # Utiliser la date de clôture de la PROCHAINE session (pas l'ancienne)
+                next_date_cloture = next_exam_date.get('Date_Cloture_Inscription')
+            result['next_dates'] = next_dates
 
         result['response_message'] = generate_refus_cma_message(
             result['pieces_refusees'],
-            result['date_cloture'],
+            next_date_cloture,  # Date clôture de la PROCHAINE session
             result['next_dates'],
             pieces_details=result.get('pieces_refusees_details', [])
         )
-        logger.info(f"  ➡️ CAS 3: Refusé CMA - {len(result['pieces_refusees'])} pièce(s) refusée(s)")
+        logger.info(f"  ➡️ CAS 3: Refusé CMA - {len(result.get('pieces_refusees', []))} pièce(s) refusée(s)")
         return result
 
     # CAS avec date dans le passé
@@ -697,17 +706,17 @@ def generate_refus_cma_message(
 
     Args:
         pieces_refusees: Liste des noms de pièces refusées
-        date_cloture: Date de clôture des inscriptions
-        next_dates: Prochaines dates d'examen disponibles
+        date_cloture: Date de clôture de la PROCHAINE session d'examen
+        next_dates: Prochaine date d'examen (1 seule - positionnement automatique)
         pieces_details: Détails des pièces (nom, motif, solution)
 
     Le message doit:
     1. Expliquer pourquoi le candidat n'est pas convoqué sur l'examen prévu
-    2. Lister les pièces refusées avec le motif de refus
-    3. Donner la solution pour chaque pièce
-    4. Proposer les prochaines dates d'examen après correction
+    2. Indiquer qu'il est automatiquement repositionné sur la prochaine date
+    3. Lister les pièces refusées avec le motif de refus et la solution
+    4. Indiquer la date limite pour corriger (clôture de la prochaine session)
     """
-    # Formater la date de clôture
+    # Formater la date de clôture de la PROCHAINE session
     date_cloture_formatted = ""
     if date_cloture:
         try:
@@ -719,9 +728,22 @@ def generate_refus_cma_message(
         except:
             date_cloture_formatted = str(date_cloture)
 
+    # Formater la prochaine date d'examen (UNE SEULE - positionnement automatique)
+    next_exam_text = ""
+    next_exam_date_formatted = ""
+    if next_dates and len(next_dates) > 0:
+        next_exam = next_dates[0]
+        date_examen = next_exam.get('Date_Examen', '')
+        if date_examen:
+            try:
+                date_obj = datetime.strptime(str(date_examen), "%Y-%m-%d")
+                next_exam_date_formatted = date_obj.strftime("%d/%m/%Y")
+            except:
+                next_exam_date_formatted = str(date_examen)
+
     # Formater les pièces refusées avec détails
     pieces_text = ""
-    if pieces_details:
+    if pieces_details and len(pieces_details) > 0:
         # Utiliser les détails complets (motif + solution)
         pieces_lines = []
         for piece in pieces_details:
@@ -729,57 +751,53 @@ def generate_refus_cma_message(
             motif = piece.get('motif', 'Motif non précisé')
             solution = piece.get('solution', 'Veuillez fournir un nouveau document conforme.')
 
-            pieces_lines.append(f"""**{nom}**
-   ❌ Motif du refus : {motif}
-   ✅ Solution : {solution}""")
+            pieces_lines.append(f"""**📄 {nom}**
+   ❌ **Motif du refus** : {motif}
+   ✅ **Solution** : {solution}""")
 
         pieces_list = "\n\n".join(pieces_lines)
-        pieces_text = f"""**Pièces refusées par la CMA :**
+        pieces_text = f"""**🔴 Pièce(s) refusée(s) par la CMA :**
 
 {pieces_list}
 
 """
-    elif pieces_refusees:
+    elif pieces_refusees and len(pieces_refusees) > 0:
         # Fallback: juste les noms (ancien format)
-        pieces_list = "\n".join([f"- {piece}" for piece in pieces_refusees])
-        pieces_text = f"""Les pièces suivantes ont été refusées :
+        pieces_list = "\n".join([f"• {piece}" for piece in pieces_refusees])
+        pieces_text = f"""**🔴 Pièce(s) refusée(s) par la CMA :**
 
 {pieces_list}
 
 """
+    else:
+        # Aucune pièce identifiée - demander vérification sur ExamT3P
+        pieces_text = """**🔴 Des pièces de votre dossier ont été refusées par la CMA.**
 
-    # Formater les prochaines dates
-    next_dates_text = ""
-    if next_dates:
-        if len(next_dates) >= 2:
-            dates_formatted = "\n".join([format_exam_date_for_display(d) for d in next_dates[:2]])
-            next_dates_text = f"""
+Pour connaître les pièces concernées, connectez-vous sur votre espace ExamT3P et consultez la section "Mes Documents".
 
-**Prochaines dates d'examen disponibles :**
+"""
 
-{dates_formatted}
+    # Construire le message selon les informations disponibles
+    date_cloture_text = f"**avant le {date_cloture_formatted}**" if date_cloture_formatted else "**dans les plus brefs délais**"
+    next_exam_info = f" du **{next_exam_date_formatted}**" if next_exam_date_formatted else ""
 
-Dès réception de vos documents corrigés, nous procéderons à votre inscription sur la date de votre choix."""
-        else:
-            next_date_formatted = format_exam_date_for_display(next_dates[0])
-            next_dates_text = f"""
+    return f"""**⚠️ Information importante concernant votre inscription à l'examen VTC**
 
-**Prochaine date d'examen disponible :**
-{next_date_formatted}
+Nous vous informons que la CMA (Chambre des Métiers et de l'Artisanat) a refusé certaines pièces de votre dossier. **C'est pour cette raison que vous n'avez pas reçu de convocation** pour l'examen initialement prévu.
 
-Dès réception de vos documents corrigés, nous procéderons à votre inscription."""
+{pieces_text}**📅 Votre nouvelle date d'examen :**
 
-    date_cloture_text = f" avant le **{date_cloture_formatted}**" if date_cloture_formatted else " dans les plus brefs délais"
+Votre inscription a été **automatiquement reportée** sur la prochaine session d'examen{next_exam_info}.
 
-    return f"""**Information importante concernant votre inscription à l'examen VTC**
+**⏰ Que devez-vous faire maintenant ?**
 
-Nous vous informons que la CMA (Chambre des Métiers et de l'Artisanat) a refusé certaines pièces de votre dossier. C'est pour cette raison que vous n'avez pas reçu de convocation pour l'examen initialement prévu.
+Pour être convoqué sur cette nouvelle date, vous devez nous transmettre vos documents corrigés {date_cloture_text} (date de clôture des inscriptions).
 
-{pieces_text}**Que devez-vous faire ?**
+📧 Vous pouvez :
+• Nous envoyer vos documents par **retour de mail**
+• Ou les télécharger directement sur votre **espace ExamT3P**
 
-Merci de nous transmettre les documents corrigés{date_cloture_text} afin que nous puissions finaliser votre inscription.
-
-📧 Vous pouvez nous envoyer vos documents par retour de mail ou les télécharger directement sur votre espace ExamT3P.{next_dates_text}
+⚠️ **Important** : Si les documents corrigés ne sont pas reçus avant la date de clôture, votre inscription sera à nouveau reportée sur la session suivante.
 
 Nous restons à votre disposition pour toute question."""
 
