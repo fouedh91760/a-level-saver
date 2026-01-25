@@ -637,6 +637,36 @@ class DOCTicketWorkflow:
             logger.info("  📅 Vérification date examen VTC... SKIPPED (identifiants invalides)")
 
         # ================================================================
+        # VÉRIFICATION COHÉRENCE FORMATION / EXAMEN
+        # ================================================================
+        # Cas critique: candidat a manqué sa formation + examen imminent
+        # → Proposer 2 options: maintenir examen (e-learning suffit) ou reporter (force majeure requise)
+        from src.utils.training_exam_consistency_helper import analyze_training_exam_consistency
+
+        training_exam_consistency_result = {}
+        if not skip_date_session_analysis:
+            logger.info("  🔍 Vérification cohérence formation/examen...")
+            training_exam_consistency_result = analyze_training_exam_consistency(
+                deal_data=deal_data,
+                threads=threads_data,
+                session_data=session_data,
+                crm_client=self.crm_client
+            )
+
+            if training_exam_consistency_result.get('has_consistency_issue'):
+                logger.warning(f"  🚨 PROBLÈME DE COHÉRENCE DÉTECTÉ: {training_exam_consistency_result['issue_type']}")
+                logger.info(f"  📅 Examen prévu le: {training_exam_consistency_result['exam_date_formatted']}")
+                if training_exam_consistency_result.get('next_exam_date_formatted'):
+                    logger.info(f"  📅 Prochaine date disponible: {training_exam_consistency_result['next_exam_date_formatted']}")
+                if training_exam_consistency_result.get('force_majeure_detected'):
+                    logger.info(f"  📋 Force majeure détectée: {training_exam_consistency_result['force_majeure_type']}")
+                logger.info("  → Réponse avec options A/B sera proposée au candidat")
+            else:
+                logger.info("  ✅ Pas de problème de cohérence formation/examen")
+        else:
+            logger.info("  🔍 Vérification cohérence formation/examen... SKIPPED (identifiants invalides)")
+
+        # ================================================================
         # ANALYSE SESSIONS DE FORMATION
         # ================================================================
         # Si des dates d'examen sont proposées, récupérer les sessions correspondantes
@@ -682,6 +712,8 @@ class DOCTicketWorkflow:
             'ticket_confirmations': ticket_confirmations,  # Confirmations extraites du ticket
             # Flag critique: identifiants invalides = SEUL sujet de la réponse
             'credentials_only_response': skip_date_session_analysis,
+            # Cohérence formation/examen (cas manqué formation + examen imminent)
+            'training_exam_consistency_result': training_exam_consistency_result,
         }
 
     def _run_response_generation(
@@ -720,7 +752,8 @@ class DOCTicketWorkflow:
             session_data=analysis_result.get('session_data'),
             uber_eligibility_data=analysis_result.get('uber_eligibility_result'),
             credentials_only_response=analysis_result.get('credentials_only_response', False),
-            threads=analysis_result.get('threads')  # Historique complet des échanges
+            threads=analysis_result.get('threads'),  # Historique complet des échanges
+            training_exam_consistency_data=analysis_result.get('training_exam_consistency_result')  # Cohérence formation/examen
         )
 
         return response_result

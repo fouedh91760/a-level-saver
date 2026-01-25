@@ -671,6 +671,7 @@ Génère uniquement le contenu de la réponse (pas de métadonnées)."""
         uber_eligibility_data: Optional[Dict] = None,
         credentials_only_response: bool = False,
         threads: Optional[List] = None,
+        training_exam_consistency_data: Optional[Dict] = None,
         max_retries: int = 2
     ) -> Dict:
         """
@@ -682,6 +683,8 @@ Génère uniquement le contenu de la réponse (pas de métadonnées)."""
             credentials_only_response: Si True, génère UNIQUEMENT une réponse
                 demandant les bons identifiants. Ignore dates/sessions.
             threads: Historique complet des échanges pour contexte.
+            training_exam_consistency_data: Données de cohérence formation/examen.
+                Si 'has_consistency_issue' est True, utilise le message pré-généré.
         """
         # ================================================================
         # CAS SPÉCIAL: Identifiants invalides = SEUL sujet de la réponse
@@ -692,6 +695,19 @@ Génère uniquement le contenu de la réponse (pas de métadonnées)."""
                 exament3p_data=exament3p_data,
                 threads=threads,
                 customer_message=customer_message
+            )
+
+        # ================================================================
+        # CAS SPÉCIAL: Formation manquée + Examen imminent
+        # ================================================================
+        # Candidat a manqué sa formation et son examen est dans les 14 prochains jours
+        # → Proposer 2 options: maintenir examen (e-learning) ou reporter (force majeure)
+        if training_exam_consistency_data and training_exam_consistency_data.get('has_consistency_issue'):
+            logger.info("🚨 MODE TRAINING_EXAM_CONSISTENCY: Formation manquée + Examen imminent")
+            return self._generate_training_exam_options_response(
+                training_exam_consistency_data=training_exam_consistency_data,
+                exament3p_data=exament3p_data,
+                crm_data=crm_data
             )
 
         for attempt in range(max_retries + 1):
@@ -827,7 +843,7 @@ Génère une réponse email complète qui:
 IMPORTANT: La réponse doit commencer par "Bonjour" (pas de prénom si pas connu)."""
 
         try:
-            response = self.client.messages.create(
+            response = self.anthropic_client.messages.create(
                 model=self.model,
                 max_tokens=1500,
                 temperature=0.3,
@@ -931,6 +947,100 @@ L'équipe Cab Formations"""
                     break  # Ne compter qu'une fois par thread
 
         return count
+
+    def _generate_training_exam_options_response(
+        self,
+        training_exam_consistency_data: Dict,
+        exament3p_data: Optional[Dict] = None,
+        crm_data: Optional[Dict] = None
+    ) -> Dict:
+        """
+        Génère une réponse quand le candidat a manqué sa formation et son examen est imminent.
+
+        Le candidat doit choisir entre:
+        - Option A: Maintenir l'examen (considère que le e-learning lui a suffi)
+        - Option B: Reporter l'examen (nécessite un justificatif de force majeure)
+
+        Le message est pré-généré par training_exam_consistency_helper.py
+        """
+        logger.info("Generating training/exam options response")
+
+        # Utiliser le message pré-généré par le helper
+        response_message = training_exam_consistency_data.get('response_message', '')
+
+        if not response_message:
+            # Fallback: générer un message basique
+            exam_date = training_exam_consistency_data.get('exam_date_formatted', 'N/A')
+            next_exam_date = training_exam_consistency_data.get('next_exam_date_formatted', 'prochaine date disponible')
+
+            response_message = f"""Bonjour,
+
+Nous avons bien pris connaissance de votre situation concernant la formation que vous n'avez pas pu suivre.
+
+**Votre examen est prévu le {exam_date}.** Vous avez deux options :
+
+---
+
+## Option A : Maintenir votre examen au {exam_date}
+
+Si vous estimez que le **e-learning** (formation à distance) vous a permis d'acquérir les connaissances nécessaires, vous pouvez passer l'examen à la date prévue.
+
+📚 **Rappel** : Vous avez accès aux cours en ligne sur : **https://elearning.cab-formations.fr**
+
+---
+
+## Option B : Reporter votre examen
+
+Si vous souhaitez reporter votre examen, **un justificatif de force majeure est obligatoire** (certificat médical, etc.).
+
+En cas de report accepté par la CMA, vous serez repositionné sur le {next_exam_date}.
+
+**Pour demander un report :**
+1. Envoyez-nous votre **certificat médical** ou justificatif de force majeure
+2. Nous transmettrons votre demande à la CMA
+3. La CMA vous repositionnera sur la prochaine date d'examen disponible
+
+⚠️ **Important** : Le simple fait de ne pas avoir suivi la formation n'est **pas** un motif valable de report. Seule la force majeure (maladie, accident, décès d'un proche, etc.) permet de reporter un examen.
+
+---
+
+**Merci de nous indiquer votre choix** afin que nous puissions poursuivre le traitement de votre dossier.
+
+Cordialement,
+L'équipe Cab Formations"""
+
+        logger.info(f"  Message généré: {len(response_message)} caractères")
+        logger.info(f"  Examen prévu le: {training_exam_consistency_data.get('exam_date_formatted')}")
+        logger.info(f"  Prochaine date disponible: {training_exam_consistency_data.get('next_exam_date_formatted')}")
+        if training_exam_consistency_data.get('force_majeure_detected'):
+            logger.info(f"  Force majeure détectée: {training_exam_consistency_data.get('force_majeure_type')}")
+
+        return {
+            'response_text': response_message,
+            'detected_scenarios': ['SC-TRAINING_EXAM_CONSISTENCY'],
+            'similar_tickets': [],
+            'validation': {
+                'SC-TRAINING_EXAM_CONSISTENCY': {
+                    'compliant': True,
+                    'missing_blocks': [],
+                    'forbidden_terms_found': []
+                }
+            },
+            'requires_crm_update': False,
+            'crm_update_fields': [],
+            'should_stop_workflow': False,
+            'metadata': {
+                'input_tokens': 0,
+                'output_tokens': len(response_message),
+                'model': self.model,
+                'training_exam_consistency_mode': True,
+                'issue_type': training_exam_consistency_data.get('issue_type'),
+                'exam_date': training_exam_consistency_data.get('exam_date'),
+                'next_exam_date': training_exam_consistency_data.get('next_exam_date'),
+                'force_majeure_detected': training_exam_consistency_data.get('force_majeure_detected'),
+                'force_majeure_type': training_exam_consistency_data.get('force_majeure_type')
+            }
+        }
 
 
 def test_generator():
