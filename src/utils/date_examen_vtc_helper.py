@@ -49,8 +49,6 @@ def get_next_exam_dates(
 
     logger.info(f"🔍 Recherche des prochaines dates d'examen pour le département {departement}")
 
-    today = datetime.now().strftime("%Y-%m-%d")
-
     try:
         # Construire la requête de recherche
         # On cherche les sessions actives pour ce département
@@ -60,25 +58,45 @@ def get_next_exam_dates(
         # Critère: Statut = Actif AND Departement = X
         criteria = f"((Statut:equals:Actif)and(Departement:equals:{departement}))"
 
-        params = {
-            "criteria": criteria,
-            "page": 1,
-            "per_page": 50  # On récupère plus pour filtrer ensuite (tri fait en Python)
-        }
+        # Pagination: récupérer toutes les pages
+        all_sessions = []
+        page = 1
+        max_pages = 10  # Sécurité pour éviter boucle infinie
 
-        response = crm_client._make_request("GET", url, params=params)
-        sessions = response.get("data", [])
+        while page <= max_pages:
+            params = {
+                "criteria": criteria,
+                "page": page,
+                "per_page": 200  # Max autorisé par Zoho
+            }
 
-        if not sessions:
+            response = crm_client._make_request("GET", url, params=params)
+            sessions = response.get("data", [])
+
+            if not sessions:
+                break
+
+            all_sessions.extend(sessions)
+            logger.info(f"  Page {page}: {len(sessions)} session(s) récupérée(s)")
+
+            # Si moins de 200 résultats, c'est la dernière page
+            if len(sessions) < 200:
+                break
+
+            page += 1
+
+        if not all_sessions:
             logger.warning(f"Aucune session trouvée pour le département {departement}")
             # Essayer sans filtre département pour avoir au moins des suggestions
             return get_next_exam_dates_any_department(crm_client, limit)
+
+        logger.info(f"  Total: {len(all_sessions)} session(s) récupérée(s) pour le département {departement}")
 
         # Filtrer les sessions dont la date de clôture est dans le futur
         valid_sessions = []
         today_date = datetime.now()
 
-        for session in sessions:
+        for session in all_sessions:
             date_cloture_str = session.get('Date_Cloture_Inscription')
             if date_cloture_str:
                 try:
@@ -98,7 +116,7 @@ def get_next_exam_dates(
         valid_sessions.sort(key=lambda x: x.get('Date_Examen', '9999-99-99'))
 
         result = valid_sessions[:limit]
-        logger.info(f"✅ {len(result)} date(s) d'examen trouvée(s) pour le département {departement}")
+        logger.info(f"✅ {len(result)} date(s) d'examen valide(s) pour le département {departement}")
 
         return result
 
@@ -113,6 +131,7 @@ def get_next_exam_dates_any_department(
 ) -> List[Dict[str, Any]]:
     """
     Récupère les prochaines dates d'examen sans filtre département (fallback).
+    Avec pagination pour récupérer toutes les sessions.
     """
     from config import settings
 
@@ -123,20 +142,44 @@ def get_next_exam_dates_any_department(
         # Note: L'API search ne supporte pas sort_by/sort_order sur les modules custom
         criteria = "(Statut:equals:Actif)"
 
-        params = {
-            "criteria": criteria,
-            "page": 1,
-            "per_page": 50  # Tri fait en Python après
-        }
+        # Pagination: récupérer toutes les pages
+        all_sessions = []
+        page = 1
+        max_pages = 10  # Sécurité pour éviter boucle infinie
 
-        response = crm_client._make_request("GET", url, params=params)
-        sessions = response.get("data", [])
+        while page <= max_pages:
+            params = {
+                "criteria": criteria,
+                "page": page,
+                "per_page": 200  # Max autorisé par Zoho
+            }
+
+            response = crm_client._make_request("GET", url, params=params)
+            sessions = response.get("data", [])
+
+            if not sessions:
+                break
+
+            all_sessions.extend(sessions)
+            logger.info(f"  Page {page}: {len(sessions)} session(s) récupérée(s)")
+
+            # Si moins de 200 résultats, c'est la dernière page
+            if len(sessions) < 200:
+                break
+
+            page += 1
+
+        if not all_sessions:
+            logger.warning("Aucune session active trouvée")
+            return []
+
+        logger.info(f"  Total: {len(all_sessions)} session(s) actives récupérée(s)")
 
         # Filtrer les sessions avec clôture dans le futur
         valid_sessions = []
         today_date = datetime.now()
 
-        for session in sessions:
+        for session in all_sessions:
             date_cloture_str = session.get('Date_Cloture_Inscription')
             if date_cloture_str:
                 try:
@@ -151,6 +194,7 @@ def get_next_exam_dates_any_department(
                     continue
 
         valid_sessions.sort(key=lambda x: x.get('Date_Examen', '9999-99-99'))
+        logger.info(f"✅ {len(valid_sessions[:limit])} date(s) d'examen valide(s) (tous départements)")
         return valid_sessions[:limit]
 
     except Exception as e:
