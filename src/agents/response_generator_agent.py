@@ -999,93 +999,172 @@ L'équipe Cab Formations"""
         threads: Optional[List] = None
     ) -> Dict:
         """
-        Génère une réponse pour CAS A ou CAS B Uber.
+        Génère une réponse CONTEXTUELLE pour CAS A ou CAS B Uber.
 
-        CAS A: Candidat a payé 20€ mais n'a pas finalisé son inscription sur CAB Formations
-               → Expliquer l'offre + demander de finaliser inscription + envoyer documents
-               → PAS de demande d'identifiants ExamT3P (le compte n'existe pas encore!)
+        CAS A: Candidat a payé 20€ mais n'a pas finalisé son inscription
+               → Répondre à sa question spécifique
+               → Récapituler l'offre et ses avantages (241€ payés!)
+               → Être rassurant et pousser à l'action (envoyer dossier)
 
-        CAS B: Candidat a envoyé documents mais n'a pas passé le test de sélection
+        CAS B: Candidat a envoyé documents mais n'a pas passé le test
+               → Répondre à sa question
                → Demander de passer le test de sélection
-               → PAS de demande d'identifiants ExamT3P
 
-        IMPORTANT: Le message pré-généré par uber_eligibility_helper.py est utilisé.
+        UTILISE CLAUDE pour générer une réponse contextuelle qui répond
+        à la question du candidat tout en poussant à l'action.
         """
         uber_case = uber_eligibility_data.get('case', 'A')
-        logger.info(f"Generating Uber CAS {uber_case} response")
+        logger.info(f"Generating Uber CAS {uber_case} contextual response")
 
-        # Utiliser le message pré-généré par uber_eligibility_helper.py
-        pre_generated_message = uber_eligibility_data.get('response_message', '')
+        # ================================================================
+        # UTILISER CLAUDE POUR GÉNÉRER UNE RÉPONSE CONTEXTUELLE
+        # ================================================================
+        if uber_case == 'A':
+            system_prompt = """Tu es un assistant de Cab Formations, centre de formation VTC.
+Tu dois générer une réponse email professionnelle, rassurante et qui pousse à l'action.
 
-        if pre_generated_message:
-            # Construire la réponse complète avec le message pré-généré
-            response_message = f"""Bonjour,
+CONTEXTE:
+- Le candidat a payé 20€ pour l'offre Uber VTC mais n'a PAS encore envoyé son dossier
+- Il pose probablement une question générale sur l'offre ou la formation
+- Tu dois RÉPONDRE À SA QUESTION tout en le poussant à finaliser son inscription
 
-Merci pour votre message concernant la formation VTC.
+L'OFFRE UBER 20€ COMPREND:
+1. **Paiement des frais d'examen de 241€** à la CMA (Chambre des Métiers) - PAYÉ PAR CAB FORMATIONS
+2. **Formation en visio-conférence de 40 heures** avec un formateur professionnel
+   - À HORAIRES FIXES (pas à la demande!)
+   - 2 options pour s'adapter aux contraintes:
+     * Cours du JOUR: 8h30-16h30, durée 1 SEMAINE (lundi-vendredi)
+     * Cours du SOIR: 18h00-22h00, durée 2 SEMAINES (soirs du lundi-vendredi)
+3. **Accès illimité au e-learning** pour réviser à son rythme
+4. **Accompagnement personnalisé** jusqu'à l'obtention de la carte VTC
 
-{pre_generated_message}
+POUR BÉNÉFICIER DE L'OFFRE, IL DOIT:
+1. Finaliser son inscription sur la plateforme CAB Formations
+2. Nous envoyer ses documents (pièce d'identité, justificatif de domicile, etc.)
+3. Passer un test de sélection simple (envoyé par email après réception des documents)
 
-Je reste à votre disposition pour toute question.
+RÈGLES DE RÉDACTION:
+- TOUJOURS répondre à la question posée par le candidat en PREMIER
+- Ensuite récapituler les avantages de l'offre
+- Être rassurant et enthousiaste
+- Pousser à l'action: "Envoyez-nous vos documents dès que possible pour..."
+- Formater avec du markdown (gras, listes)
+- Ne JAMAIS mentionner de dates d'examen ou de formation spécifiques (on n'a pas son dossier!)
+- Ne JAMAIS demander d'identifiants ExamT3P (le compte n'existe pas encore!)
+- Terminer par "Cordialement, L'équipe Cab Formations"
 
-Cordialement,
-L'équipe Cab Formations"""
-            logger.info(f"  Utilisation du message pré-généré CAS {uber_case}")
-        else:
-            # Fallback: messages par défaut
+DURÉES DE FORMATION - ABSOLUMENT CORRECT:
+- Cours du jour: 1 SEMAINE (pas 2!)
+- Cours du soir: 2 SEMAINES (pas 4!)"""
+        else:  # CAS B
+            date_dossier = uber_eligibility_data.get('date_dossier_recu', '')
+            system_prompt = f"""Tu es un assistant de Cab Formations, centre de formation VTC.
+Tu dois générer une réponse email professionnelle et rassurante.
+
+CONTEXTE:
+- Le candidat a payé 20€ ET envoyé son dossier (reçu le {date_dossier if date_dossier else 'récemment'})
+- Il n'a PAS encore passé le test de sélection
+- Tu dois RÉPONDRE À SA QUESTION tout en lui rappelant de passer le test
+
+LE TEST DE SÉLECTION:
+- Test simple et rapide
+- Ne nécessite AUCUNE préparation (pas besoin de réviser)
+- Le lien a été envoyé par email le jour de la réception du dossier
+- OBLIGATOIRE pour déclencher l'inscription à l'examen
+
+SI QUESTION SUR LA FORMATION:
+- À HORAIRES FIXES (pas à la demande!)
+- 2 options:
+  * Cours du JOUR: 8h30-16h30, durée 1 SEMAINE
+  * Cours du SOIR: 18h00-22h00, durée 2 SEMAINES
+
+RÈGLES:
+- TOUJOURS répondre à la question posée en PREMIER
+- Rappeler de passer le test de sélection
+- Si pas reçu l'email du test → proposer de le renvoyer
+- Ne JAMAIS mentionner de dates d'examen spécifiques
+- Ne JAMAIS demander d'identifiants ExamT3P
+- Terminer par "Cordialement, L'équipe Cab Formations"
+
+DURÉES DE FORMATION - ABSOLUMENT CORRECT:
+- Cours du jour: 1 SEMAINE (pas 2!)
+- Cours du soir: 2 SEMAINES (pas 4!)"""
+
+        user_prompt = f"""MESSAGE DU CANDIDAT:
+{customer_message}
+
+Génère une réponse email complète qui:
+1. Répond à sa question spécifique
+2. {"Récapitule les avantages de l'offre et pousse à envoyer le dossier" if uber_case == 'A' else "Rappelle de passer le test de sélection"}
+
+Commence par "Bonjour," (pas de prénom)."""
+
+        try:
+            response = self.anthropic_client.messages.create(
+                model=self.model,
+                max_tokens=1500,
+                temperature=0.3,
+                system=system_prompt,
+                messages=[{"role": "user", "content": user_prompt}]
+            )
+            response_message = response.content[0].text.strip()
+            logger.info(f"  Claude a généré une réponse contextuelle CAS {uber_case} ({len(response_message)} caractères)")
+
+        except Exception as e:
+            logger.error(f"  Erreur Claude API: {e}")
+            # Fallback sur message par défaut
             if uber_case == 'A':
                 response_message = """Bonjour,
 
 Merci pour votre message et votre intérêt pour notre formation VTC !
 
-Nous avons bien reçu votre paiement de 20€ pour l'offre VTC en partenariat avec Uber. Merci pour votre confiance !
+Pour répondre à votre question : nos formations se déroulent à **horaires fixes** selon un planning établi. Nous proposons **deux types de sessions** pour nous adapter au mieux à vos contraintes :
 
-**Ce que comprend votre offre :**
+📅 **Cours du jour** : 8h30 - 16h30
+   → Durée : **1 semaine** (du lundi au vendredi)
 
-- **Inscription à l'examen VTC** incluant le paiement des frais d'examen de 241€ (pris en charge par CAB Formations)
-- **Accès à notre plateforme e-learning** pour réviser à votre rythme
-- **Formation en visio** avec un formateur professionnel (cours du jour OU cours du soir selon votre disponibilité)
+🌙 **Cours du soir** : 18h00 - 22h00
+   → Durée : **2 semaines** (soirées du lundi au vendredi)
 
-**Pour bénéficier de cette offre, il vous reste à :**
+**Récapitulatif de votre offre Uber à 20€ :**
 
-1. **Finaliser votre inscription** sur la plateforme CAB Formations où vous avez effectué le paiement
-2. **Nous transmettre tous vos documents** requis (pièce d'identité, justificatif de domicile, etc.)
-3. **Passer un test de sélection simple** - Vous recevrez le lien par email une fois votre inscription finalisée
+✅ **Paiement des frais d'examen de 241€** à la CMA - entièrement pris en charge par CAB Formations
+✅ **Formation en visio-conférence de 40 heures** avec un formateur professionnel
+✅ **Accès illimité au e-learning** pour réviser à votre rythme
+✅ **Accompagnement personnalisé** jusqu'à l'obtention de votre carte VTC
 
-Le test de sélection est rapide et ne nécessite aucune préparation particulière. Il nous permet simplement de déclencher votre inscription à l'examen.
+**Pour profiter de ces avantages, il vous reste à :**
 
-**Dès que ces étapes seront complétées**, nous pourrons vous proposer les prochaines dates d'examen disponibles et vous inscrire à la session de formation correspondante.
+1. **Finaliser votre inscription** sur notre plateforme
+2. **Nous envoyer vos documents** (pièce d'identité, justificatif de domicile, etc.)
+3. **Passer un test de sélection simple** - vous recevrez le lien par email
 
-Je reste à votre disposition pour toute question.
+Dès réception de votre dossier complet, nous pourrons vous proposer les prochaines dates d'examen disponibles dans votre région et vous inscrire à la session de formation qui vous convient le mieux.
+
+N'hésitez pas à nous envoyer vos documents dès que possible pour démarrer votre parcours vers la carte VTC !
 
 Cordialement,
 L'équipe Cab Formations"""
-            else:  # CAS B
-                date_dossier = uber_eligibility_data.get('date_dossier_recu', '')
-                date_text = f" le **{date_dossier}**" if date_dossier else ""
-
+            else:
                 response_message = f"""Bonjour,
 
 Merci pour votre message !
 
-Nous avons bien reçu votre dossier{date_text}. Merci !
+Nous avons bien reçu votre dossier{' le ' + date_dossier if date_dossier else ''}. Merci !
 
-**Pour finaliser votre inscription à l'examen VTC, il vous reste une dernière étape :**
+Pour répondre à votre question : nos formations se déroulent à **horaires fixes**. Nous proposons deux options :
+- **Cours du jour** : 8h30-16h30, durée **1 semaine**
+- **Cours du soir** : 18h00-22h00, durée **2 semaines**
 
-Vous devez passer le **test de sélection**. Un email contenant le lien vers ce test vous a été envoyé{date_text}.
+**Il vous reste une dernière étape pour finaliser votre inscription :**
 
-**À propos du test de sélection :**
+Vous devez passer le **test de sélection**. Un email contenant le lien vers ce test vous a été envoyé le jour de la réception de votre dossier.
 
-- C'est un test **simple et rapide**
-- Il **ne nécessite pas de consulter les cours** au préalable
-- Il nous permet de **déclencher votre inscription à l'examen**
+Ce test est **simple et rapide**, il ne nécessite aucune préparation. Il nous permet de déclencher votre inscription à l'examen.
 
-**Important :** Nous ne pouvons pas procéder à votre inscription à l'examen tant que vous n'avez pas réussi ce test.
+Si vous n'avez pas reçu l'email, n'hésitez pas à nous le signaler et nous vous renverrons le lien immédiatement.
 
-Si vous n'avez pas reçu l'email ou si vous avez des difficultés pour accéder au test, n'hésitez pas à nous le signaler et nous vous renverrons le lien.
-
-**Dès que le test sera passé**, nous pourrons vous proposer les prochaines dates d'examen disponibles et vous inscrire à la session de formation correspondante.
-
-Je reste à votre disposition pour toute question.
+Dès que le test sera passé, nous pourrons vous proposer les prochaines dates d'examen et vous inscrire à la session de formation correspondante.
 
 Cordialement,
 L'équipe Cab Formations"""
