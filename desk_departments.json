@@ -1,0 +1,158 @@
+{
+  "extraction_date": "2026-01-26",
+  "total_count": 26,
+  "active_count": 19,
+  "departments": {
+    "Aleo - Administratif": {
+      "id": "198709000131511107",
+      "is_enabled": true,
+      "description": null
+    },
+    "Aleo - Comptabilité": {
+      "id": "198709000139634435",
+      "is_enabled": true,
+      "description": null
+    },
+    "Aleo - Relations Entreprises": {
+      "id": "198709000139436077",
+      "is_enabled": true,
+      "description": null
+    },
+    "Assistance commerciale": {
+      "id": "198709000042442495",
+      "is_enabled": false,
+      "description": null
+    },
+    "BO": {
+      "id": "198709000025160121",
+      "is_enabled": false,
+      "description": null
+    },
+    "Back Office": {
+      "id": "198709000026153115",
+      "is_enabled": false,
+      "description": null
+    },
+    "Back-office": {
+      "id": "198709000026180825",
+      "is_enabled": true,
+      "description": null
+    },
+    "Comptabilité": {
+      "id": "198709000025558419",
+      "is_enabled": true,
+      "description": null
+    },
+    "Contact": {
+      "id": "198709000025227670",
+      "is_enabled": true,
+      "description": null
+    },
+    "DOC": {
+      "id": "198709000025523146",
+      "is_enabled": true,
+      "description": null
+    },
+    "DOCS CAB": {
+      "id": "198709000102030275",
+      "is_enabled": true,
+      "description": "Documents des candidats CAB seulement"
+    },
+    "EXAMEN PRATIQUE VTC": {
+      "id": "198709000102607293",
+      "is_enabled": false,
+      "description": null
+    },
+    "Engins": {
+      "id": "198709000250868739",
+      "is_enabled": false,
+      "description": null
+    },
+    "FACTURATION": {
+      "id": "198709000025221397",
+      "is_enabled": false,
+      "description": null
+    },
+    "Inscription CMA": {
+      "id": "198709000092827577",
+      "is_enabled": true,
+      "description": null
+    },
+    "Mon Compte Formation": {
+      "id": "198709000102046075",
+      "is_enabled": true,
+      "description": null
+    },
+    "NA PAS UTILISER": {
+      "id": "198709000000006907",
+      "is_enabled": true,
+      "description": null
+    },
+    "Notifications": {
+      "id": "198709000102116029",
+      "is_enabled": true,
+      "description": null
+    },
+    "PARTICULIER COMPTA": {
+      "id": "198709000102023223",
+      "is_enabled": true,
+      "description": "Factures particulier"
+    },
+    "PUB ET SPAM": {
+      "id": "198709000025233943",
+      "is_enabled": false,
+      "description": null
+    },
+    "Pédagogie": {
+      "id": "198709000025742482",
+      "is_enabled": true,
+      "description": null
+    },
+    "Recrutement": {
+      "id": "198709000035496031",
+      "is_enabled": true,
+      "description": null
+    },
+    "Refus CMA": {
+      "id": "198709000092515473",
+      "is_enabled": true,
+      "description": null
+    },
+    "Relations entreprises": {
+      "id": "198709000027921097",
+      "is_enabled": true,
+      "description": null
+    },
+    "Réferent handicap": {
+      "id": "198709000040285715",
+      "is_enabled": true,
+      "description": null
+    },
+    "Uber": {
+      "id": "198709000057394047",
+      "is_enabled": true,
+      "description": null
+    }
+  },
+  "active_department_names": [
+    "Aleo - Administratif",
+    "Aleo - Comptabilité",
+    "Aleo - Relations Entreprises",
+    "Back-office",
+    "Comptabilité",
+    "Contact",
+    "DOC",
+    "DOCS CAB",
+    "Inscription CMA",
+    "Mon Compte Formation",
+    "NA PAS UTILISER",
+    "Notifications",
+    "PARTICULIER COMPTA",
+    "Pédagogie",
+    "Recrutement",
+    "Refus CMA",
+    "Relations entreprises",
+    "Réferent handicap",
+    "Uber"
+  ]
+}
