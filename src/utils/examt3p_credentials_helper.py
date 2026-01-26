@@ -296,10 +296,10 @@ def get_credentials_with_validation(
 
     Étapes:
     1. Chercher dans le CRM (deal_data)
-    2. Si absents, chercher dans les threads de mail
-    3. Tester la connexion (OBLIGATOIRE)
-    4. Si connexion OK et identifiants viennent des mails → MAJ CRM
-    5. Si connexion KO → préparer réponse au candidat
+    2. TOUJOURS chercher aussi dans les threads de mail
+    3. Tester la connexion CRM d'abord
+    4. Si CRM échoue ET threads ont des identifiants différents → tester ceux-là
+    5. Utiliser ceux qui marchent, MAJ CRM si nécessaire
 
     Args:
         deal_data: Données du deal CRM
@@ -337,43 +337,62 @@ def get_credentials_with_validation(
     # ÉTAPE 1: Chercher dans le CRM
     # ================================================================
     logger.info("🔍 Recherche des identifiants ExamT3P...")
-    logger.info("  Étape 1/3: Vérification dans le CRM...")
+    logger.info("  Étape 1/4: Vérification dans le CRM...")
 
     identifiant_crm = deal_data.get('IDENTIFIANT_EVALBOX')
     mdp_crm = deal_data.get('MDP_EVALBOX')
 
+    if identifiant_crm and mdp_crm:
+        logger.info(f"  ✅ Identifiants trouvés dans le CRM: {identifiant_crm}")
+    else:
+        logger.info("  ⚠️  Identifiants absents du CRM")
+
+    # ================================================================
+    # ÉTAPE 2: TOUJOURS chercher dans les threads de mail
+    # (même si CRM a des identifiants - le candidat peut avoir envoyé de nouveaux)
+    # ================================================================
+    logger.info("  Étape 2/4: Recherche dans les threads de mail...")
+
+    credentials_from_threads = extract_credentials_from_threads(threads)
+    identifiant_threads = None
+    mdp_threads = None
+
+    if credentials_from_threads:
+        identifiant_threads = credentials_from_threads['identifiant']
+        mdp_threads = credentials_from_threads['mot_de_passe']
+        logger.info(f"  ✅ Identifiants trouvés dans les threads: {identifiant_threads}")
+
+        # Comparer avec CRM
+        if identifiant_crm and identifiant_threads:
+            if identifiant_threads.lower() != identifiant_crm.lower():
+                logger.info(f"  ⚠️  Identifiants DIFFÉRENTS: CRM={identifiant_crm} vs Threads={identifiant_threads}")
+    else:
+        logger.info("  ⚠️  Pas d'identifiants dans les threads")
+
+    # ================================================================
+    # ÉTAPE 3: Déterminer quels identifiants tester
+    # Priorité: CRM d'abord, puis threads si différents
+    # ================================================================
     identifiant = None
     mot_de_passe = None
     source = None
 
+    # Cas 1: CRM a des identifiants → les tester d'abord
     if identifiant_crm and mdp_crm:
         identifiant = identifiant_crm
         mot_de_passe = mdp_crm
         source = 'crm'
-        logger.info(f"  ✅ Identifiants trouvés dans le CRM: {identifiant}")
         result['credentials_found'] = True
         result['credentials_source'] = 'crm'
-    else:
-        logger.info("  ⚠️  Identifiants absents du CRM")
+    # Cas 2: Pas de CRM mais threads ont des identifiants
+    elif identifiant_threads and mdp_threads:
+        identifiant = identifiant_threads
+        mot_de_passe = mdp_threads
+        source = 'email_threads'
+        result['credentials_found'] = True
+        result['credentials_source'] = 'email_threads'
 
-        # ================================================================
-        # ÉTAPE 2: Chercher dans les threads de mail
-        # ================================================================
-        logger.info("  Étape 2/3: Recherche dans les threads de mail...")
-
-        credentials_from_threads = extract_credentials_from_threads(threads)
-
-        if credentials_from_threads:
-            identifiant = credentials_from_threads['identifiant']
-            mot_de_passe = credentials_from_threads['mot_de_passe']
-            source = 'email_threads'
-            logger.info(f"  ✅ Identifiants trouvés dans les threads: {identifiant}")
-            result['credentials_found'] = True
-            result['credentials_source'] = 'email_threads'
-        else:
-            logger.warning("  ⚠️  Identifiants introuvables dans les threads")
-
-    # Si aucun identifiant trouvé...
+    # Si aucun identifiant trouvé nulle part (ni CRM ni threads)...
     if not identifiant or not mot_de_passe:
         # ================================================================
         # VÉRIFICATION CRITIQUE: Avons-nous déjà demandé au candidat
@@ -420,21 +439,70 @@ def get_credentials_with_validation(
     # ================================================================
     # ÉTAPE 3: TEST DE CONNEXION (OBLIGATOIRE)
     # ================================================================
-    logger.info("  Étape 3/3: Test de connexion...")
+    logger.info(f"  Étape 3/4: Test de connexion ({source})...")
 
     connection_ok, connection_error = test_examt3p_connection(identifiant, mot_de_passe)
+
+    # ================================================================
+    # ÉTAPE 4: Si CRM échoue, essayer les identifiants des threads
+    # ================================================================
+    if not connection_ok and source == 'crm':
+        # Vérifier si les threads ont des identifiants DIFFÉRENTS
+        if identifiant_threads and mdp_threads:
+            # Comparer (ignorer la casse pour l'identifiant)
+            is_different = (
+                identifiant_threads.lower() != identifiant_crm.lower() or
+                mdp_threads != mdp_crm
+            )
+
+            if is_different:
+                logger.info(f"  🔄 CRM échoué, test des identifiants des threads: {identifiant_threads}")
+                connection_ok_threads, connection_error_threads = test_examt3p_connection(
+                    identifiant_threads, mdp_threads
+                )
+
+                if connection_ok_threads:
+                    logger.info("  ✅ Identifiants des threads VALIDES!")
+                    # Utiliser les identifiants des threads
+                    identifiant = identifiant_threads
+                    mot_de_passe = mdp_threads
+                    source = 'email_threads'
+                    connection_ok = True
+                    connection_error = None
+
+                    # Mettre à jour le résultat
+                    result['identifiant'] = identifiant
+                    result['mot_de_passe'] = mot_de_passe
+                    result['credentials_source'] = 'email_threads'
+
+                    # Mettre à jour le CRM avec les bons identifiants
+                    if auto_update_crm and crm_client and deal_id:
+                        logger.info("  📝 Mise à jour du CRM avec les identifiants corrigés...")
+                        try:
+                            crm_client.update_deal(deal_id, {
+                                'IDENTIFIANT_EVALBOX': identifiant,
+                                'MDP_EVALBOX': mot_de_passe
+                            })
+                            logger.info("  ✅ CRM mis à jour avec les nouveaux identifiants")
+                            result['crm_updated'] = True
+                        except Exception as e:
+                            logger.error(f"  ❌ Erreur mise à jour CRM: {e}")
+                else:
+                    logger.warning(f"  ❌ Identifiants threads également invalides: {connection_error_threads}")
+            else:
+                logger.info("  ⚠️  Threads ont les mêmes identifiants que CRM - pas de retry")
 
     result['connection_test_success'] = connection_ok
     result['connection_error'] = connection_error
 
     # ================================================================
-    # ÉTAPE 4: Actions selon résultat du test
+    # ÉTAPE 5: Actions selon résultat du test
     # ================================================================
     if connection_ok:
         logger.info("✅ Connexion ExamT3P validée")
 
-        # Si identifiants viennent des mails, mettre à jour le CRM
-        if source == 'email_threads' and auto_update_crm and crm_client and deal_id:
+        # Si identifiants viennent des mails et pas encore mis à jour, mettre à jour le CRM
+        if source == 'email_threads' and not result.get('crm_updated') and auto_update_crm and crm_client and deal_id:
             logger.info("📝 Mise à jour du CRM avec les identifiants trouvés dans les mails...")
             try:
                 crm_client.update_deal(deal_id, {
@@ -448,7 +516,7 @@ def get_credentials_with_validation(
 
     else:
         # ================================================================
-        # ÉTAPE 5: Connexion échouée → Réponse au candidat
+        # ÉTAPE 6: Connexion échouée → Réponse au candidat
         # ================================================================
         logger.warning(f"❌ Connexion ExamT3P échouée: {connection_error}")
         result['should_respond_to_candidate'] = True
