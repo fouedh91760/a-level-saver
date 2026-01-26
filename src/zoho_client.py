@@ -85,6 +85,14 @@ class ZohoAPIClient:
 
         try:
             response = self._session.request(method, url, headers=headers, **kwargs)
+
+            # Log détaillé si erreur
+            if response.status_code >= 400:
+                logger.error(f"API Error {response.status_code}: {method} {url}")
+                logger.error(f"Response body: {response.text[:1000]}")  # Log les 1000 premiers caractères
+                if 'json' in kwargs:
+                    logger.error(f"Request payload size: {len(str(kwargs['json']))} chars")
+
             response.raise_for_status()
 
             # Handle empty responses (204 No Content or empty body)
