@@ -41,15 +41,8 @@ CONFIRMATION_PATTERNS = {
         r"(?:je\s+)?choisis?\s+(?:la\s+date\s+)?(?:du\s+)?(\d{1,2}[/.\-]\d{1,2}(?:[/.\-]\d{2,4})?)",
         r"examen\s+(?:du\s+)?(\d{1,2}[/.\-]\d{1,2}(?:[/.\-]\d{2,4})?)\s+(?:me\s+convient|ok|parfait)",
     ],
-    # Réponses type "Option 1", "Option 2" (sans date explicite)
-    # Note: patterns sans ^ ni $ pour matcher dans un texte plus long
-    'option_choice': [
-        r"(?:^|\n)\s*option\s*([123])\s*(?:\n|$)",
-        r"(?:^|\n)\s*([123])\s*(?:\n|$)",  # Juste le chiffre seul sur une ligne
-        r"(?:^|\n)\s*choix\s*([123])\s*(?:\n|$)",
-        r"(?:^|\n)\s*la\s+(première|premi[eè]re|1[eè]?re?)(?:\s+option)?\s*(?:\n|$)",
-        r"(?:^|\n)\s*la\s+(deuxi[eè]me|seconde|2[eè]?me?)(?:\s+option)?\s*(?:\n|$)",
-    ],
+    # Note: "Option 1/2" est maintenant géré par l'IA (ResponseGeneratorAgent)
+    # qui analyse le contexte complet pour comprendre à quoi ça correspond
     'session_preference': [
         # Cours du jour
         r"(?:je\s+)?(?:préfère|choisis?|veux|souhaite)\s+(?:les?\s+)?cours\s+du\s+(jour)",
@@ -123,61 +116,8 @@ def parse_date_from_match(date_str: str) -> Optional[str]:
     return None
 
 
-def _extract_date_from_option_context(threads: List[Dict], current_thread: Dict, option_num: int) -> Optional[str]:
-    """
-    Extrait la date correspondant à une option depuis le message précédent de l'agent.
-
-    Cherche des patterns comme:
-    - "Option 1 - Examen du 31/03/2026"
-    - "📅 **Option 1 - Examen du 31/03/2026**"
-
-    Args:
-        threads: Liste des threads
-        current_thread: Thread actuel du candidat (pour trouver le précédent)
-        option_num: Numéro de l'option choisie (1, 2, 3...)
-
-    Returns:
-        Date au format YYYY-MM-DD ou None
-    """
-    from src.utils.text_utils import get_clean_thread_content
-
-    # Trouver le thread précédent de l'agent (direction = 'out')
-    current_idx = None
-    for i, t in enumerate(threads):
-        if t.get('id') == current_thread.get('id'):
-            current_idx = i
-            break
-
-    if current_idx is None:
-        return None
-
-    # Chercher le thread de l'agent juste avant
-    agent_content = None
-    for i in range(current_idx - 1, -1, -1):
-        if threads[i].get('direction') == 'out':
-            agent_content = get_clean_thread_content(threads[i])
-            break
-
-    if not agent_content:
-        return None
-
-    # Patterns pour extraire la date de l'option
-    # Option 1 - Examen du 31/03/2026 ou Option 1 - Examen du 31/03
-    option_patterns = [
-        rf"option\s*{option_num}[^0-9]*examen[^0-9]*(\d{{1,2}}[/.\-]\d{{1,2}}(?:[/.\-]\d{{2,4}})?)",
-        rf"option\s*{option_num}[^0-9]*(\d{{1,2}}[/.\-]\d{{1,2}}[/.\-]\d{{2,4}})",
-    ]
-
-    for pattern in option_patterns:
-        match = re.search(pattern, agent_content, re.IGNORECASE)
-        if match:
-            date_str = match.group(1)
-            parsed = parse_date_from_match(date_str)
-            if parsed:
-                logger.info(f"  🔍 Extracted date from Option {option_num} context: {date_str} → {parsed}")
-                return parsed
-
-    return None
+# Note: _extract_date_from_option_context supprimée
+# La détection de "Option 1/2" est maintenant gérée par l'IA (ResponseGeneratorAgent)
 
 
 def extract_confirmations_from_threads(
@@ -263,34 +203,8 @@ def extract_confirmations_from_threads(
                     logger.info(f"  📅 Confirmation date examen: {parsed_date}")
                 break
 
-        # 2b. Détecter choix "Option 1/2" et extraire date du contexte
-        if not result['date_examen_confirmed']:
-            for pattern in CONFIRMATION_PATTERNS.get('option_choice', []):
-                match = re.search(pattern, content, re.IGNORECASE | re.MULTILINE)
-                if match:
-                    option_value = match.group(1).lower()
-                    # Convertir en numéro
-                    if option_value in ['1', 'première', 'premiere', '1ère', '1ere', '1re']:
-                        option_num = 1
-                    elif option_value in ['2', 'deuxième', 'deuxieme', 'seconde', '2ème', '2eme']:
-                        option_num = 2
-                    elif option_value == '3':
-                        option_num = 3
-                    else:
-                        option_num = int(option_value) if option_value.isdigit() else 1
-
-                    # Chercher les dates dans le message précédent de l'agent
-                    date_from_context = _extract_date_from_option_context(threads, thread, option_num)
-                    if date_from_context:
-                        result['raw_confirmations'].append({
-                            'type': 'option_choice',
-                            'option_number': option_num,
-                            'parsed_value': date_from_context,
-                            'thread_date': thread_date
-                        })
-                        result['date_examen_confirmed'] = date_from_context
-                        logger.info(f"  📅 Option {option_num} choisie → date examen: {date_from_context}")
-                    break
+        # Note: "Option 1/2" est maintenant géré par l'IA (ResponseGeneratorAgent)
+        # qui analyse le contexte complet et retourne les updates CRM directement
 
         # 3. Détecter préférence session (jour/soir)
         for pattern in CONFIRMATION_PATTERNS['session_preference']:

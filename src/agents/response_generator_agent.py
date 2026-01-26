@@ -18,13 +18,52 @@ Usage:
     )
 """
 import logging
-from typing import Dict, List, Optional
+import re
+from typing import Dict, List, Optional, Tuple
 from anthropic import Anthropic
 import os
 import json
 import sys
 from pathlib import Path
 from dotenv import load_dotenv
+
+
+def _parse_crm_updates(response_text: str) -> Tuple[str, Dict[str, str]]:
+    """
+    Parse CRM_UPDATES block from Claude's response.
+
+    Args:
+        response_text: Full response from Claude
+
+    Returns:
+        Tuple of (clean_response_text, crm_updates_dict)
+    """
+    crm_updates = {}
+
+    # Find and extract CRM_UPDATES block
+    pattern = r'\[CRM_UPDATES\](.*?)\[/CRM_UPDATES\]'
+    match = re.search(pattern, response_text, re.DOTALL)
+
+    if match:
+        updates_text = match.group(1).strip()
+        # Remove the block from response
+        clean_response = re.sub(pattern, '', response_text, flags=re.DOTALL).strip()
+
+        # Parse key-value pairs
+        for line in updates_text.split('\n'):
+            line = line.strip()
+            if ':' in line and line:
+                key, value = line.split(':', 1)
+                key = key.strip()
+                value = value.strip()
+                if value and value.lower() not in ['none', 'null', '']:
+                    crm_updates[key] = value
+
+        logger.info(f"📊 Extracted CRM updates: {crm_updates}")
+    else:
+        clean_response = response_text
+
+    return clean_response, crm_updates
 
 # Load environment variables
 load_dotenv()
@@ -246,7 +285,34 @@ Tu réponds aux tickets clients concernant les formations VTC pour Uber avec un 
 5. Inclure les blocs obligatoires selon le scénario
 6. Adopter le ton approprié (professionnel, empathique, rassurant)
 
-Tu as accès à des exemples similaires de tes réponses passées pour t'inspirer du style et de l'approche."""
+Tu as accès à des exemples similaires de tes réponses passées pour t'inspirer du style et de l'approche.
+
+## 📊 EXTRACTION DES MISES À JOUR CRM (OBLIGATOIRE)
+
+Après ta réponse email, tu DOIS analyser la conversation pour déterminer si des champs CRM doivent être mis à jour.
+
+**Contexte à analyser :**
+- Si le candidat confirme une date d'examen (explicitement ou via "Option 1", "Option 2", etc.)
+- Si le candidat confirme une session de formation
+- Si le candidat indique une préférence (jour/soir)
+- Tout autre information qui doit être enregistrée dans le CRM
+
+**Format de sortie :**
+À la FIN de ta réponse (après la signature), ajoute un bloc structuré :
+
+```
+[CRM_UPDATES]
+Date_examen_VTC: YYYY-MM-DD (si date d'examen confirmée)
+Session_choisie: Nom de la session (si session confirmée)
+Preference_horaire: jour|soir (si préférence confirmée)
+[/CRM_UPDATES]
+```
+
+**Règles :**
+- N'inclus QUE les champs qui doivent être mis à jour suite à cette conversation
+- Si aucune mise à jour n'est nécessaire, mets `[CRM_UPDATES][/CRM_UPDATES]` (bloc vide)
+- Les dates doivent être au format YYYY-MM-DD
+- Analyse le contexte complet : si le candidat dit "Option 1" en réponse à une question sur les dates, retrouve la date correspondante dans l'historique"""
 
         return system_prompt
 
@@ -707,8 +773,11 @@ Génère uniquement le contenu de la réponse (pas de métadonnées)."""
                 ]
             )
 
-            response_text = response.content[0].text
-            logger.info(f"Claude generated {len(response_text)} characters")
+            raw_response = response.content[0].text
+            logger.info(f"Claude generated {len(raw_response)} characters")
+
+            # Parse CRM updates from response
+            response_text, extracted_crm_updates = _parse_crm_updates(raw_response)
 
         except Exception as e:
             logger.error(f"Error calling Claude API: {e}")
@@ -732,6 +801,11 @@ Génère uniquement le contenu de la réponse (pas de métadonnées)."""
             crm_update_fields = list(set(crm_update_fields))  # Remove duplicates
 
         # 8. Return comprehensive result
+        # If AI extracted CRM updates, use those; otherwise use scenario-based fields
+        has_ai_updates = bool(extracted_crm_updates)
+        if has_ai_updates:
+            needs_crm_update = True  # Override if AI found updates
+
         return {
             'response_text': response_text,
             'detected_scenarios': detected_scenarios,
@@ -739,6 +813,7 @@ Génère uniquement le contenu de la réponse (pas de métadonnées)."""
             'validation': validation_results,
             'requires_crm_update': needs_crm_update,
             'crm_update_fields': crm_update_fields,
+            'crm_updates': extracted_crm_updates,  # Actual values from AI
             'should_stop_workflow': stop_workflow,
             'metadata': {
                 'model': self.model,

@@ -1002,45 +1002,21 @@ class DOCTicketWorkflow:
         response_result: Dict,
         analysis_result: Dict
     ) -> Dict:
-        """Prepare CRM deal field updates based on detected scenarios and confirmations."""
-        updates = {}
+        """
+        Prepare CRM deal field updates.
 
-        # Get fields to update from scenario
-        fields_to_update = response_result.get('crm_update_fields', [])
-        logger.info(f"  📝 Preparing CRM updates for fields: {fields_to_update}")
+        Uses AI-extracted updates from ResponseGeneratorAgent (crm_updates)
+        which analyzes the conversation context to determine what needs updating.
+        """
+        # Get AI-extracted updates (primary source)
+        ai_updates = response_result.get('crm_updates', {})
 
-        # Get confirmed date from analysis (ticket_confirmations)
-        ticket_confirmations = analysis_result.get('ticket_confirmations', {})
-        date_examen_confirmed = ticket_confirmations.get('date_examen_confirmed')
-
-        # Get session data from analysis
-        session_data = analysis_result.get('session_data', {})
-        sessions_options = session_data.get('sessions', [])
-
-        # SC-17_CONFIRMATION_SESSION: Update session and exam date
-        if 'Date_examen_VTC' in fields_to_update and date_examen_confirmed:
-            updates['Date_examen_VTC'] = date_examen_confirmed
-            logger.info(f"  ✅ Date_examen_VTC → {date_examen_confirmed}")
-
-        if 'Session_choisie' in fields_to_update:
-            # Find the session that matches the confirmed exam date
-            if date_examen_confirmed and sessions_options:
-                for session_option in sessions_options:
-                    if session_option.get('exam_date') == date_examen_confirmed:
-                        sessions = session_option.get('sessions', [])
-                        if sessions:
-                            # Use first available session (preference already filtered)
-                            chosen_session = sessions[0]
-                            updates['Session_choisie'] = chosen_session.get('Name', '')
-                            if 'Date_debut_session' in fields_to_update:
-                                updates['Date_debut_session'] = chosen_session.get('Date_debut', '')
-                            if 'Date_fin_session' in fields_to_update:
-                                updates['Date_fin_session'] = chosen_session.get('Date_fin', '')
-                            logger.info(f"  ✅ Session_choisie → {chosen_session.get('Name', 'N/A')}")
-                        break
-
-        logger.info(f"  📋 Total updates prepared: {len(updates)}")
-        return updates
+        if ai_updates:
+            logger.info(f"  📊 AI extracted CRM updates: {ai_updates}")
+            return ai_updates
+        else:
+            logger.info(f"  📊 No CRM updates extracted by AI")
+            return {}
 
     def close(self):
         """Clean up resources."""
