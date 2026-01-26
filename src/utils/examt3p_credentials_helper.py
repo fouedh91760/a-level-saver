@@ -160,7 +160,7 @@ def test_examt3p_connection(identifiant: str, mot_de_passe: str) -> Tuple[bool, 
                 try:
                     # Accéder à la page de connexion
                     await page.goto("https://www.exament3p.fr/id/14", wait_until='networkidle', timeout=30000)
-                    await asyncio.sleep(2)
+                    await asyncio.sleep(3)  # Augmenté pour s'assurer que la page est chargée
 
                     # Cliquer sur "Me connecter" pour ouvrir la modal
                     try:
@@ -220,15 +220,16 @@ def test_examt3p_connection(identifiant: str, mot_de_passe: str) -> Tuple[bool, 
                     if not submitted:
                         await page.keyboard.press('Enter')
 
-                    # Attendre la navigation
-                    await asyncio.sleep(3)
+                    # Attendre la navigation (augmenté pour laisser la page charger)
+                    await asyncio.sleep(5)
 
-                    # Vérifier si connecté
+                    # Vérifier si connecté - mêmes indicateurs que exament3p_playwright.py
                     success_indicators = [
                         "Vue d'ensemble",
                         "Mon Espace Candidat",
                         "Déconnexion",
-                        "Bienvenue"
+                        "Bienvenue",
+                        "monEspaceContainer"  # ID/class présent sur la page après login
                     ]
 
                     content = await page.content()
@@ -238,12 +239,26 @@ def test_examt3p_connection(identifiant: str, mot_de_passe: str) -> Tuple[bool, 
 
                     # Vérifier l'URL
                     current_url = page.url
-                    if "mon-espace" in current_url or "dashboard" in current_url:
+                    if "mon-espace" in current_url or "dashboard" in current_url or "espace-candidat" in current_url:
                         return True, None
 
                     # Vérifier si erreur de connexion visible
-                    if "Identifiant ou mot de passe incorrect" in content or "invalid" in content.lower():
-                        return False, "Identifiants invalides"
+                    error_indicators = [
+                        "Identifiant ou mot de passe incorrect",
+                        "invalid",
+                        "erreur",
+                        "échec",
+                        "Mot de passe oublié"  # Si on voit encore ce bouton, on n'est pas connecté
+                    ]
+                    content_lower = content.lower()
+                    for error in error_indicators:
+                        if error.lower() in content_lower and "Me connecter" in content:
+                            return False, "Identifiants invalides"
+
+                    # Si on ne trouve pas les indicateurs mais qu'on n'est plus sur la page de login
+                    if "Me connecter" not in content:
+                        # Probablement connecté mais page différente
+                        return True, None
 
                     return False, "Connexion échouée - page d'accueil non détectée"
 
