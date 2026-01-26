@@ -504,21 +504,13 @@ Emails alternatifs trouvés:"""
                     logger.info(f"  ✅ Contacts trouvés avec email alternatif: {alt_email}")
                     break
 
-        # Si toujours pas de contacts trouvés
+        # Si toujours pas de contacts trouvés → TOUJOURS demander clarification
+        # Sans deal CRM, on ne peut pas répondre correctement (risque d'hallucination)
         if not contacts:
-            # Déterminer si on doit demander clarification
-            # Nouveau ticket (1-2 threads) = demander clarification
-            # Ticket avec historique = peut-être déjà traité manuellement
-            is_new_conversation = len(threads) <= 2
-            result["needs_clarification"] = is_new_conversation
+            logger.warning(f"  ⚠️ Aucun contact CRM trouvé - clarification nécessaire")
+            result["needs_clarification"] = True
+            result["clarification_reason"] = "candidate_not_found"
             result["routing_explanation"] = f"No CRM contacts found for email {email}"
-
-            if is_new_conversation:
-                logger.info(f"  ⚠️ Nouveau ticket sans correspondance CRM - clarification nécessaire")
-                result["clarification_reason"] = "candidate_not_found"
-            else:
-                logger.info(f"  ℹ️ Ticket avec historique mais pas de correspondance CRM")
-
             result["success"] = True  # Success but no deal found
             return result
 
@@ -531,9 +523,13 @@ Emails alternatifs trouvés:"""
         result["deals_found"] = len(all_deals)
         result["all_deals"] = all_deals
 
+        # Si pas de deals trouvés → TOUJOURS demander clarification
+        # Contact existe mais pas d'opportunité = situation anormale
         if not all_deals:
-            logger.info(f"No deals found for contacts with email {email}")
-            result["routing_explanation"] = f"No CRM deals found for email {email}"
+            logger.warning(f"  ⚠️ Contact trouvé mais aucun deal - clarification nécessaire")
+            result["needs_clarification"] = True
+            result["clarification_reason"] = "no_deal_for_contact"
+            result["routing_explanation"] = f"Contact found but no deals for email {used_email}"
             result["success"] = True  # Success but no deal found
             return result
 
