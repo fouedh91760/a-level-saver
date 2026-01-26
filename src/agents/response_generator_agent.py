@@ -612,6 +612,18 @@ Génère uniquement le contenu de la réponse (pas de métadonnées)."""
 
             lines.append("\n  ⚠️ RÈGLE IMPORTANTE : Toujours lier la proposition de formation à la date d'examen choisie")
 
+        # ================================================================
+        # ALERTES TEMPORAIRES
+        # ================================================================
+        # Alertes temporaires (bugs CMA, situations exceptionnelles)
+        from src.utils.alerts_helper import get_alerts_for_response
+        alerts_text = get_alerts_for_response(
+            deal_data=crm_data,
+            examt3p_data=exament3p_data
+        )
+        if alerts_text:
+            lines.append(alerts_text)
+
         if not lines:
             lines.append("Aucune donnée disponible")
 

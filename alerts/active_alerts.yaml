@@ -1,0 +1,48 @@
+# Alertes temporaires CAB Formations
+# ==================================
+# Ce fichier contient les alertes/bugs temporaires à prendre en compte
+# dans les réponses aux candidats.
+#
+# L'équipe peut modifier ce fichier directement sans toucher au code.
+# Les alertes sont automatiquement filtrées par date et statut.
+#
+# Format:
+#   - id: identifiant unique
+#     active: true/false (désactiver sans supprimer)
+#     start_date: date de début (YYYY-MM-DD)
+#     end_date: date de fin (YYYY-MM-DD, optionnel)
+#     title: titre court
+#     context: description du problème
+#     instruction: comment répondre au candidat
+#     applies_to: (optionnel) filtres pour appliquer l'alerte
+#       evalbox: liste des statuts Evalbox concernés
+#       departments: liste des départements concernés
+
+alerts:
+  - id: "double_convocation_jan2026"
+    active: true
+    start_date: "2026-01-25"
+    end_date: "2026-01-31"
+    title: "Double convocation CMA - Annule et remplace"
+    context: |
+      La CMA a envoyé par erreur DEUX convocations pour les examens
+      de cette semaine (27-31 janvier 2026):
+      - 1ère convocation: date/heure incorrecte
+      - 2ème convocation: objet "Annule et remplace" = LA BONNE
+    instruction: |
+      Si le candidat mentionne avoir reçu deux convocations ou est confus:
+      1. Le rassurer: c'est une erreur de la CMA, pas de son côté
+      2. Lui dire de prendre UNIQUEMENT la SECONDE convocation
+         (celle avec l'objet "Annule et remplace")
+      3. Préciser que la convocation officielle est aussi disponible
+         en téléchargement sur son compte ExamT3P (onglet "Mes Examens")
+      4. Lui souhaiter bonne chance pour son examen
+    applies_to:
+      evalbox: ["Convoc CMA reçue", "VALIDE CMA"]
+
+  # Exemple d'alerte désactivée (pour référence)
+  # - id: "paiement_cb_indisponible"
+  #   active: false
+  #   title: "Bug paiement CB CMA"
+  #   context: "Le paiement par CB sur ExamT3P est temporairement indisponible"
+  #   instruction: "Proposer le paiement par chèque en alternative"
