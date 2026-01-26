@@ -264,17 +264,21 @@ class DOCTicketWorkflow:
             result['workflow_stage'] = 'DRAFT_CREATION'
 
             if auto_create_draft:
-                # Envoyer en plainText (plus fiable avec Zoho Desk)
+                # Convertir markdown en HTML pour des liens cliquables
                 draft_content = response_result['response_text']
-                # Nettoyer le markdown pour plainText
                 import re
-                plain_content = draft_content
-                # Convertir liens [text](url) → text (url)
-                plain_content = re.sub(r'\[([^\]]+)\]\(([^)]+)\)', r'\1 (\2)', plain_content)
-                # Retirer les ** du gras
-                plain_content = re.sub(r'\*\*([^*]+)\*\*', r'\1', plain_content)
-                # Retirer les ## des headers
-                plain_content = re.sub(r'^## ', '', plain_content, flags=re.MULTILINE)
+                html_content = draft_content
+
+                # Convertir liens markdown [text](url) → <a href="url">text</a>
+                html_content = re.sub(r'\[([^\]]+)\]\(([^)]+)\)', r'<a href="\2">\1</a>', html_content)
+                # Convertir **gras** → <strong>gras</strong>
+                html_content = re.sub(r'\*\*([^*]+)\*\*', r'<strong>\1</strong>', html_content)
+                # Convertir ## headers → <h3>
+                html_content = re.sub(r'^## (.+)$', r'<h3>\1</h3>', html_content, flags=re.MULTILINE)
+                # Convertir sauts de ligne en <br>
+                html_content = html_content.replace('\n\n', '</p><p>').replace('\n', '<br>')
+                # Wrapper dans des paragraphes
+                html_content = f'<p>{html_content}</p>'
 
                 try:
                     # Récupérer from_email selon le département
@@ -299,8 +303,8 @@ class DOCTicketWorkflow:
 
                     self.desk_client.create_ticket_reply_draft(
                         ticket_id=ticket_id,
-                        content=plain_content,
-                        content_type="plainText",
+                        content=html_content,
+                        content_type="html",
                         from_email=from_email,
                         to_email=to_email
                     )
