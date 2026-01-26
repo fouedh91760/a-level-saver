@@ -1201,7 +1201,9 @@ Si vous souhaitez suivre une formation de préparation à l'examen VTC, nous pou
 
 📚 Formation en présentiel : sur l'un de nos centres de formation
 
-📚 Formation E-learning : finançable via votre CPF (Compte Personnel de Formation)
+📚 Formation E-learning
+
+Ces deux formations sont finançables via votre CPF (Compte Personnel de Formation).
 
 Merci de me préciser si vous êtes intéressé(e) par l'une de ces options, et je vous transmettrai les tarifs et disponibilités.
 
