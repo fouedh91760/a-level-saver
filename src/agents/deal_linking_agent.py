@@ -187,6 +187,97 @@ Always respond in JSON format with the following structure:
             logger.error(f"Failed to search contacts by email {email}: {e}")
             return []
 
+    def _extract_alternative_emails_from_threads(
+        self,
+        threads: List[Dict[str, Any]],
+        primary_email: str
+    ) -> List[str]:
+        """
+        Utilise l'IA pour extraire les emails alternatifs mentionnés dans la conversation.
+
+        Par exemple, si le candidat dit "Essayez avec celle-ci : autre@email.com",
+        cette méthode extraira "autre@email.com".
+
+        Args:
+            threads: Liste des threads de conversation
+            primary_email: Email principal du ticket (à exclure des résultats)
+
+        Returns:
+            Liste d'emails alternatifs trouvés (sans le primary_email)
+        """
+        if not threads or len(threads) < 2:
+            # Pas assez d'historique pour chercher des emails alternatifs
+            return []
+
+        # Construire le contenu de la conversation
+        conversation_text = ""
+        for thread in threads:
+            content = thread.get("content") or thread.get("plainText") or ""
+            from_email = thread.get("fromEmailAddress") or thread.get("from") or ""
+            direction = thread.get("direction", "")
+
+            # On s'intéresse surtout aux messages du candidat
+            if direction == "in":
+                conversation_text += f"\n---\nMessage du candidat:\n{content}\n"
+
+        if not conversation_text.strip():
+            return []
+
+        # Utiliser l'IA pour extraire les emails alternatifs
+        try:
+            from anthropic import Anthropic
+            import os
+
+            client = Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+
+            prompt = f"""Analyse cette conversation et trouve les adresses email alternatives mentionnées par le candidat.
+
+Le candidat utilise actuellement l'email: {primary_email}
+
+Conversation:
+{conversation_text}
+
+INSTRUCTIONS:
+- Cherche les emails que le candidat a mentionné comme alternative (ex: "essayez avec...", "mon autre email est...", "utilisez plutôt...")
+- Ignore l'email principal ({primary_email})
+- Ignore les emails de CAB Formations (doc@cab-formations.fr, etc.)
+- Retourne UNIQUEMENT les emails alternatifs, un par ligne
+- Si aucun email alternatif trouvé, retourne "AUCUN"
+
+Emails alternatifs trouvés:"""
+
+            response = client.messages.create(
+                model="claude-haiku-4-20250414",
+                max_tokens=200,
+                messages=[{"role": "user", "content": prompt}]
+            )
+
+            result = response.content[0].text.strip()
+
+            if result == "AUCUN" or not result:
+                logger.info("  Aucun email alternatif trouvé dans l'historique")
+                return []
+
+            # Parser les emails trouvés
+            alternative_emails = []
+            for line in result.split("\n"):
+                line = line.strip().lower()
+                # Vérifier que c'est bien un email
+                if "@" in line and "." in line:
+                    # Nettoyer (enlever puces, tirets, etc.)
+                    email = re.sub(r'^[\-\*\•\s]+', '', line).strip()
+                    if email and email != primary_email.lower() and "cab-formations" not in email:
+                        alternative_emails.append(email)
+
+            if alternative_emails:
+                logger.info(f"  📧 Emails alternatifs trouvés: {alternative_emails}")
+
+            return alternative_emails
+
+        except Exception as e:
+            logger.warning(f"  Erreur extraction emails alternatifs: {e}")
+            return []
+
     def _get_deals_for_contacts(self, contact_ids: List[str]) -> List[Dict[str, Any]]:
         """
         Get ALL deals associated with the given contact IDs.
@@ -312,14 +403,46 @@ Always respond in JSON format with the following structure:
         contacts = self._search_contacts_by_email(email)
         result["contacts_found"] = len(contacts)
 
+        # Step 4b: Si pas de contacts trouvés, chercher des emails alternatifs dans l'historique
+        alternative_email_used = None
         if not contacts:
             logger.info(f"No contacts found in CRM for email {email}")
+
+            # Chercher des emails alternatifs mentionnés dans la conversation
+            alternative_emails = self._extract_alternative_emails_from_threads(threads, email)
+
+            for alt_email in alternative_emails:
+                logger.info(f"  🔄 Tentative avec email alternatif: {alt_email}")
+                alt_contacts = self._search_contacts_by_email(alt_email)
+                if alt_contacts:
+                    contacts = alt_contacts
+                    alternative_email_used = alt_email
+                    result["alternative_email_used"] = alt_email
+                    result["contacts_found"] = len(contacts)
+                    logger.info(f"  ✅ Contacts trouvés avec email alternatif: {alt_email}")
+                    break
+
+        # Si toujours pas de contacts trouvés
+        if not contacts:
+            # Déterminer si on doit demander clarification
+            # Nouveau ticket (1-2 threads) = demander clarification
+            # Ticket avec historique = peut-être déjà traité manuellement
+            is_new_conversation = len(threads) <= 2
+            result["needs_clarification"] = is_new_conversation
             result["routing_explanation"] = f"No CRM contacts found for email {email}"
+
+            if is_new_conversation:
+                logger.info(f"  ⚠️ Nouveau ticket sans correspondance CRM - clarification nécessaire")
+                result["clarification_reason"] = "candidate_not_found"
+            else:
+                logger.info(f"  ℹ️ Ticket avec historique mais pas de correspondance CRM")
+
             result["success"] = True  # Success but no deal found
             return result
 
         contact_ids = [c.get("id") for c in contacts if c.get("id")]
-        logger.info(f"Found {len(contact_ids)} contact(s) for email {email}")
+        used_email = alternative_email_used or email
+        logger.info(f"Found {len(contact_ids)} contact(s) for email {used_email}")
 
         # Step 5: Get ALL deals for these contacts
         all_deals = self._get_deals_for_contacts(contact_ids)

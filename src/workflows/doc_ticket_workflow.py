@@ -183,6 +183,53 @@ class DOCTicketWorkflow:
                 result['success'] = True
                 return result
 
+            # Check if NEEDS_CLARIFICATION (candidat non trouvé)
+            if triage_result.get('action') == 'NEEDS_CLARIFICATION':
+                logger.warning("⚠️  CANDIDAT NON TROUVÉ → Demande de clarification")
+                result['workflow_stage'] = 'NEEDS_CLARIFICATION'
+                result['clarification_reason'] = triage_result.get('clarification_reason')
+
+                # Générer une réponse de clarification
+                clarification_response = self._generate_clarification_response(
+                    ticket_id=ticket_id,
+                    triage_result=triage_result
+                )
+                result['response_result'] = clarification_response
+                result['clarification_response'] = clarification_response.get('response_text', '')
+
+                # Créer le brouillon si demandé
+                if auto_create_draft and clarification_response.get('response_text'):
+                    try:
+                        from config import settings
+
+                        # Récupérer les infos du ticket pour l'email
+                        ticket = self.desk_client.get_ticket(ticket_id)
+                        to_email = ticket.get('email', '')
+
+                        # Convertir en HTML
+                        html_content = clarification_response['response_text'].replace('\n', '<br>')
+
+                        # Email source selon le département
+                        from_email = settings.zoho_desk_email_doc or settings.zoho_desk_email_default
+
+                        logger.info(f"📧 Draft CLARIFICATION: from={from_email}, to={to_email}")
+
+                        self.desk_client.create_ticket_reply_draft(
+                            ticket_id=ticket_id,
+                            content=html_content,
+                            content_type="html",
+                            from_email=from_email,
+                            to_email=to_email
+                        )
+                        logger.info("✅ DRAFT CLARIFICATION → Brouillon créé dans Zoho Desk")
+                        result['draft_created'] = True
+                    except Exception as e:
+                        logger.error(f"Erreur création brouillon clarification: {e}")
+                        result['draft_created'] = False
+
+                result['success'] = True
+                return result
+
             # FEU VERT → Continue
             logger.info("✅ TRIAGE → FEU VERT (continue workflow)")
 
@@ -524,6 +571,20 @@ class DOCTicketWorkflow:
             triage_result['duplicate_deals'] = duplicate_deals
             triage_result['selected_deal'] = selected_deal
             logger.info("🚫 DOUBLON UBER → Workflow spécifique (pas de gratuité)")
+            return triage_result
+
+        # Rule #2.6: CANDIDAT NON TROUVÉ - CLARIFICATION NÉCESSAIRE
+        # Si c'est un nouveau ticket et qu'on ne trouve pas le candidat dans le CRM,
+        # demander des informations pour l'identifier
+        if linking_result.get('needs_clarification'):
+            logger.warning(f"⚠️ CANDIDAT NON TROUVÉ - Clarification nécessaire")
+            triage_result['action'] = 'NEEDS_CLARIFICATION'
+            triage_result['reason'] = f"Candidat non trouvé dans le CRM avec l'email {linking_result.get('email', 'inconnu')}"
+            triage_result['method'] = 'candidate_not_found'
+            triage_result['clarification_reason'] = linking_result.get('clarification_reason', 'candidate_not_found')
+            triage_result['email_searched'] = linking_result.get('email')
+            triage_result['alternative_email_used'] = linking_result.get('alternative_email_used')
+            logger.info("❓ CLARIFICATION → Demander coordonnées au candidat")
             return triage_result
 
         # If no deals found, also check by email directly
@@ -1157,6 +1218,54 @@ L'équipe Cab Formations"""
             'previous_dates': previous_dates,
             'crm_updates': {},  # Pas de mise à jour CRM pour les doublons
             'detected_scenarios': ['DUPLICATE_UBER_OFFER']
+        }
+
+    def _generate_clarification_response(
+        self,
+        ticket_id: str,
+        triage_result: Dict
+    ) -> Dict:
+        """
+        Génère une réponse pour demander des clarifications quand le candidat
+        n'est pas trouvé dans le CRM.
+
+        Similaire à ce que Aicha a fait manuellement :
+        "Nous avons du mal à retrouver votre dossier via l'adresse mail...
+        Pouvez-vous svp nous communiquer vos coordonnées..."
+        """
+        logger.info("📝 Génération de la réponse de CLARIFICATION...")
+
+        email_searched = triage_result.get('email_searched', 'non identifié')
+        alternative_email = triage_result.get('alternative_email_used')
+
+        # Générer la réponse
+        response_text = f"""Bonjour,
+
+Je vous remercie pour votre message.
+
+Nous avons du mal à retrouver votre dossier via l'adresse mail **{email_searched}**.
+
+Afin de pouvoir accéder à votre dossier et vous apporter une réponse précise, pourriez-vous nous communiquer les informations suivantes :
+
+- **Votre nom et prénom** (tels qu'indiqués lors de l'inscription)
+- **L'adresse email utilisée lors de votre inscription** (si différente de celle-ci)
+- **Votre numéro de téléphone**
+
+Ces informations nous permettront de retrouver votre dossier rapidement.
+
+Bien cordialement,
+
+L'équipe Cab Formations"""
+
+        logger.info(f"✅ Réponse CLARIFICATION générée ({len(response_text)} caractères)")
+
+        return {
+            'response_text': response_text,
+            'is_clarification_response': True,
+            'email_searched': email_searched,
+            'alternative_email_tried': alternative_email,
+            'crm_updates': {},  # Pas de mise à jour CRM - candidat non trouvé
+            'detected_scenarios': ['CANDIDATE_NOT_FOUND']
         }
 
     def _run_response_generation(
