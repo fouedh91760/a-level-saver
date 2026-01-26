@@ -1136,11 +1136,9 @@ Si vous souhaitez vous réinscrire à l'examen VTC, voici vos options :
 **Option 2 : Formation avec CAB Formations**
 Si vous souhaitez suivre une formation de préparation à l'examen VTC, nous pouvons vous proposer :
 
-📚 **Formation en visioconférence (VISIO)** : 40 heures
-   - Cours du jour : 8h30-16h30 (1 semaine)
-   - Cours du soir : 18h00-22h00 (2 semaines)
-
 📚 **Formation en présentiel** : sur l'un de nos centres de formation
+
+📚 **Formation E-learning** : finançable via votre **CPF** (Compte Personnel de Formation)
 
 Merci de me préciser si vous êtes intéressé(e) par l'une de ces options, et je vous transmettrai les tarifs et disponibilités.
 
