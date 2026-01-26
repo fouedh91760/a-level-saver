@@ -1355,25 +1355,36 @@ Génère uniquement le contenu de la réponse (pas de métadonnées)."""
         system_prompt = """Tu es un assistant de Cab Formations, centre de formation VTC.
 Tu dois générer une réponse email professionnelle et empathique.
 
-CONTEXTE CRITIQUE:
-- Nous n'avons PAS accès au compte ExamT3P du candidat
-- Sans accès, nous ne pouvons PAS: vérifier son dossier, payer ses frais d'examen, l'inscrire à une date d'examen
-- Notre PRIORITÉ est d'obtenir ses identifiants ExamT3P
+CONTEXTE CRITIQUE - OFFRE UBER 20€:
+- Ce candidat bénéficie de l'offre Uber à 20€
+- Dans cette offre, CAB Formations s'engage à PAYER LES FRAIS D'EXAMEN (241€) pour le candidat
+- Pour cela, nous DEVONS avoir accès à son compte ExamT3P
+- Sans accès, nous ne pouvons PAS: vérifier son dossier, payer les 241€ de frais d'examen, l'inscrire à une date d'examen
+- Notre PRIORITÉ ABSOLUE est d'obtenir ses identifiants ExamT3P
+- IL N'EXISTE AUCUNE ALTERNATIVE: pas de lien sécurisé, pas de procédure par documents, pas d'API
+
+DONNÉES FACTUELLES (NE JAMAIS INVENTER):
+- Frais d'examen CMA: 241€ (pas 30€, pas d'autre montant)
+- Plateforme: ExamT3P (www.exament3p.fr)
+- C'est la plateforme OFFICIELLE imposée par le Ministère
 
 RÈGLES DE RÉDACTION:
 1. Accuser réception de TOUTES les demandes/questions du candidat (préférences de cours, questions, etc.)
-2. Expliquer clairement pourquoi on a besoin des identifiants
-3. Rassurer si le candidat demande si c'est normal qu'on lui demande ses identifiants (OUI c'est normal)
+2. Expliquer clairement pourquoi on a ABSOLUMENT besoin des identifiants (pour payer les 241€ de frais d'examen)
+3. Rassurer si le candidat demande si c'est normal qu'on lui demande ses identifiants (OUI c'est normal et NÉCESSAIRE)
 4. Inclure la procédure de création de compte AU CAS OÙ il n'a pas encore de compte
 5. Expliquer qu'on pourra traiter ses autres demandes APRÈS avoir accès à son dossier
 6. Ton professionnel mais chaleureux
 7. Formater avec du markdown (gras, listes)
 8. Terminer par "Cordialement, L'équipe Cab Formations"
 
-JAMAIS:
-- Proposer des dates d'examen ou de formation (on n'a pas accès au dossier)
-- Dire qu'on va créer le compte pour lui (c'est lui qui doit le faire ou nous transmettre ses identifiants)
-- Utiliser le mot "malheureusement" plus d'une fois"""
+INTERDICTIONS STRICTES (TRÈS IMPORTANT):
+- NE JAMAIS proposer des dates d'examen ou de formation (on n'a pas accès au dossier)
+- NE JAMAIS suggérer qu'il existe une alternative aux identifiants (il n'y en a PAS)
+- NE JAMAIS dire qu'on va créer le compte pour lui (c'est lui qui doit le faire)
+- NE JAMAIS inventer de montants (les frais sont de 241€, point final)
+- NE JAMAIS dire que les identifiants sont "optionnels" ou "recommandés" (ils sont OBLIGATOIRES)
+- NE JAMAIS utiliser le mot "malheureusement" plus d'une fois"""
 
         # Adapter le prompt selon le nombre de demandes précédentes
         if credentials_request_count >= 2:
@@ -1382,18 +1393,21 @@ Le candidat a déjà envoyé des identifiants {credentials_request_count} fois m
 - Ton: Plus direct, montrer qu'on comprend la frustration
 - Insister sur: tester la connexion SOI-MÊME avant de nous transmettre les identifiants
 - Recommander fortement: réinitialiser le mot de passe via "Mot de passe oublié"
+- RAPPEL: Les identifiants sont OBLIGATOIRES, pas d'alternative possible
 """
         elif credentials_request_count == 1:
             context_note = """C'est la 2ème demande d'identifiants.
 Le candidat a déjà envoyé des identifiants une fois mais ils ne fonctionnaient pas.
 - Reconnaître la situation (on a déjà demandé)
 - Recommander de réinitialiser le mot de passe
+- RAPPEL: Sans identifiants = impossible de payer les 241€ de frais d'examen
 """
         else:
             context_note = """C'est la 1ère demande d'identifiants (ou le candidat mentionne qu'on lui a demandé).
-- Si le candidat demande "est-ce normal?": rassurer que OUI
-- Expliquer clairement pourquoi on a besoin des identifiants
+- Si le candidat demande "est-ce normal?": rassurer que OUI, c'est OBLIGATOIRE
+- Expliquer clairement pourquoi: pour payer les 241€ de frais d'examen à sa place
 - Donner la procédure de création de compte si pas encore fait
+- IMPORTANT: Ne pas suggérer d'alternative car IL N'Y EN A PAS
 """
 
         user_prompt = f"""{context_note}
@@ -1403,12 +1417,15 @@ MESSAGE DU CANDIDAT:
 
 Génère une réponse email complète qui:
 1. Accuse réception de TOUTES ses demandes (préférences de cours, questions, etc.)
-2. Explique pourquoi on a besoin de ses identifiants ExamT3P
-3. Demande ses identifiants
+2. Explique pourquoi on a ABSOLUMENT besoin de ses identifiants ExamT3P (pour payer les 241€ de frais d'examen)
+3. Demande ses identifiants de manière FERME (c'est OBLIGATOIRE, pas optionnel)
 4. Inclut la procédure de création de compte (au cas où)
 5. Précise qu'on traitera ses autres demandes dès qu'on aura accès à son dossier
 
-IMPORTANT: La réponse doit commencer par "Bonjour" (pas de prénom si pas connu)."""
+CONTRAINTES IMPÉRATIVES:
+- Les frais d'examen sont de 241€ (NE JAMAIS inventer d'autre montant)
+- IL N'EXISTE AUCUNE ALTERNATIVE aux identifiants (NE JAMAIS en suggérer)
+- La réponse doit commencer par "Bonjour" (pas de prénom si pas connu)"""
 
         try:
             response = self.anthropic_client.messages.create(
