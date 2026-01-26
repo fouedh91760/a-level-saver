@@ -124,6 +124,13 @@ def get_next_exam_dates(
         valid_sessions.sort(key=lambda x: x.get('Date_Examen', '9999-99-99'))
 
         result = valid_sessions[:limit]
+
+        # Log détaillé des dates retournées pour debug
+        for i, session in enumerate(result):
+            exam_date = session.get('Date_Examen', 'N/A')
+            cloture = session.get('Date_Cloture_Inscription', 'N/A')
+            logger.info(f"  📅 Date {i+1}: Examen={exam_date}, Clôture={cloture}")
+
         logger.info(f"✅ {len(result)} date(s) d'examen valide(s) pour le département {departement} (clôture ≥ {min_days_before_cloture} jours)")
 
         return result
@@ -341,8 +348,17 @@ def get_next_exam_dates_any_department(
                     continue
 
         valid_sessions.sort(key=lambda x: x.get('Date_Examen', '9999-99-99'))
-        logger.info(f"✅ {len(valid_sessions[:limit])} date(s) d'examen valide(s) (tous départements, clôture ≥ {min_days_before_cloture} jours)")
-        return valid_sessions[:limit]
+        result = valid_sessions[:limit]
+
+        # Log détaillé des dates retournées pour debug
+        for i, session in enumerate(result):
+            exam_date = session.get('Date_Examen', 'N/A')
+            cloture = session.get('Date_Cloture_Inscription', 'N/A')
+            dept = session.get('Departement', 'N/A')
+            logger.info(f"  📅 Date {i+1}: Examen={exam_date}, Clôture={cloture}, Dept={dept}")
+
+        logger.info(f"✅ {len(result)} date(s) d'examen valide(s) (tous départements, clôture ≥ {min_days_before_cloture} jours)")
+        return result
 
     except Exception as e:
         logger.error(f"❌ Erreur lors de la recherche des dates d'examen: {e}")
