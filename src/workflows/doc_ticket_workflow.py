@@ -1045,6 +1045,40 @@ Deux comptes ExamenT3P fonctionnels ont été détectés pour ce candidat, et le
                 logger.info(f"  ➡️ CAS {date_examen_vtc_result['case']}: {date_examen_vtc_result['case_description']}")
             else:
                 logger.info(f"  ✅ Date examen VTC OK (CAS {date_examen_vtc_result['case']})")
+
+            # ================================================================
+            # ENRICHISSEMENT: Dates alternatives si candidat demande date plus tôt
+            # ================================================================
+            # Si le candidat demande explicitement une date plus proche ET peut changer de département
+            # → Charger les dates alternatives d'autres départements
+            intent_context = triage_result.get('intent_context', {}) if triage_result else {}
+            wants_earlier_date = intent_context.get('wants_earlier_date', False)
+            can_choose_other_dept = date_examen_vtc_result.get('can_choose_other_department', False)
+            current_dept = date_examen_vtc_result.get('departement')
+
+            if wants_earlier_date and can_choose_other_dept and current_dept:
+                logger.info("  🚀 Candidat demande date plus tôt + peut changer de département")
+                from src.utils.date_examen_vtc_helper import get_earlier_dates_other_departments
+
+                # Trouver la date de référence (date actuelle assignée ou première date du dept)
+                current_dates = date_examen_vtc_result.get('next_dates', [])
+                reference_date = None
+                if date_examen_vtc_result.get('date_examen_info', {}).get('Date_Examen'):
+                    reference_date = date_examen_vtc_result['date_examen_info']['Date_Examen']
+                elif current_dates:
+                    reference_date = current_dates[0].get('Date_Examen')
+
+                if reference_date:
+                    alt_dates = get_earlier_dates_other_departments(
+                        self.crm_client,
+                        current_departement=current_dept,
+                        reference_date=reference_date,
+                        limit=5
+                    )
+                    if alt_dates:
+                        date_examen_vtc_result['alternative_department_dates'] = alt_dates
+                        date_examen_vtc_result['should_include_in_response'] = True
+                        logger.info(f"  📅 {len(alt_dates)} date(s) plus tôt dans d'autres départements")
         else:
             # Construire le message de raison du skip
             skip_reason_msg = {

@@ -784,20 +784,17 @@ def analyze_exam_date_situation(
             return result
 
         # CAS 6: Date future + autre statut + deadline pas encore passée
+        # La date est DÉJÀ ASSIGNÉE → pas besoin de proposer d'autres dates par défaut
+        # Les dates alternatives ne sont pertinentes que si le candidat DEMANDE une date plus tôt
+        # (intention WANTS_EARLIER_DATE détectée par le triage)
         result['case'] = 6
         result['case_description'] = "Date future + autre statut - En attente"
+        result['should_include_in_response'] = False  # Date déjà assignée, rien à proposer par défaut
+        result['response_message'] = None
 
-        # Si le candidat peut choisir un autre département, fournir les dates alternatives
-        # pour qu'il puisse demander une date plus tôt s'il le souhaite
-        if result['can_choose_other_department'] and crm_client:
-            logger.info("  📅 CAS 6 + pas de compte ExamT3P → récupération des dates alternatives")
-            # Récupérer les prochaines dates (tous départements) pour offrir des alternatives
-            result['next_dates'] = get_next_exam_dates_any_department(crm_client, limit=15)  # Many dates for geographic coverage
-            result['should_include_in_response'] = True  # L'IA doit avoir accès aux dates
-            result['response_message'] = None  # L'IA adaptera selon la demande du candidat
-        else:
-            result['should_include_in_response'] = False
-            result['response_message'] = None
+        # NOTE: Si le candidat demande explicitement une date plus tôt (intent = WANTS_EARLIER_DATE),
+        # le workflow peut appeler get_earlier_dates_other_departments() séparément.
+        # On ne charge PAS toutes les dates ici car c'est inutile dans 99% des cas.
 
         logger.info(f"  ➡️ CAS 6: Date future + autre statut ({evalbox_status})")
         return result
