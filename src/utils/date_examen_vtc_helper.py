@@ -540,7 +540,7 @@ def analyze_exam_date_situation(
             else:
                 # Fallback when department is unknown - get dates from any department
                 logger.info("  ⚠️ Département inconnu - récupération des dates tous départements")
-                result['next_dates'] = get_next_exam_dates_any_department(crm_client, limit=6)  # More dates for geographic choice
+                result['next_dates'] = get_next_exam_dates_any_department(crm_client, limit=15)  # Many dates for geographic coverage
 
             # Si pas de compte ExamT3P, chercher des dates plus tôt dans d'autres départements
             if result['can_choose_other_department'] and result['next_dates'] and departement:
@@ -638,7 +638,7 @@ def analyze_exam_date_situation(
                 else:
                     # Fallback when department is unknown
                     logger.info("  ⚠️ Département inconnu - récupération des dates tous départements")
-                    result['next_dates'] = get_next_exam_dates_any_department(crm_client, limit=6)  # More dates for geographic choice
+                    result['next_dates'] = get_next_exam_dates_any_department(crm_client, limit=15)  # Many dates for geographic coverage
 
                 # Si pas de compte ExamT3P, chercher des dates plus tôt dans d'autres départements
                 if result['can_choose_other_department'] and result['next_dates'] and departement:
@@ -685,7 +685,7 @@ def analyze_exam_date_situation(
                     else:
                         # Fallback when department is unknown
                         logger.info("  ⚠️ Département inconnu - récupération des dates tous départements")
-                        next_dates = get_next_exam_dates_any_department(crm_client, limit=6)  # More dates for geographic choice
+                        next_dates = get_next_exam_dates_any_department(crm_client, limit=15)  # Many dates for geographic coverage
                     # Prendre la 2ème date (la 1ère est celle qui est imminente)
                     if len(next_dates) >= 2:
                         next_exam_date = next_dates[1]
@@ -759,7 +759,7 @@ def analyze_exam_date_situation(
                 else:
                     # Fallback when department is unknown
                     logger.info("  ⚠️ Département inconnu - récupération des dates tous départements")
-                    result['next_dates'] = get_next_exam_dates_any_department(crm_client, limit=6)  # More dates for geographic choice
+                    result['next_dates'] = get_next_exam_dates_any_department(crm_client, limit=15)  # Many dates for geographic coverage
 
                 # Si pas de compte ExamT3P, chercher des dates plus tôt dans d'autres départements
                 if result['can_choose_other_department'] and result['next_dates'] and departement:
@@ -792,7 +792,7 @@ def analyze_exam_date_situation(
         if result['can_choose_other_department'] and crm_client:
             logger.info("  📅 CAS 6 + pas de compte ExamT3P → récupération des dates alternatives")
             # Récupérer les prochaines dates (tous départements) pour offrir des alternatives
-            result['next_dates'] = get_next_exam_dates_any_department(crm_client, limit=6)
+            result['next_dates'] = get_next_exam_dates_any_department(crm_client, limit=15)  # Many dates for geographic coverage
             result['should_include_in_response'] = True  # L'IA doit avoir accès aux dates
             result['response_message'] = None  # L'IA adaptera selon la demande du candidat
         else:
