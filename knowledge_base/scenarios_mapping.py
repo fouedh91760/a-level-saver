@@ -320,16 +320,24 @@ def detect_scenario_from_text(
     # =========================================================================
     # PRIORITY 1: CRM-based detection (HORS_PARTENARIAT)
     # =========================================================================
+    # IMPORTANT: Amount != 20€ ne signifie PAS "hors partenariat"!
+    # - 20€ = Offre Uber (partenariat spécial)
+    # - 1299€, 1599€, etc. = Formation VTC classique (workflow normal)
+    # - TAXI, AMBULANCE = Hors scope (router ailleurs)
+    #
+    # SC-HORS_PARTENARIAT ne doit être déclenché QUE pour les formations
+    # qui ne sont pas VTC (taxi, ambulance, etc.)
     if crm_data:
-        # Check Amount field - Uber partnership = 20€
-        amount = crm_data.get("Amount", 0)
+        deal_name = crm_data.get("Deal_Name", "").lower()
+        type_formation = crm_data.get("Type_de_Formation", "").lower()
 
-        # If Amount != 20€ and != 0 (0 means not set yet) → HORS PARTENARIAT
-        if amount != 0 and amount != 20:
+        # Vraiment hors partenariat = pas VTC (taxi, ambulance, autre)
+        is_taxi = "taxi" in deal_name or "taxi" in type_formation or "taxi" in combined_text
+        is_ambulance = "ambulance" in deal_name or "ambulance" in type_formation or "ambulance" in combined_text
+
+        if is_taxi or is_ambulance:
             detected_scenarios.append("SC-HORS_PARTENARIAT")
-            # Also check if it's VTC specifically (vs taxi/ambulance)
-            if "vtc" in combined_text and "taxi" not in combined_text and "ambulance" not in combined_text:
-                detected_scenarios.append("SC-VTC_HORS_PARTENARIAT")
+            # Note: SC-VTC_HORS_PARTENARIAT n'a plus de sens si c'est taxi/ambulance
 
     # =========================================================================
     # PRIORITY 2: Text-based detection
