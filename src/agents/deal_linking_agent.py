@@ -348,14 +348,91 @@ Always respond in JSON format with the following structure:
 
             result["recommended_department"] = recommended_department
 
-            # Find which deal was selected (if any)
-            # The business logic selects 20€ deals first
-            deals_20 = [d for d in all_deals if d.get("Amount") == 20]
-            deals_20_won = [d for d in deals_20 if d.get("Stage") == "GAGNÉ"]
+            # ================================================================
+            # NOUVELLE LOGIQUE DE SÉLECTION DE DEAL (v2)
+            # Priorité aux deals ACTIFS (Evalbox avancé, examen proche)
+            # Les prospects (EN ATTENTE) sont en dernière position
+            # ================================================================
+            selected_deal = None
+            selection_method = None
 
-            if deals_20_won:
-                # Most recent by Closing_Date
-                selected_deal = sorted(deals_20_won, key=lambda d: d.get("Closing_Date", ""), reverse=True)[0]
+            # Statuts Evalbox indiquant un candidat ACTIF (pas un prospect)
+            ADVANCED_EVALBOX = {
+                "Convoc CMA reçue", "VALIDE CMA", "Dossier Synchronisé",
+                "Pret a payer", "Dossier crée", "Refusé CMA"
+            }
+
+            # PRIORITÉ 0 : Deals avec Evalbox avancé (candidat actif dans le process)
+            active_deals = [
+                d for d in all_deals
+                if d.get("Evalbox") in ADVANCED_EVALBOX and d.get("Stage") == "GAGNÉ"
+            ]
+            if active_deals:
+                # Prendre le plus récent par date de clôture
+                selected_deal = sorted(active_deals, key=lambda d: d.get("Closing_Date", ""), reverse=True)[0]
+                selection_method = f"Priority 0 - Evalbox avancé ({selected_deal.get('Evalbox')})"
+                logger.info(f"🎯 Deal sélectionné par Evalbox avancé: {selected_deal.get('Deal_Name')} - {selected_deal.get('Evalbox')}")
+
+            # PRIORITÉ 1 : Deals avec date d'examen dans les 60 prochains jours
+            if not selected_deal:
+                from datetime import datetime, timedelta
+                today = datetime.now().date()
+                future_limit = today + timedelta(days=60)
+
+                deals_with_exam = []
+                for d in all_deals:
+                    if d.get("Stage") != "GAGNÉ":
+                        continue
+                    exam_date_raw = d.get("Date_examen_VTC")
+                    if exam_date_raw:
+                        try:
+                            # Le champ peut être un ID ou une date string
+                            if isinstance(exam_date_raw, str) and "-" in exam_date_raw:
+                                exam_date = datetime.strptime(exam_date_raw[:10], "%Y-%m-%d").date()
+                                if today <= exam_date <= future_limit:
+                                    deals_with_exam.append((d, exam_date))
+                        except (ValueError, TypeError):
+                            pass
+
+                if deals_with_exam:
+                    # Prendre celui avec la date la plus proche
+                    deals_with_exam.sort(key=lambda x: x[1])
+                    selected_deal = deals_with_exam[0][0]
+                    exam_date = deals_with_exam[0][1]
+                    selection_method = f"Priority 1 - Examen proche ({exam_date.strftime('%d/%m/%Y')})"
+                    logger.info(f"🎯 Deal sélectionné par date d'examen: {selected_deal.get('Deal_Name')} - examen le {exam_date}")
+
+            # PRIORITÉ 2 : Deals 20€ GAGNÉ (candidats payés en cours de traitement)
+            if not selected_deal:
+                deals_20_won = [d for d in all_deals if d.get("Amount") == 20 and d.get("Stage") == "GAGNÉ"]
+                if deals_20_won:
+                    selected_deal = sorted(deals_20_won, key=lambda d: d.get("Closing_Date", ""), reverse=True)[0]
+                    selection_method = "Priority 2 - 20€ GAGNÉ (most recent)"
+
+            # PRIORITÉ 3 : Autres deals GAGNÉ
+            if not selected_deal:
+                other_won = [d for d in all_deals if d.get("Amount") != 20 and d.get("Stage") == "GAGNÉ"]
+                if other_won:
+                    selected_deal = sorted(other_won, key=lambda d: d.get("Closing_Date", ""), reverse=True)[0]
+                    selection_method = "Priority 3 - Other GAGNÉ"
+
+            # PRIORITÉ 4 (BASSE) : Deals 20€ EN ATTENTE (prospects)
+            if not selected_deal:
+                deals_20_pending = [d for d in all_deals if d.get("Amount") == 20 and d.get("Stage") == "EN ATTENTE"]
+                if deals_20_pending:
+                    selected_deal = deals_20_pending[0]
+                    selection_method = "Priority 4 - 20€ EN ATTENTE (prospect)"
+                    logger.info(f"⚠️ Deal sélectionné est un PROSPECT (EN ATTENTE): {selected_deal.get('Deal_Name')}")
+
+            # PRIORITÉ 5 : Autres EN ATTENTE
+            if not selected_deal:
+                other_pending = [d for d in all_deals if d.get("Stage") == "EN ATTENTE"]
+                if other_pending:
+                    selected_deal = other_pending[0]
+                    selection_method = "Priority 5 - Other EN ATTENTE"
+
+            # Mise à jour du résultat
+            if selected_deal:
                 result["selected_deal"] = selected_deal
                 result["deal_id"] = selected_deal.get("id")
                 result["deal"] = selected_deal
@@ -363,47 +440,15 @@ Always respond in JSON format with the following structure:
                 result["routing_explanation"] = (
                     f"Department: {recommended_department} | "
                     f"Deal: {selected_deal.get('Deal_Name')} (€{selected_deal.get('Amount')}) | "
-                    f"Stage: {selected_deal.get('Stage')} | "
-                    f"Method: Priority 1 - 20€ GAGNÉ (most recent)"
+                    f"Stage: {selected_deal.get('Stage')} | Evalbox: {selected_deal.get('Evalbox', 'N/A')} | "
+                    f"Method: {selection_method}"
                 )
             else:
-                # Check EN ATTENTE
-                deals_20_pending = [d for d in deals_20 if d.get("Stage") == "EN ATTENTE"]
-                if deals_20_pending:
-                    selected_deal = deals_20_pending[0]
-                    result["selected_deal"] = selected_deal
-                    result["deal_id"] = selected_deal.get("id")
-                    result["deal"] = selected_deal
-                    result["deal_found"] = True
-                    result["routing_explanation"] = (
-                        f"Department: {recommended_department} | "
-                        f"Deal: {selected_deal.get('Deal_Name')} (€{selected_deal.get('Amount')}) | "
-                        f"Stage: {selected_deal.get('Stage')} | "
-                        f"Method: Priority 2 - 20€ EN ATTENTE"
-                    )
-                else:
-                    # Other amounts
-                    other_deals = [d for d in all_deals
-                        if d.get("Amount") != 20 and d.get("Stage") in ["GAGNÉ", "EN ATTENTE"]]
-                    if other_deals:
-                        selected_deal = other_deals[0]
-                        result["selected_deal"] = selected_deal
-                        result["deal_id"] = selected_deal.get("id")
-                        result["deal"] = selected_deal
-                        result["deal_found"] = True
-                        result["routing_explanation"] = (
-                            f"Department: {recommended_department} | "
-                            f"Deal: {selected_deal.get('Deal_Name')} (€{selected_deal.get('Amount')}) | "
-                            f"Stage: {selected_deal.get('Stage')} | "
-                            f"Method: Other amount GAGNÉ/EN ATTENTE"
-                        )
-                    else:
-                        # No specific deal selected, but we have deals
-                        result["routing_explanation"] = (
-                            f"Department: {recommended_department} | "
-                            f"Found {len(all_deals)} deal(s) but none match priority criteria | "
-                            f"Method: Fallback to keywords or AI"
-                        )
+                result["routing_explanation"] = (
+                    f"Department: {recommended_department} | "
+                    f"Found {len(all_deals)} deal(s) but none match priority criteria | "
+                    f"Method: Fallback to keywords or AI"
+                )
 
             if not recommended_department:
                 result["routing_explanation"] = (
