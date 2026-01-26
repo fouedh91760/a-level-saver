@@ -242,7 +242,7 @@ client.search_deals(criteria="(Email:equals:test@example.com)")
 
 **ATTENTION - Champs Lookup :**
 - `Date_examen_VTC` → Attend un **ID** (bigint), pas une date string
-- `Session_choisie` → Attend un **ID** (bigint), pas un nom de session
+- `Session` → Attend un **ID** (bigint), pas un nom de session (⚠️ PAS `Session_choisie`)
 - Utiliser `find_exam_session_by_date_and_dept()` pour obtenir l'ID
 
 ---

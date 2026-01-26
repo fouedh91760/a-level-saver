@@ -19,7 +19,8 @@ UTILISATION:
     })
 
 RÈGLES CRITIQUES:
-- Date_examen_VTC et Session_choisie sont des LOOKUP FIELDS → nécessitent IDs
+- Date_examen_VTC et Session sont des LOOKUP FIELDS → nécessitent IDs
+- L'IA envoie 'Session_choisie' mais le champ CRM est 'Session' → mapping automatique
 - Si Evalbox ∈ {"VALIDE CMA", "Convoc CMA reçue"} ET clôture passée → BLOCAGE
 """
 import logging
@@ -172,7 +173,8 @@ Réponds toujours en JSON avec la structure:
             elif field in ['Session_choisie', 'Session']:
                 mapped_value = self._map_session(value, session_data, deal_data)
                 if mapped_value:
-                    final_updates[field] = mapped_value
+                    # IMPORTANT: Le champ CRM s'appelle 'Session' (pas 'Session_choisie')
+                    final_updates['Session'] = mapped_value
                 else:
                     result['errors'].append(f"Failed to map {field}: {value}")
 
