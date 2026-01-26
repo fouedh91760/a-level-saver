@@ -1023,10 +1023,12 @@ class DOCTicketWorkflow:
         Uses AI-extracted updates from ResponseGeneratorAgent (crm_updates)
         which analyzes the conversation context to determine what needs updating.
 
-        IMPORTANT: Certains champs CRM attendent des IDs (bigint), pas des strings.
-        - Date_examen_VTC: ID de la session d'examen (module Sessions_Examens)
-        - Session_choisie: ID de la session de formation (module Sessions1)
+        IMPORTANT: Utilise les fonctions existantes de examt3p_crm_sync.py pour
+        convertir les valeurs string en IDs CRM (lookup fields).
         """
+        from src.utils.examt3p_crm_sync import find_exam_session_by_date_and_dept
+        import re
+
         # Get AI-extracted updates (primary source)
         ai_updates = response_result.get('crm_updates', {})
 
@@ -1036,56 +1038,79 @@ class DOCTicketWorkflow:
 
         logger.info(f"  📊 AI extracted CRM updates (raw): {ai_updates}")
 
-        # Map AI values to CRM field IDs
         crm_updates = {}
-
-        # Get session data from analysis if available
+        deal_data = analysis_result.get('deal_data', {})
         session_data = analysis_result.get('session_data', {})
-        date_examen_vtc_result = analysis_result.get('date_examen_vtc_result', {})
 
-        # Map Date_examen_VTC (date string -> session ID)
+        # ================================================================
+        # 1. Date_examen_VTC (string → session ID via existing function)
+        # ================================================================
         if 'Date_examen_VTC' in ai_updates:
             date_str = ai_updates['Date_examen_VTC']
-            # Find matching exam session ID from next_dates
-            next_dates = date_examen_vtc_result.get('next_dates', [])
-            for exam_date in next_dates:
-                if exam_date.get('Date_Examen') == date_str:
-                    exam_id = exam_date.get('id')
-                    if exam_id:
-                        crm_updates['Date_examen_VTC'] = exam_id
-                        logger.info(f"  📊 Mapped Date_examen_VTC: {date_str} → ID {exam_id}")
-                    break
-            if 'Date_examen_VTC' not in crm_updates:
-                logger.warning(f"  ⚠️ Could not find exam session ID for date {date_str}")
+            # Récupérer le département depuis le deal
+            departement = deal_data.get('CMA_de_depot', '')
+            if departement:
+                match = re.search(r'\b(\d{2,3})\b', str(departement))
+                if match:
+                    departement = match.group(1)
 
-        # Map Session_choisie (session name -> session ID)
+            if departement:
+                # Utiliser la fonction existante de examt3p_crm_sync.py
+                session = find_exam_session_by_date_and_dept(
+                    self.crm_client, date_str, departement
+                )
+                if session and session.get('id'):
+                    crm_updates['Date_examen_VTC'] = session['id']
+                    logger.info(f"  📊 Date_examen_VTC: {date_str} → ID {session['id']}")
+                else:
+                    logger.warning(f"  ⚠️ Session examen non trouvée: {date_str} / dept {departement}")
+            else:
+                logger.warning(f"  ⚠️ Département non trouvé, impossible de mapper Date_examen_VTC")
+
+        # ================================================================
+        # 2. Session_choisie (session name → session ID from proposed options)
+        # ================================================================
         if 'Session_choisie' in ai_updates:
             session_name = ai_updates['Session_choisie']
-            # Find matching session ID from proposed options
+            # Chercher dans les sessions proposées par l'analyse
             proposed_options = session_data.get('proposed_options', [])
+
+            session_found = False
             for option in proposed_options:
                 for sess in option.get('sessions', []):
                     sess_id = sess.get('id')
-                    if sess_id:
-                        # Check if session matches (by name or date range)
-                        sess_debut = sess.get('Date_d_but', '')
-                        sess_fin = sess.get('Date_fin', '')
-                        if sess_debut in session_name or sess_fin in session_name:
-                            crm_updates['Session_choisie'] = sess_id
-                            logger.info(f"  📊 Mapped Session_choisie: {session_name} → ID {sess_id}")
-                            break
-                if 'Session_choisie' in crm_updates:
-                    break
-            if 'Session_choisie' not in crm_updates:
-                logger.warning(f"  ⚠️ Could not find session ID for: {session_name}")
+                    sess_debut = sess.get('Date_d_but', '')
+                    sess_fin = sess.get('Date_fin', '')
+                    sess_type = sess.get('session_type_label', '')
 
-        # Copy other fields directly (strings are OK for text fields)
+                    # Matching: soit par dates, soit par type (jour/soir)
+                    if sess_id:
+                        match_date = (sess_debut and sess_debut in session_name) or \
+                                    (sess_fin and sess_fin in session_name)
+                        match_type = ('soir' in session_name.lower() and 'soir' in sess_type.lower()) or \
+                                    ('jour' in session_name.lower() and 'jour' in sess_type.lower())
+
+                        if match_date or match_type:
+                            crm_updates['Session_choisie'] = sess_id
+                            logger.info(f"  📊 Session_choisie: {session_name} → ID {sess_id}")
+                            session_found = True
+                            break
+                if session_found:
+                    break
+
+            if not session_found:
+                logger.warning(f"  ⚠️ Session formation non trouvée: {session_name}")
+
+        # ================================================================
+        # 3. Autres champs (texte simple - pas de mapping nécessaire)
+        # ================================================================
         for key, value in ai_updates.items():
             if key not in ['Date_examen_VTC', 'Session_choisie']:
                 crm_updates[key] = value
+                logger.info(f"  📊 {key}: {value}")
 
         if crm_updates:
-            logger.info(f"  📊 Final CRM updates: {crm_updates}")
+            logger.info(f"  ✅ Final CRM updates: {list(crm_updates.keys())}")
         else:
             logger.warning(f"  ⚠️ No valid CRM updates after mapping")
 
