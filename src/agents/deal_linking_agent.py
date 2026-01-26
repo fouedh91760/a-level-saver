@@ -278,6 +278,45 @@ Emails alternatifs trouvés:"""
             logger.warning(f"  Erreur extraction emails alternatifs: {e}")
             return []
 
+    def _extract_deal_id_from_cf_opportunite(self, cf_value: str) -> Optional[str]:
+        """
+        Extrait l'ID du deal depuis le champ cf_opportunite.
+
+        Le champ peut contenir :
+        - Un ID direct : "1234567890"
+        - Une URL Zoho CRM : "https://crm.zoho.com/crm/org123/tab/Potentials/1234567890"
+
+        Returns:
+            ID du deal ou None si non trouvé
+        """
+        if not cf_value:
+            return None
+
+        cf_value = str(cf_value).strip()
+
+        # Cas 1: C'est un ID direct (juste des chiffres)
+        if cf_value.isdigit():
+            return cf_value
+
+        # Cas 2: C'est une URL Zoho CRM
+        # Format: https://crm.zoho.com/crm/org.../tab/Potentials/1234567890
+        url_match = re.search(r'/Potentials/(\d+)', cf_value)
+        if url_match:
+            return url_match.group(1)
+
+        # Cas 3: URL avec Deals au lieu de Potentials
+        url_match = re.search(r'/Deals/(\d+)', cf_value)
+        if url_match:
+            return url_match.group(1)
+
+        # Cas 4: Chercher n'importe quel grand nombre (ID Zoho = 19 chiffres typiquement)
+        id_match = re.search(r'(\d{10,})', cf_value)
+        if id_match:
+            return id_match.group(1)
+
+        logger.warning(f"  ⚠️ Impossible d'extraire l'ID du deal depuis cf_opportunite: {cf_value}")
+        return None
+
     def _get_deals_for_contacts(self, contact_ids: List[str]) -> List[Dict[str, Any]]:
         """
         Get ALL deals associated with the given contact IDs.
@@ -370,6 +409,49 @@ Emails alternatifs trouvés:"""
             logger.error(f"Could not fetch ticket {ticket_id}: {e}")
             result["error"] = f"Could not fetch ticket: {e}"
             return result
+
+        # Step 1.5: PRIORITÉ #1 - Vérifier si le ticket a déjà un lien vers une opportunité
+        cf_opportunite = ticket.get('cf', {}).get('cf_opportunite') or ticket.get('cf_opportunite')
+        if cf_opportunite:
+            logger.info(f"  📎 Ticket déjà lié à une opportunité: {cf_opportunite}")
+            # Extraire l'ID du deal depuis l'URL ou la valeur
+            deal_id = self._extract_deal_id_from_cf_opportunite(cf_opportunite)
+            if deal_id:
+                try:
+                    crm_client = self._get_crm_client()
+                    deal_data = crm_client.get_deal(deal_id)
+                    if deal_data:
+                        logger.info(f"  ✅ Deal trouvé via cf_opportunite: {deal_data.get('Deal_Name', deal_id)}")
+                        result["success"] = True
+                        result["deal_found"] = True
+                        result["deal_id"] = deal_id
+                        result["deal"] = deal_data
+                        result["selected_deal"] = deal_data
+                        result["all_deals"] = [deal_data]
+                        result["deals_found"] = 1
+                        result["routing_explanation"] = "Deal trouvé via champ cf_opportunite du ticket"
+                        result["link_source"] = "cf_opportunite"
+
+                        # Vérifier doublon Uber même pour les tickets déjà liés
+                        # (au cas où le lien a été fait manuellement sans vérification)
+                        # On a besoin du contact pour ça
+                        contact_id = deal_data.get('Contact_Name', {}).get('id')
+                        if contact_id:
+                            all_deals = self._get_deals_for_contacts([contact_id])
+                            result["all_deals"] = all_deals
+                            result["deals_found"] = len(all_deals)
+
+                            # Check for duplicate Uber 20€
+                            deals_20_won = [d for d in all_deals if d.get("Amount") == 20 and d.get("Stage") == "GAGNÉ"]
+                            if len(deals_20_won) > 1:
+                                result["has_duplicate_uber_offer"] = True
+                                result["duplicate_deals"] = deals_20_won
+                                logger.warning(f"  ⚠️ DOUBLON UBER détecté: {len(deals_20_won)} opportunités 20€ GAGNÉ")
+
+                        return result
+                except Exception as e:
+                    logger.warning(f"  ⚠️ Erreur récupération deal depuis cf_opportunite: {e}")
+                    # Continuer avec la recherche normale
 
         # Step 2: Get all threads with FULL content
         try:
