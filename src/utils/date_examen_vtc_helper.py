@@ -97,7 +97,7 @@ def get_next_exam_dates(
         # Filtrer les sessions avec clôture suffisamment dans le futur (min 2 jours)
         valid_sessions = []
         today_date = datetime.now().date()
-        min_days_before_cloture = 2  # Minimum 2 jours avant la clôture pour être pratique
+        min_days_before_cloture = 1  # Minimum 1 jour avant la clôture (demain inclus)
 
         for session in all_sessions:
             date_cloture_str = session.get('Date_Cloture_Inscription')
@@ -219,7 +219,7 @@ def get_earlier_dates_other_departments(
         # 3. Date d'examen AVANT la date de référence
         valid_sessions = []
         today_date = datetime.now().date()
-        min_days_before_cloture = 2  # Minimum 2 jours avant la clôture
+        min_days_before_cloture = 1  # Minimum 1 jour avant la clôture
 
         for session in all_sessions:
             # Vérifier le département
@@ -324,7 +324,7 @@ def get_next_exam_dates_any_department(
         # Une clôture demain ou aujourd'hui n'est pas pratique
         valid_sessions = []
         today_date = datetime.now().date()
-        min_days_before_cloture = 2  # Minimum 2 jours avant la clôture pour être pratique
+        min_days_before_cloture = 1  # Minimum 1 jour avant la clôture (demain inclus)
 
         for session in all_sessions:
             date_cloture_str = session.get('Date_Cloture_Inscription')
