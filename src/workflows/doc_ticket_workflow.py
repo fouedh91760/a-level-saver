@@ -1008,32 +1008,22 @@ Deux comptes ExamenT3P fonctionnels ont été détectés pour ce candidat, et le
         """
         Crée une note CRM unique et consolidée avec toutes les infos du traitement.
 
-        Format naturel et concis:
-        - Contexte du ticket
-        - Actions CRM effectuées
-        - Résumé de la réponse
-        - Alertes et corrections manuelles si nécessaire
+        Format:
+        - Lien vers le ticket Desk
+        - Mises à jour CRM effectuées
+        - Next steps candidat (généré par IA)
+        - Next steps CAB (généré par IA)
+        - Alertes si nécessaire
         """
         lines = []
 
-        # === EN-TÊTE ===
-        lines.append(f"Réponse ticket #{ticket_id}")
-        lines.append(datetime.now().strftime("%d/%m/%Y %H:%M"))
+        # === EN-TÊTE avec lien ticket ===
+        lines.append(f"Ticket #{ticket_id}")
+        lines.append(f"https://desk.zoho.com/agent/cabformations/cab-formations/tickets/{ticket_id}")
         lines.append("")
 
-        # === CONTEXTE (statut candidat) ===
-        deal_data = analysis_result.get('deal_data', {})
-        examt3p_data = analysis_result.get('exament3p_data', {})
-        evalbox = deal_data.get('Evalbox', 'Non défini')
-
-        context_parts = [f"Statut: {evalbox}"]
-        if examt3p_data.get('compte_existe'):
-            context_parts.append("Compte ExamT3P ✓")
-        lines.append(" | ".join(context_parts))
-        lines.append("")
-
-        # === ACTIONS CRM ===
-        actions = []
+        # === MISES À JOUR CRM ===
+        updates = []
 
         # Sync ExamT3P
         sync_result = analysis_result.get('sync_result', {})
@@ -1045,66 +1035,120 @@ Deux comptes ExamenT3P fonctionnels ont été détectés pour ce candidat, et le
                 if 'MDP' in field:
                     new_val = '***'
                     old_val = '***' if old_val != '—' else '—'
-                actions.append(f"{field}: {old_val} → {new_val}")
+                updates.append(f"• {field}: {old_val} → {new_val}")
+
+        # Date sync
+        date_sync = sync_result.get('date_sync', {}) if sync_result else {}
+        if date_sync.get('date_changed'):
+            old_date = date_sync.get('old_date') or '—'
+            new_date = date_sync.get('new_date', '')
+            updates.append(f"• Date_examen_VTC: {old_date} → {new_date}")
 
         # Mises à jour depuis la réponse
         crm_updates = response_result.get('crm_updates', {})
         if crm_updates:
             for field, value in crm_updates.items():
-                # Éviter les doublons avec sync
-                if not any(field in a for a in actions):
-                    actions.append(f"{field}: → {value}")
+                # Éviter les doublons
+                if not any(field in u for u in updates):
+                    updates.append(f"• {field}: → {value}")
 
-        if actions:
-            lines.append("Actions CRM:")
-            for action in actions:
-                lines.append(f"  • {action}")
+        if updates:
+            lines.append("Mises à jour CRM:")
+            lines.extend(updates)
+        else:
+            lines.append("Mises à jour CRM: aucune")
+        lines.append("")
+
+        # === NEXT STEPS (généré par IA) ===
+        next_steps = self._generate_next_steps_with_ai(analysis_result, response_result)
+        if next_steps:
+            lines.append(next_steps)
             lines.append("")
 
-        # === RÉSUMÉ RÉPONSE ===
-        response_text = response_result.get('response_text', '')
-        if response_text:
-            # Extraire les premiers 200 caractères significatifs
-            summary = response_text.replace('\n', ' ').strip()
-            # Éviter les signatures et formules de politesse
-            if 'Cordialement' in summary:
-                summary = summary.split('Cordialement')[0].strip()
-            if len(summary) > 200:
-                summary = summary[:197] + "..."
-            lines.append(f"Réponse: {summary}")
-            lines.append("")
-
-        # === ALERTES & CORRECTIONS MANUELLES ===
+        # === ALERTES ===
         alerts = []
 
         # Blocages de sync
         if sync_result and sync_result.get('blocked_changes'):
             for blocked in sync_result['blocked_changes']:
-                alerts.append(f"⚠️ {blocked['field']} non modifié: {blocked['reason']}")
+                alerts.append(f"⚠️ {blocked['field']}: {blocked['reason']}")
+
+        # Date sync bloquée
+        if date_sync.get('blocked'):
+            alerts.append(f"⚠️ Date_examen_VTC: {date_sync.get('blocked_reason', 'bloqué')}")
 
         # Incohérences détectées
         training_result = analysis_result.get('training_exam_consistency_result', {})
-
         if training_result and training_result.get('problem_detected'):
-            alerts.append(f"⚠️ Formation manquée: {training_result.get('problem_description', 'vérifier cohérence formation/examen')}")
-
-        # Validations échouées
-        for scenario_id, validation in response_result.get('validation', {}).items():
-            if not validation.get('compliant'):
-                missing = validation.get('missing_blocks', [])
-                if missing:
-                    alerts.append(f"⚠️ {scenario_id}: vérifier {', '.join(missing)}")
+            alerts.append(f"⚠️ {training_result.get('problem_description', 'Cohérence formation/examen à vérifier')}")
 
         # Double compte ExamT3P
+        examt3p_data = analysis_result.get('exament3p_data', {})
         if examt3p_data.get('duplicate_paid_accounts'):
-            alerts.append("⚠️ DOUBLE COMPTE PAYÉ détecté - vérifier paiement")
+            alerts.append("⚠️ DOUBLE COMPTE PAYÉ - vérifier paiement")
 
         if alerts:
-            lines.append("À vérifier:")
-            for alert in alerts:
-                lines.append(f"  {alert}")
+            lines.append("Alertes:")
+            lines.extend(alerts)
+        else:
+            lines.append("✓ Aucune alerte")
 
         return "\n".join(lines)
+
+    def _generate_next_steps_with_ai(
+        self,
+        analysis_result: Dict,
+        response_result: Dict
+    ) -> str:
+        """
+        Utilise Claude Haiku pour générer les next steps intelligents.
+        """
+        import anthropic
+
+        # Préparer le contexte pour l'IA
+        deal_data = analysis_result.get('deal_data', {})
+        examt3p_data = analysis_result.get('exament3p_data', {})
+        date_result = analysis_result.get('date_examen_vtc_result', {})
+        session_data = analysis_result.get('session_data', {})
+        uber_result = analysis_result.get('uber_eligibility_result', {})
+
+        context = f"""Contexte candidat VTC:
+- Statut Evalbox: {deal_data.get('Evalbox', 'Non défini')}
+- Statut ExamT3P: {examt3p_data.get('statut_dossier', 'N/A')}
+- Date examen: {date_result.get('date_examen_info', {}).get('Date_Examen', 'Non définie') if isinstance(date_result.get('date_examen_info'), dict) else 'Non définie'}
+- Session formation: {'Assignée' if deal_data.get('Session') else 'Non assignée'}
+- Cas date examen: {date_result.get('case_description', 'N/A')}
+- Deal Uber 20€: {'Oui - ' + uber_result.get('case_description', '') if uber_result.get('is_uber_20_deal') else 'Non'}
+"""
+
+        prompt = f"""{context}
+
+Génère les prochaines étapes en 2-3 bullet points MAX par section.
+Sois TRÈS concis (5-10 mots par point).
+
+Format EXACT à respecter:
+Next steps candidat:
+• [action 1]
+• [action 2]
+
+Next steps CAB:
+• [action 1]
+• [action 2]
+
+Réponds UNIQUEMENT avec ce format, rien d'autre."""
+
+        try:
+            client = anthropic.Anthropic()
+            response = client.messages.create(
+                model="claude-3-5-haiku-20241022",
+                max_tokens=200,
+                messages=[{"role": "user", "content": prompt}]
+            )
+            return response.content[0].text.strip()
+        except Exception as e:
+            logger.warning(f"Erreur génération next steps IA: {e}")
+            # Fallback basique
+            return "Next steps candidat:\n• Consulter le draft de réponse\n\nNext steps CAB:\n• Vérifier et envoyer la réponse"
 
     def _prepare_ticket_updates(self, response_result: Dict) -> Dict:
         """Prepare ticket field updates."""
