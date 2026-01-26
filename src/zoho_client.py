@@ -223,15 +223,14 @@ class ZohoDeskClient(ZohoAPIClient):
 
     def list_departments(self) -> List[Dict[str, Any]]:
         """
-        List all departments in Zoho Desk.
+        List all departments in Zoho Desk (with pagination).
 
         Returns:
-            List of departments with id, name, etc.
+            List of all departments with id, name, etc.
         """
         url = f"{settings.zoho_desk_api_url}/departments"
         params = {"orgId": settings.zoho_desk_org_id}
-        response = self._make_request("GET", url, params=params)
-        return response.get("data", [])
+        return self._get_all_pages(url, params, limit_per_page=100)
 
     def get_department_id_by_name(self, name: str) -> Optional[str]:
         """
