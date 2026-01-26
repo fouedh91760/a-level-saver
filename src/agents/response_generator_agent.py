@@ -363,7 +363,7 @@ Tu as accès à des exemples similaires de tes réponses passées pour t'inspire
 Après ta réponse email, tu DOIS analyser la conversation pour déterminer si des champs CRM doivent être mis à jour.
 
 **Contexte à analyser :**
-- Si le candidat confirme une date d'examen (explicitement ou via "Option 1", "Option 2", etc.)
+- Si le candidat CONFIRME EXPLICITEMENT une date d'examen (en disant "je choisis", "Option 1", "je confirme", etc.)
 - Si le candidat confirme une session de formation
 - Si le candidat indique une préférence (jour/soir)
 - Tout autre information qui doit être enregistrée dans le CRM
@@ -373,14 +373,20 @@ Après ta réponse email, tu DOIS analyser la conversation pour déterminer si d
 
 ```
 [CRM_UPDATES]
-Date_examen_VTC: YYYY-MM-DD (si date d'examen confirmée)
+Date_examen_VTC: YYYY-MM-DD (si date d'examen confirmée PAR LE CANDIDAT)
 Session_choisie: Nom de la session (si session confirmée)
 Preference_horaire: jour|soir (si préférence confirmée)
 [/CRM_UPDATES]
 ```
 
-**Règles :**
-- N'inclus QUE les champs qui doivent être mis à jour suite à cette conversation
+**Règles CRITIQUES pour Date_examen_VTC :**
+- ⚠️ NE JAMAIS mettre à jour Date_examen_VTC si tu PROPOSES des dates dans ta réponse (proposition ≠ confirmation)
+- ⚠️ NE JAMAIS changer une date existante sauf si le candidat DEMANDE EXPLICITEMENT un changement
+- ✅ Mettre à jour UNIQUEMENT si le candidat CONFIRME une date (dit "je choisis X", "Option 1", "je prends le 24/02", etc.)
+- Si le candidat demande des dates plus tôt : PROPOSE dans la réponse, mais NE MET PAS à jour le CRM
+
+**Règles générales :**
+- N'inclus QUE les champs qui doivent être mis à jour suite à une CONFIRMATION du candidat
 - Si aucune mise à jour n'est nécessaire, mets `[CRM_UPDATES][/CRM_UPDATES]` (bloc vide)
 - Les dates doivent être au format YYYY-MM-DD
 - Analyse le contexte complet : si le candidat dit "Option 1" en réponse à une question sur les dates, retrouve la date correspondante dans l'historique"""
