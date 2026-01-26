@@ -786,12 +786,25 @@ Deux comptes ExamenT3P fonctionnels ont été détectés pour ce candidat, et le
         # RÈGLE GÉNÉRALE: Si pas de Date_Dossier_re_u → pas de dates/sessions
         # ================================================================
         # Même pour les deals NON-Uber, sans dossier reçu on ne peut pas proposer de dates
+        # EXCEPTION: Si Evalbox est avancé, le dossier a clairement été traité
         dossier_not_received_blocks_dates = False
         date_dossier_recu = deal_data.get('Date_Dossier_re_u')
+        evalbox_status = deal_data.get('Evalbox', '')
+
+        # Statuts Evalbox qui prouvent que le dossier a été traité (même si Date_Dossier_re_u non rempli)
+        ADVANCED_EVALBOX_STATUSES = {
+            "VALIDE CMA", "Convoc CMA reçue", "Dossier Synchronisé",
+            "Pret a payer", "Refusé CMA"
+        }
+
         if not date_dossier_recu:
-            logger.warning("  🚨 PAS DE DATE_DOSSIER_RECU: Dossier non reçu")
-            logger.warning("  ⛔ BLOCAGE DATES/SESSIONS: On ne peut pas proposer de dates sans dossier")
-            dossier_not_received_blocks_dates = True
+            if evalbox_status in ADVANCED_EVALBOX_STATUSES:
+                # Evalbox avancé = dossier clairement traité, Date_Dossier_re_u juste pas rempli
+                logger.info(f"  ℹ️ Date_Dossier_re_u vide MAIS Evalbox='{evalbox_status}' → dossier traité")
+            else:
+                logger.warning("  🚨 PAS DE DATE_DOSSIER_RECU: Dossier non reçu")
+                logger.warning("  ⛔ BLOCAGE DATES/SESSIONS: On ne peut pas proposer de dates sans dossier")
+                dossier_not_received_blocks_dates = True
 
         # ================================================================
         # RÈGLE CRITIQUE: SI IDENTIFIANTS NON ACCESSIBLES → SKIP DATES/SESSIONS
@@ -847,7 +860,12 @@ Deux comptes ExamenT3P fonctionnels ont été détectés pour ce candidat, et le
             else:
                 logger.info(f"  ✅ Date examen VTC OK (CAS {date_examen_vtc_result['case']})")
         else:
-            logger.info("  📅 Vérification date examen VTC... SKIPPED (identifiants invalides)")
+            skip_reason_msg = {
+                'credentials_invalid': 'identifiants invalides',
+                'uber_case_a_or_b': 'CAS A/B Uber',
+                'dossier_not_received': 'dossier non reçu'
+            }.get(skip_reason, skip_reason or 'raison inconnue')
+            logger.info(f"  📅 Vérification date examen VTC... SKIPPED ({skip_reason_msg})")
 
         # ================================================================
         # VÉRIFICATION COHÉRENCE FORMATION / EXAMEN
@@ -877,7 +895,7 @@ Deux comptes ExamenT3P fonctionnels ont été détectés pour ce candidat, et le
             else:
                 logger.info("  ✅ Pas de problème de cohérence formation/examen")
         else:
-            logger.info("  🔍 Vérification cohérence formation/examen... SKIPPED (identifiants invalides)")
+            logger.info(f"  🔍 Vérification cohérence formation/examen... SKIPPED ({skip_reason_msg})")
 
         # ================================================================
         # ANALYSE SESSIONS DE FORMATION
