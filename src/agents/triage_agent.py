@@ -3,6 +3,7 @@ TriageAgent - Agent IA pour le triage intelligent des tickets.
 
 Remplace le système de keywords par une analyse contextuelle avec Claude.
 Comprend le SENS du message, pas juste les mots-clés.
+Détecte également l'INTENTION du candidat pour un traitement approprié.
 
 UTILISATION:
     agent = TriageAgent()
@@ -11,7 +12,7 @@ UTILISATION:
         thread_content="J'ai téléchargé tous les documents...",
         deal_data=deal_data  # Optionnel
     )
-    # Retourne: action (GO/ROUTE/SPAM), target_department, reason, confidence
+    # Retourne: action, target_department, reason, confidence, detected_intent, intent_context
 """
 import logging
 from typing import Dict, Any, Optional
@@ -46,7 +47,7 @@ RÈGLES DE TRIAGE:
    - Candidat qui CONFIRME avoir envoyé ses documents (même s'il dit "document")
    - Candidat qui fournit ses identifiants ExamT3P
    - Questions sur dates d'examen, sessions de formation
-   - Demandes de changement de date
+   - Demandes de changement de date / report
    - Questions sur le dossier en cours
 
 3. **ROUTE vers Refus CMA** SEULEMENT si:
@@ -65,12 +66,48 @@ IMPORTANT:
 - "Mon document a été refusé" = ROUTE vers Refus CMA
 - Comprends le CONTEXTE, pas juste les mots-clés
 
+---
+
+DÉTECTION D'INTENTION (pour action GO uniquement):
+
+Quand l'action est GO, tu dois aussi identifier l'INTENTION PRINCIPALE du candidat:
+
+INTENTIONS POSSIBLES:
+- REPORT_DATE: Changement/report de date d'examen (changement de date, décaler, reporter, repousser, nouvelle date)
+- DEMANDE_IDENTIFIANTS: Demande d'identifiants ExamT3P (mot de passe oublié, identifiants, connexion)
+- STATUT_DOSSIER: Question sur l'avancement du dossier (où en est mon dossier, suivi, statut)
+- CONFIRMATION_SESSION: Choix/confirmation de session de formation (je choisis, je confirme, option 1/2)
+- CONFIRMATION_PAIEMENT: Question sur le paiement (payé, paiement effectué, facture)
+- DOCUMENT_QUESTION: Question sur les documents (document manquant, pièce à fournir)
+- RESULTAT_EXAMEN: Question sur le résultat d'examen (réussi, échoué, admis)
+- QUESTION_GENERALE: Autre question générale
+
+Pour REPORT_DATE, ajoute un contexte supplémentaire:
+- is_urgent: true si examen imminent (< 7 jours) ou mention d'urgence
+- mentions_force_majeure: true si le candidat mentionne un motif de force majeure
+- force_majeure_type: "medical" (maladie, hospitalisation, santé), "death" (décès, deuil), "accident", "other", ou null
+
+MOTIFS DE FORCE MAJEURE:
+- Medical: maladie, hospitalisation, problème de santé, opération, certificat médical, douleurs, enceinte, accouchement
+- Death: décès, deuil, enterrement, funérailles
+- Accident: accident (voiture, travail, etc.)
+- Other: convocation judiciaire, catastrophe naturelle, force majeure explicite
+
+---
+
 Réponds UNIQUEMENT en JSON valide:
 {
     "action": "GO" | "ROUTE" | "SPAM",
     "target_department": "DOC" | "Refus CMA" | "Contact" | "Comptabilité" | null,
     "reason": "explication courte",
-    "confidence": 0.0-1.0
+    "confidence": 0.0-1.0,
+    "detected_intent": "REPORT_DATE" | "DEMANDE_IDENTIFIANTS" | "STATUT_DOSSIER" | "CONFIRMATION_SESSION" | "CONFIRMATION_PAIEMENT" | "DOCUMENT_QUESTION" | "RESULTAT_EXAMEN" | "QUESTION_GENERALE" | null,
+    "intent_context": {
+        "is_urgent": true | false,
+        "mentions_force_majeure": true | false,
+        "force_majeure_type": "medical" | "death" | "accident" | "other" | null,
+        "force_majeure_details": "description courte si force majeure détectée" | null
+    }
 }
 """
 
@@ -110,7 +147,7 @@ Réponds UNIQUEMENT en JSON valide:
         current_department: str = "DOC"
     ) -> Dict[str, Any]:
         """
-        Analyse un ticket et détermine l'action de triage.
+        Analyse un ticket et détermine l'action de triage + intention du candidat.
 
         Args:
             ticket_subject: Sujet du ticket
@@ -124,7 +161,14 @@ Réponds UNIQUEMENT en JSON valide:
                 'target_department': str ou None,
                 'reason': str,
                 'confidence': float,
-                'method': 'ai'
+                'method': 'ai',
+                'detected_intent': str ou None (REPORT_DATE, DEMANDE_IDENTIFIANTS, etc.),
+                'intent_context': {
+                    'is_urgent': bool,
+                    'mentions_force_majeure': bool,
+                    'force_majeure_type': str ou None,
+                    'force_majeure_details': str ou None
+                }
             }
         """
         # Construire le contexte pour l'IA
@@ -153,7 +197,9 @@ Réponds UNIQUEMENT en JSON valide:
                     'target_department': 'Refus CMA',
                     'reason': f"Evalbox indique: {evalbox}",
                     'confidence': 1.0,
-                    'method': 'rule_evalbox'
+                    'method': 'rule_evalbox',
+                    'detected_intent': None,
+                    'intent_context': {}
                 }
 
         context = "\n\n".join(context_parts)
@@ -209,12 +255,30 @@ Réponds UNIQUEMENT en JSON valide:
             if action == 'GO':
                 target_dept = current_department
 
+            # Extraire l'intention détectée (nouveau)
+            detected_intent = result.get('detected_intent')
+            intent_context = result.get('intent_context', {})
+
+            # Normaliser intent_context
+            if not isinstance(intent_context, dict):
+                intent_context = {}
+
+            # Log l'intention détectée
+            if detected_intent:
+                logger.info(f"  🎯 Intention détectée: {detected_intent}")
+                if intent_context.get('mentions_force_majeure'):
+                    logger.info(f"  ⚠️ Force majeure mentionnée: {intent_context.get('force_majeure_type')} - {intent_context.get('force_majeure_details', 'N/A')}")
+                if intent_context.get('is_urgent'):
+                    logger.info(f"  🚨 Situation urgente détectée")
+
             return {
                 'action': action,
                 'target_department': target_dept,
                 'reason': result.get('reason', 'Analyse IA'),
                 'confidence': float(result.get('confidence', 0.8)),
-                'method': 'ai'
+                'method': 'ai',
+                'detected_intent': detected_intent,
+                'intent_context': intent_context
             }
 
         except json.JSONDecodeError as e:
@@ -225,7 +289,9 @@ Réponds UNIQUEMENT en JSON valide:
                 'target_department': current_department,
                 'reason': 'Erreur parsing IA - fallback GO',
                 'confidence': 0.5,
-                'method': 'fallback'
+                'method': 'fallback',
+                'detected_intent': None,
+                'intent_context': {}
             }
 
         except Exception as e:
@@ -236,7 +302,9 @@ Réponds UNIQUEMENT en JSON valide:
                 'target_department': current_department,
                 'reason': f'Erreur IA: {str(e)[:50]} - fallback GO',
                 'confidence': 0.3,
-                'method': 'fallback'
+                'method': 'fallback',
+                'detected_intent': None,
+                'intent_context': {}
             }
 
     def should_use_ai_triage(

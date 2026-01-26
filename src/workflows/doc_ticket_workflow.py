@@ -1166,7 +1166,8 @@ L'équipe Cab Formations"""
             uber_eligibility_data=analysis_result.get('uber_eligibility_result'),
             credentials_only_response=analysis_result.get('credentials_only_response', False),
             threads=analysis_result.get('threads'),  # Historique complet des échanges
-            training_exam_consistency_data=analysis_result.get('training_exam_consistency_result')  # Cohérence formation/examen
+            training_exam_consistency_data=analysis_result.get('training_exam_consistency_result'),  # Cohérence formation/examen
+            triage_result=triage_result  # Intention détectée par IA (REPORT_DATE, etc.)
         )
 
         return response_result

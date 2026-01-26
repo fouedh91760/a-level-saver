@@ -1076,6 +1076,7 @@ Génère uniquement le contenu de la réponse (pas de métadonnées)."""
         credentials_only_response: bool = False,
         threads: Optional[List] = None,
         training_exam_consistency_data: Optional[Dict] = None,
+        triage_result: Optional[Dict] = None,
         max_retries: int = 2
     ) -> Dict:
         """
@@ -1089,6 +1090,8 @@ Génère uniquement le contenu de la réponse (pas de métadonnées)."""
             threads: Historique complet des échanges pour contexte.
             training_exam_consistency_data: Données de cohérence formation/examen.
                 Si 'has_consistency_issue' est True, utilise le message pré-généré.
+            triage_result: Résultat du triage IA avec detected_intent et intent_context.
+                Permet d'appliquer des procédures strictes (ex: force majeure pour report).
         """
         # ================================================================
         # CAS SPÉCIAL #0: Prospect ou CAS A/B Uber (AVANT identifiants!)
@@ -1144,6 +1147,39 @@ Génère uniquement le contenu de la réponse (pas de métadonnées)."""
                 exament3p_data=exament3p_data,
                 crm_data=crm_data
             )
+
+        # ================================================================
+        # CAS SPÉCIAL: REPORT_DATE (Demande de changement de date)
+        # ================================================================
+        # Détecté par IA dans TriageAgent - applique la procédure stricte
+        # Si dossier CMA clôturé → Force majeure OBLIGATOIRE
+        if triage_result and triage_result.get('detected_intent') == 'REPORT_DATE':
+            logger.info("🚨 MODE REPORT_DATE: Demande de changement de date détectée par IA")
+            intent_context = triage_result.get('intent_context', {})
+
+            # Vérifier si le dossier CMA est clôturé (Evalbox avancé)
+            evalbox_status = None
+            if crm_data:
+                evalbox_status = crm_data.get('Evalbox', '')
+            elif exament3p_data:
+                evalbox_status = exament3p_data.get('statut_dossier', '')
+
+            # Statuts indiquant un dossier CMA clôturé
+            cma_closed_statuses = ['VALIDE CMA', 'Convoc CMA reçue', 'En attente de convocation', 'Valide']
+
+            if evalbox_status in cma_closed_statuses:
+                logger.info(f"  📋 Dossier CMA clôturé (Evalbox: {evalbox_status}) → Procédure force majeure")
+                return self._generate_report_date_response(
+                    crm_data=crm_data,
+                    exament3p_data=exament3p_data,
+                    date_examen_vtc_data=date_examen_vtc_data,
+                    intent_context=intent_context,
+                    customer_message=customer_message
+                )
+            else:
+                logger.info(f"  📋 Dossier CMA non clôturé (Evalbox: {evalbox_status}) → Report plus simple")
+                # On laisse l'IA générer la réponse, mais on injecte les infos de l'intent
+                # pour qu'elle sache que c'est un report
 
         for attempt in range(max_retries + 1):
             logger.info(f"Generation attempt {attempt + 1}/{max_retries + 1}")
@@ -1950,6 +1986,170 @@ L'équipe Cab Formations"""
                 'next_exam_date': training_exam_consistency_data.get('next_exam_date'),
                 'force_majeure_detected': training_exam_consistency_data.get('force_majeure_detected'),
                 'force_majeure_type': training_exam_consistency_data.get('force_majeure_type')
+            }
+        }
+
+    def _generate_report_date_response(
+        self,
+        crm_data: Optional[Dict] = None,
+        exament3p_data: Optional[Dict] = None,
+        date_examen_vtc_data: Optional[Dict] = None,
+        intent_context: Optional[Dict] = None,
+        customer_message: str = ""
+    ) -> Dict:
+        """
+        Génère une réponse pour les demandes de report de date d'examen (dossier CMA clôturé).
+
+        PROCÉDURE STRICTE:
+        - Force majeure OBLIGATOIRE (pas optionnelle)
+        - Sans justificatif = frais de réinscription 241€
+        - Certificat médical doit couvrir le jour de l'EXAMEN
+        - Demander le justificatif par EMAIL (pas téléphone)
+
+        Args:
+            crm_data: Données CRM du candidat
+            exament3p_data: Données ExamT3P
+            date_examen_vtc_data: Données sur la date d'examen
+            intent_context: Contexte de l'intention (force majeure détectée, urgence, etc.)
+            customer_message: Message original du candidat
+        """
+        logger.info("Generating REPORT_DATE response (CMA closed - force majeure required)")
+
+        intent_context = intent_context or {}
+
+        # Extraire la date d'examen
+        exam_date_formatted = "N/A"
+        if date_examen_vtc_data:
+            exam_date_formatted = date_examen_vtc_data.get('exam_date_formatted') or date_examen_vtc_data.get('current_exam_date', 'N/A')
+        elif crm_data:
+            exam_date_raw = crm_data.get('Date_examen_VTC')
+            if isinstance(exam_date_raw, dict):
+                exam_name = exam_date_raw.get('name', '')
+                if '_' in exam_name:
+                    date_part = exam_name.split('_')[1]
+                    try:
+                        from datetime import datetime
+                        exam_date = datetime.strptime(date_part, "%Y-%m-%d")
+                        exam_date_formatted = exam_date.strftime("%d/%m/%Y")
+                    except:
+                        exam_date_formatted = date_part
+
+        # Extraire la prochaine date disponible
+        next_exam_date = "la prochaine date disponible"
+        if date_examen_vtc_data and date_examen_vtc_data.get('next_dates'):
+            next_dates = date_examen_vtc_data.get('next_dates', [])
+            if next_dates:
+                first_next = next_dates[0]
+                if isinstance(first_next, dict):
+                    next_date_str = first_next.get('Date_Examen', '')
+                    if next_date_str:
+                        try:
+                            from datetime import datetime
+                            next_date = datetime.strptime(next_date_str, "%Y-%m-%d")
+                            next_exam_date = f"le **{next_date.strftime('%d/%m/%Y')}**"
+                        except:
+                            next_exam_date = f"le **{next_date_str}**"
+
+        # Extraire les identifiants ExamT3P si disponibles
+        identifiant = exament3p_data.get('identifiant', '') if exament3p_data else ''
+        mot_de_passe = exament3p_data.get('mot_de_passe', '') if exament3p_data else ''
+
+        # Adapter l'introduction selon si force majeure mentionnée
+        force_majeure_detected = intent_context.get('mentions_force_majeure', False)
+        force_majeure_type = intent_context.get('force_majeure_type')
+        force_majeure_details = intent_context.get('force_majeure_details', '')
+
+        if force_majeure_detected and force_majeure_type == 'medical':
+            intro = f"""Nous avons bien pris connaissance de votre situation concernant votre demande de report d'examen.
+
+Nous espérons sincèrement que la situation s'améliore rapidement."""
+        elif force_majeure_detected and force_majeure_type == 'death':
+            intro = """Nous avons bien pris connaissance de votre situation et vous présentons nos sincères condoléances.
+
+Nous comprenons parfaitement votre besoin de reporter l'examen dans ces circonstances."""
+        elif force_majeure_detected and force_majeure_type == 'accident':
+            intro = """Nous avons bien pris connaissance de votre situation suite à cet accident.
+
+Nous espérons que vous vous remettrez rapidement."""
+        else:
+            intro = """Nous avons bien pris connaissance de votre demande de report de date d'examen."""
+
+        # Bloc identifiants (si disponibles)
+        identifiants_bloc = ""
+        if identifiant and mot_de_passe:
+            identifiants_bloc = f"""
+
+**Vos identifiants ExamT3P** (pour contacter la CMA via la plateforme) :
+- Identifiant : {identifiant}
+- Mot de passe : {mot_de_passe}
+
+"""
+
+        # Message principal avec procédure stricte
+        response_message = f"""Bonjour,
+
+{intro}
+
+Votre examen est actuellement prévu pour le **{exam_date_formatted}**.
+
+**Votre dossier ayant été validé par la CMA, un report de date d'examen n'est possible qu'avec un justificatif de force majeure.**
+
+---
+
+**Pour demander un report, merci de nous transmettre par email :**
+
+1. **Votre justificatif de force majeure** :
+   - Certificat médical couvrant **la date de l'examen** ({exam_date_formatted})
+   - Ou autre document officiel (certificat de décès, convocation judiciaire, etc.)
+
+2. **Une brève explication de votre situation**
+
+Nous transmettrons ensuite votre demande à la CMA pour validation du report.
+{identifiants_bloc}
+---
+
+**Points importants :**
+
+- Le certificat médical doit **obligatoirement couvrir le jour de l'examen** ({exam_date_formatted}), pas une autre période
+- **Sans justificatif de force majeure valide**, des frais de réinscription de **241€** seront nécessaires pour une nouvelle inscription
+- La CMA est seule décisionnaire pour accepter ou refuser le report
+- En cas d'acceptation, vous serez repositionné(e) sur {next_exam_date}
+
+---
+
+Nous restons à votre disposition pour toute question.
+
+Cordialement,
+
+L'équipe Cab Formations"""
+
+        logger.info(f"  Message REPORT_DATE généré: {len(response_message)} caractères")
+        logger.info(f"  Examen prévu le: {exam_date_formatted}")
+        logger.info(f"  Force majeure mentionnée: {force_majeure_detected} ({force_majeure_type})")
+
+        return {
+            'response_text': response_message,
+            'detected_scenarios': ['SC-15c_REPORT_APRES_CLOTURE'],
+            'similar_tickets': [],
+            'validation': {
+                'SC-15c_REPORT_APRES_CLOTURE': {
+                    'compliant': True,
+                    'missing_blocks': [],
+                    'forbidden_terms_found': []
+                }
+            },
+            'requires_crm_update': False,
+            'crm_update_fields': [],
+            'crm_updates': {},
+            'should_stop_workflow': False,
+            'metadata': {
+                'input_tokens': 0,
+                'output_tokens': len(response_message),
+                'model': self.model,
+                'report_date_mode': True,
+                'exam_date': exam_date_formatted,
+                'force_majeure_detected': force_majeure_detected,
+                'force_majeure_type': force_majeure_type
             }
         }
 
