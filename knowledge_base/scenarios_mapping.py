@@ -218,10 +218,10 @@ SCENARIOS = {
         "name": "VTC classique (hors partenariat Uber)",
         "triggers": [],  # Détection via Amount CRM uniquement
         "detection": "Amount != 20€ AND VTC (not taxi/ambulance)",
-        "routing": "DOC CAB",
+        "routing": "DOCS CAB",
         "stop_workflow": False,  # Continuer workflow, transférer à la fin
         "skip_uber_checks": True,  # Ne pas vérifier test sélection, Date_Dossier_reçu
-        "template_notes": "Process normally (ExamT3P sync, response), then transfer to DOC CAB"
+        "template_notes": "Process normally (ExamT3P sync, response), then transfer to DOCS CAB"
     },
 
     # ========== SPAM ==========
