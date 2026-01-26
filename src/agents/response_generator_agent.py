@@ -2022,19 +2022,23 @@ L'équipe Cab Formations"""
         exam_date_formatted = "N/A"
         exam_date_raw = None
 
-        # Source 1: date_examen_vtc_data (résultat de analyze_exam_date_situation)
+        # Source 1: date_examen_vtc_data.date_examen_info (dict complet avec name)
+        # IMPORTANT: date_examen_vtc contient l'ID, date_examen_info contient le dict {'name': '51_2026-01-27', 'id': '...'}
         if date_examen_vtc_data:
-            exam_date_raw = date_examen_vtc_data.get('date_examen_vtc')
+            exam_date_raw = date_examen_vtc_data.get('date_examen_info')
 
-        # Source 2: crm_data (données CRM directes)
+        # Source 2: crm_data.Date_examen_VTC (dict avec name/id)
         if not exam_date_raw and crm_data:
             exam_date_raw = crm_data.get('Date_examen_VTC')
+
+        logger.info(f"  📅 exam_date_raw: {exam_date_raw}")
 
         # Parser la date selon son format
         if exam_date_raw:
             if isinstance(exam_date_raw, dict):
                 # Format: {'name': '51_2026-01-27', 'id': '...'}
                 exam_name = exam_date_raw.get('name', '')
+                logger.info(f"  📅 exam_name from dict: {exam_name}")
                 if '_' in exam_name:
                     date_part = exam_name.split('_')[1]
                     try:
@@ -2042,6 +2046,9 @@ L'équipe Cab Formations"""
                         exam_date_formatted = exam_date.strftime("%d/%m/%Y")
                     except:
                         exam_date_formatted = date_part
+                elif exam_name:
+                    # Peut-être format sans préfixe département
+                    exam_date_formatted = exam_name
             elif isinstance(exam_date_raw, str):
                 # Format string: "2026-01-27" ou "27/01/2026"
                 try:
@@ -2052,6 +2059,8 @@ L'équipe Cab Formations"""
                         exam_date_formatted = exam_date_raw
                 except:
                     exam_date_formatted = exam_date_raw
+
+        logger.info(f"  📅 exam_date_formatted: {exam_date_formatted}")
 
         # Extraire la prochaine date disponible
         next_exam_date = "la prochaine date disponible"
