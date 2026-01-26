@@ -286,6 +286,23 @@ Réponds toujours en JSON avec la structure:
         )
 
         if session and session.get('id'):
+            # ================================================================
+            # VÉRIFICATION CRITIQUE: Date de clôture passée ?
+            # ================================================================
+            date_cloture = session.get('Date_Cloture_Inscription')
+            if date_cloture:
+                try:
+                    if isinstance(date_cloture, str):
+                        cloture_date = datetime.strptime(date_cloture, "%Y-%m-%d")
+                    else:
+                        cloture_date = date_cloture
+
+                    if cloture_date.date() < datetime.now().date():
+                        logger.warning(f"  🚫 BLOCAGE: Date_examen_VTC {date_value} - clôture passée ({date_cloture})")
+                        return None
+                except (ValueError, TypeError) as e:
+                    logger.warning(f"  ⚠️ Impossible de parser Date_Cloture_Inscription: {date_cloture} - {e}")
+
             logger.info(f"  📊 Date_examen_VTC: {date_value} → ID {session['id']}")
             return session['id']
         else:
