@@ -536,6 +536,16 @@ class DOCTicketWorkflow:
         triage_result['method'] = ai_triage['method']
         triage_result['confidence'] = ai_triage['confidence']
 
+        # Copier l'intention détectée et son contexte (pour ResponseGeneratorAgent)
+        triage_result['detected_intent'] = ai_triage.get('detected_intent')
+        triage_result['intent_context'] = ai_triage.get('intent_context', {})
+
+        # Log intention si détectée
+        if triage_result.get('detected_intent'):
+            logger.info(f"  🎯 Intention: {triage_result['detected_intent']}")
+            if triage_result.get('intent_context', {}).get('mentions_force_majeure'):
+                logger.info(f"  ⚠️ Force majeure: {triage_result['intent_context'].get('force_majeure_type')}")
+
         # Determine action based on AI recommendation
         if ai_triage['action'] == 'ROUTE' and ai_triage['target_department'] != 'DOC':
             # Auto-transfer if enabled
