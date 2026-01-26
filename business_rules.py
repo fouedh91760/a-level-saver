@@ -19,7 +19,8 @@ DOCUMENT_KEYWORDS = [
     # Générique
     "ci-joint", "ci joint", "pièce jointe", "piece jointe",
     "document", "fichier", "attachment", "attaché", "attache",
-    "vous trouverez", "je vous envoie", "voici le", "voici les",
+    # Note: "voici le/les", "vous trouverez", "je vous envoie" retirés - trop génériques
+    "je vous envoie ci-joint", "veuillez trouver ci-joint",
 
     # Identité
     "pièce d'identité", "piece d'identite", "photo d'identité", "photo d'identite",
