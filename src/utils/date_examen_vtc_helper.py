@@ -129,6 +129,133 @@ def get_next_exam_dates(
         return []
 
 
+def get_earlier_dates_other_departments(
+    crm_client,
+    current_departement: str,
+    reference_date: str,
+    limit: int = 3
+) -> List[Dict[str, Any]]:
+    """
+    Recherche des dates d'examen plus tôt dans d'autres départements.
+
+    Cette fonction est utilisée quand:
+    - Le candidat n'a PAS encore de compte ExamT3P (peut choisir n'importe quel département)
+    - Les prochaines dates dans son département sont trop éloignées
+    - Le candidat demande explicitement une date plus proche
+
+    Args:
+        crm_client: Client Zoho CRM
+        current_departement: Département actuel du candidat (à exclure des résultats)
+        reference_date: Date de référence (première date du département actuel, format YYYY-MM-DD)
+        limit: Nombre maximum de dates à retourner
+
+    Returns:
+        Liste des sessions d'examen plus tôt dans d'autres départements,
+        triées par date, avec info département incluse
+    """
+    from config import settings
+
+    logger.info(f"🔍 Recherche de dates plus tôt dans d'autres départements (référence: {reference_date})")
+
+    try:
+        # Parser la date de référence
+        if not reference_date:
+            logger.warning("Pas de date de référence fournie")
+            return []
+
+        try:
+            ref_date = datetime.strptime(str(reference_date), "%Y-%m-%d")
+        except:
+            logger.warning(f"Format de date de référence invalide: {reference_date}")
+            return []
+
+        url = f"{settings.zoho_crm_api_url}/Dates_Examens_VTC_TAXI/search"
+        # Critère: Statut = Actif OU Statut = vide
+        criteria = "((Statut:equals:Actif)or(Statut:equals:null))"
+
+        # Pagination: récupérer toutes les pages
+        all_sessions = []
+        page = 1
+        max_pages = 10
+
+        while page <= max_pages:
+            params = {
+                "criteria": criteria,
+                "page": page,
+                "per_page": 200
+            }
+
+            response = crm_client._make_request("GET", url, params=params)
+            sessions = response.get("data", [])
+
+            if not sessions:
+                break
+
+            all_sessions.extend(sessions)
+
+            if len(sessions) < 200:
+                break
+
+            page += 1
+
+        if not all_sessions:
+            logger.warning("Aucune session trouvée")
+            return []
+
+        # Filtrer les sessions:
+        # 1. Département différent du département actuel
+        # 2. Date de clôture dans le futur
+        # 3. Date d'examen AVANT la date de référence
+        valid_sessions = []
+        today_date = datetime.now()
+
+        for session in all_sessions:
+            # Vérifier le département
+            session_dept = session.get('Departement', '')
+            if session_dept == current_departement:
+                continue  # Exclure le département actuel
+
+            # Vérifier la date de clôture (doit être dans le futur)
+            date_cloture_str = session.get('Date_Cloture_Inscription')
+            if date_cloture_str:
+                try:
+                    if 'T' in str(date_cloture_str):
+                        date_cloture = datetime.fromisoformat(date_cloture_str.replace('Z', '+00:00'))
+                        date_cloture = date_cloture.replace(tzinfo=None)
+                    else:
+                        date_cloture = datetime.strptime(str(date_cloture_str), "%Y-%m-%d")
+
+                    if date_cloture <= today_date:
+                        continue  # Clôture passée
+                except:
+                    continue
+            else:
+                continue  # Pas de date de clôture = invalide
+
+            # Vérifier la date d'examen (doit être AVANT la date de référence)
+            date_examen_str = session.get('Date_Examen')
+            if date_examen_str:
+                try:
+                    date_examen = datetime.strptime(str(date_examen_str), "%Y-%m-%d")
+                    if date_examen >= ref_date:
+                        continue  # Pas plus tôt
+                    valid_sessions.append(session)
+                except:
+                    continue
+
+        # Trier par date d'examen (plus proche en premier)
+        valid_sessions.sort(key=lambda x: x.get('Date_Examen', '9999-99-99'))
+
+        result = valid_sessions[:limit]
+        logger.info(f"✅ {len(result)} date(s) plus tôt trouvée(s) dans d'autres départements")
+
+        return result
+
+    except Exception as e:
+        logger.error(f"❌ Erreur recherche dates autres départements: {e}")
+        return []
+
+
 def get_next_exam_dates_any_department(
     crm_client,
     limit: int = 2
@@ -209,12 +336,13 @@ def get_next_exam_dates_any_department(
         return []
 
 
-def format_exam_date_for_display(session: Dict[str, Any]) -> str:
+def format_exam_date_for_display(session: Dict[str, Any], include_department: bool = False) -> str:
     """
     Formate une session d'examen pour affichage au candidat.
 
     Args:
         session: Données de la session d'examen
+        include_department: Si True, inclut le département dans l'affichage
 
     Returns:
         Texte formaté pour le candidat
@@ -248,8 +376,15 @@ def format_exam_date_for_display(session: Dict[str, Any]) -> str:
         date_cloture_formatted = ""
 
     result = f"- **{date_examen_formatted}**"
-    if libelle:
+
+    # Ajouter le département si demandé
+    if include_department:
+        departement = session.get('Departement', '')
+        if departement:
+            result += f" (Département {departement})"
+    elif libelle:
         result += f" ({libelle})"
+
     if date_cloture_formatted:
         result += f" - Clôture inscriptions: {date_cloture_formatted}"
 
@@ -291,7 +426,7 @@ def analyze_exam_date_situation(
 
     Returns:
         {
-            'case': int (1-7),
+            'case': int (1-10),
             'case_description': str,
             'date_examen_vtc': str or None,
             'date_examen_info': Dict or None,
@@ -300,7 +435,10 @@ def analyze_exam_date_situation(
             'response_message': str or None,
             'next_dates': List[Dict],
             'pieces_refusees': List[str] (pour cas 3),
-            'date_cloture': str or None
+            'date_cloture': str or None,
+            'alternative_department_dates': List[Dict] (dates plus tôt dans autres depts),
+            'can_choose_other_department': bool (True si pas de compte ExamT3P),
+            'current_departement': str or None
         }
     """
     result = {
@@ -313,7 +451,11 @@ def analyze_exam_date_situation(
         'response_message': None,
         'next_dates': [],
         'pieces_refusees': [],
-        'date_cloture': None
+        'date_cloture': None,
+        # Dates alternatives dans d'autres départements
+        'alternative_department_dates': [],
+        'can_choose_other_department': False,
+        'current_departement': None
     }
 
     logger.info("🔍 Analyse de la situation date d'examen VTC...")
@@ -327,10 +469,16 @@ def analyze_exam_date_situation(
 
     # Extraire le département de la CMA (si format "CMA XX" ou numéro direct)
     departement = extract_departement_from_cma(cma_depot)
+    result['current_departement'] = departement
+
+    # Vérifier si le candidat a un compte ExamT3P (peut choisir autre département si non)
+    compte_examt3p_existe = examt3p_data.get('compte_existe', False) if examt3p_data else False
+    result['can_choose_other_department'] = not compte_examt3p_existe
 
     logger.info(f"  Date_examen_VTC: {date_examen_vtc}")
     logger.info(f"  Evalbox: {evalbox_status}")
     logger.info(f"  CMA_de_depot: {cma_depot} (département: {departement})")
+    logger.info(f"  Compte ExamT3P existe: {compte_examt3p_existe} (peut choisir autre dept: {not compte_examt3p_existe})")
 
     # Si date_examen_vtc est un lookup, on doit récupérer l'ID et les infos
     if date_examen_vtc:
@@ -359,6 +507,19 @@ def analyze_exam_date_situation(
 
         if crm_client and departement:
             result['next_dates'] = get_next_exam_dates(crm_client, departement, limit=2)
+
+            # Si pas de compte ExamT3P, chercher des dates plus tôt dans d'autres départements
+            if result['can_choose_other_department'] and result['next_dates']:
+                first_date = result['next_dates'][0].get('Date_Examen')
+                if first_date:
+                    result['alternative_department_dates'] = get_earlier_dates_other_departments(
+                        crm_client,
+                        departement,
+                        first_date,
+                        limit=3
+                    )
+                    if result['alternative_department_dates']:
+                        logger.info(f"  📅 {len(result['alternative_department_dates'])} date(s) plus tôt dans d'autres départements")
 
         result['response_message'] = generate_propose_dates_message(result['next_dates'], departement)
         logger.info(f"  ➡️ CAS 1: Date vide")
@@ -434,6 +595,19 @@ def analyze_exam_date_situation(
 
             if crm_client and departement:
                 result['next_dates'] = get_next_exam_dates(crm_client, departement, limit=2)
+
+                # Si pas de compte ExamT3P, chercher des dates plus tôt dans d'autres départements
+                if result['can_choose_other_department'] and result['next_dates']:
+                    first_date = result['next_dates'][0].get('Date_Examen')
+                    if first_date:
+                        result['alternative_department_dates'] = get_earlier_dates_other_departments(
+                            crm_client,
+                            departement,
+                            first_date,
+                            limit=3
+                        )
+                        if result['alternative_department_dates']:
+                            logger.info(f"  📅 {len(result['alternative_department_dates'])} date(s) plus tôt dans d'autres départements")
 
             result['response_message'] = generate_propose_dates_past_message(result['next_dates'], departement)
             logger.info(f"  ➡️ CAS 2: Date passée + non validé")
@@ -532,6 +706,19 @@ def analyze_exam_date_situation(
 
             if crm_client and departement:
                 result['next_dates'] = get_next_exam_dates(crm_client, departement, limit=2)
+
+                # Si pas de compte ExamT3P, chercher des dates plus tôt dans d'autres départements
+                if result['can_choose_other_department'] and result['next_dates']:
+                    first_date = result['next_dates'][0].get('Date_Examen')
+                    if first_date:
+                        result['alternative_department_dates'] = get_earlier_dates_other_departments(
+                            crm_client,
+                            departement,
+                            first_date,
+                            limit=3
+                        )
+                        if result['alternative_department_dates']:
+                            logger.info(f"  📅 {len(result['alternative_department_dates'])} date(s) plus tôt dans d'autres départements")
 
             result['response_message'] = generate_deadline_missed_message(
                 date_examen_str,

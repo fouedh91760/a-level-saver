@@ -221,6 +221,24 @@ Tu réponds aux tickets clients concernant les formations VTC pour Uber avec un 
 - Ne jamais paraphraser par "prochaine session disponible" sans donner les dates précises
 - Format : lister les dates avec leurs infos (date examen + date clôture si disponible)
 
+### 🌍 RÈGLES DÉPARTEMENT ET CHOIX DE CMA :
+
+**RÈGLE FONDAMENTALE - NE JAMAIS INVENTER DE RESTRICTIONS RÉGIONALES :**
+- ⚠️ NE JAMAIS dire "vous devez passer l'examen dans votre région d'inscription"
+- ⚠️ Cette règle est FAUSSE - un candidat PEUT s'inscrire dans n'importe quel département
+
+**Si "DATES PLUS TÔT DANS D'AUTRES DÉPARTEMENTS" apparaît dans les données :**
+- Cela signifie que le candidat N'A PAS encore de compte ExamT3P
+- Il peut donc librement choisir son département d'inscription
+- Présenter d'abord les dates du département assigné (CMA proche du candidat)
+- Mentionner les alternatives seulement si le candidat demande des dates plus tôt
+- Format : "Si vous souhaitez une date plus proche, nous avons également des sessions le [DATE] dans le département [XX]"
+
+**Restrictions réelles (compte ExamT3P existant) :**
+- Une fois le compte ExamT3P créé, le département est assigné
+- Pour changer : créer un nouveau compte avec des identifiants différents (sans frais)
+- Si le premier compte a déjà payé les frais CMA : attente du remboursement (long délai)
+
 **Si "SESSIONS DE FORMATION À PROPOSER" dans les données** :
 - ⚠️ OBLIGATOIRE : La session de formation DOIT correspondre à la date d'examen
 - La formation doit se terminer AVANT la date d'examen (pour permettre la préparation)
@@ -534,6 +552,34 @@ Génère uniquement le contenu de la réponse (pas de métadonnées)."""
                             except:
                                 pass
                         lines.append(f"      {i}. {date_formatted}{cloture_formatted}")
+
+                # Dates alternatives dans d'autres départements (si candidat peut choisir)
+                alt_dates = date_examen_vtc_data.get('alternative_department_dates', [])
+                if alt_dates and date_examen_vtc_data.get('can_choose_other_department'):
+                    lines.append(f"\n  - 🌍 DATES PLUS TÔT DANS D'AUTRES DÉPARTEMENTS (optionnel) :")
+                    lines.append(f"    ⚠️ IMPORTANT : Ces dates sont disponibles car le candidat n'a PAS encore de compte ExamT3P.")
+                    lines.append(f"    Le candidat peut s'inscrire dans N'IMPORTE QUEL département.")
+                    for j, alt_date in enumerate(alt_dates[:3], 1):
+                        alt_date_examen = alt_date.get('Date_Examen', 'N/A')
+                        alt_dept = alt_date.get('Departement', '')
+                        alt_cloture = alt_date.get('Date_Cloture_Inscription', '')
+                        try:
+                            alt_date_obj = datetime.strptime(str(alt_date_examen), "%Y-%m-%d")
+                            alt_date_formatted = alt_date_obj.strftime("%d/%m/%Y")
+                        except:
+                            alt_date_formatted = str(alt_date_examen)
+                        alt_cloture_formatted = ""
+                        if alt_cloture:
+                            try:
+                                if 'T' in str(alt_cloture):
+                                    alt_cloture_obj = datetime.fromisoformat(str(alt_cloture).replace('Z', '+00:00'))
+                                else:
+                                    alt_cloture_obj = datetime.strptime(str(alt_cloture), "%Y-%m-%d")
+                                alt_cloture_formatted = f" (clôture: {alt_cloture_obj.strftime('%d/%m/%Y')})"
+                            except:
+                                pass
+                        lines.append(f"      {j}. {alt_date_formatted} - Département {alt_dept}{alt_cloture_formatted}")
+
                 # Inclure le message complet (non tronqué)
                 if date_examen_vtc_data.get('response_message'):
                     lines.append(f"  - Message suggéré (à adapter) :")
