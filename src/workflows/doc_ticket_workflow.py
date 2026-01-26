@@ -342,25 +342,7 @@ class DOCTicketWorkflow:
                     logger.info("📋 La réponse est disponible ci-dessus pour copier-coller manuellement")
                     result['draft_created'] = False
 
-                # Log la réponse dans une note CRM
-                if analysis_result.get('deal_id'):
-                    from src.utils.crm_note_logger import log_response_sent
-                    # Créer un résumé de la réponse (premiers 150 caractères)
-                    response_summary = response_result.get('response_text', '')[:150]
-                    date_examen_case = analysis_result.get('date_examen_vtc_result', {}).get('case')
-                    uber_case = analysis_result.get('uber_eligibility_result', {}).get('case')
-                    evalbox = analysis_result.get('deal_data', {}).get('Evalbox')
-
-                    log_response_sent(
-                        deal_id=analysis_result['deal_id'],
-                        crm_client=self.crm_client,
-                        ticket_id=ticket_id,
-                        response_summary=response_summary,
-                        case_handled=str(date_examen_case) if date_examen_case else None,
-                        uber_case=uber_case,
-                        evalbox_status=evalbox
-                    )
-                    logger.info("✅ DRAFT CREATION → Note CRM créée")
+                # Note: la note CRM consolidée est créée au STEP 4
             else:
                 logger.info("✅ DRAFT CREATION → Préparé (pas d'auto-create)")
 
@@ -714,9 +696,6 @@ Deux comptes ExamenT3P fonctionnels ont été détectés pour ce candidat, et le
         from src.utils.uber_eligibility_helper import analyze_uber_eligibility
         from src.utils.examt3p_crm_sync import sync_examt3p_to_crm, sync_exam_date_from_examt3p
         from src.utils.ticket_info_extractor import extract_confirmations_from_threads
-        from src.utils.crm_note_logger import (
-            log_examt3p_sync, log_ticket_update, log_uber_eligibility_check
-        )
 
         # ================================================================
         # SYNC EXAMT3P → CRM (AVANT toute analyse)
@@ -738,8 +717,7 @@ Deux comptes ExamenT3P fonctionnels ont été détectés pour ce candidat, et le
                 updated_deal = self.crm_client.get_deal(deal_id)
                 if updated_deal:
                     deal_data = updated_deal
-            # Log la sync dans une note CRM
-            log_examt3p_sync(deal_id, self.crm_client, sync_result)
+            # Note: sync_result sera inclus dans la note consolidée finale
 
             # ================================================================
             # SYNC DATE D'EXAMEN DEPUIS EXAMT3P
@@ -781,8 +759,6 @@ Deux comptes ExamenT3P fonctionnels ont été détectés pour ce candidat, et le
             )
             if ticket_confirmations.get('raw_confirmations'):
                 logger.info(f"  📋 {len(ticket_confirmations['raw_confirmations'])} confirmation(s) détectée(s)")
-                # Log les confirmations dans une note CRM
-                log_ticket_update(deal_id, self.crm_client, ticket_id, ticket_confirmations)
 
             # Alerter sur les mises à jour bloquées (règle critique)
             if ticket_confirmations.get('blocked_updates'):
@@ -1034,53 +1010,105 @@ Deux comptes ExamenT3P fonctionnels ont été détectés pour ce candidat, et le
         response_result: Dict
     ) -> str:
         """
-        Create CRM note (OBLIGATOIRE before draft).
+        Crée une note CRM unique et consolidée avec toutes les infos du traitement.
 
-        Format:
-        [TICKET #123456] Scénarios: SC-01, SC-02
-        - Action: Réponse envoyée
-        - Mise à jour: [champs CRM modifiés]
-        - Next steps: [actions requises]
+        Format naturel et concis:
+        - Contexte du ticket
+        - Actions CRM effectuées
+        - Résumé de la réponse
+        - Alertes et corrections manuelles si nécessaire
         """
-        scenarios = response_result.get('detected_scenarios', [])
-        crm_updates = response_result.get('crm_update_fields', [])
+        lines = []
 
-        note_lines = [
-            f"[TICKET #{ticket_id}] {datetime.now().strftime('%Y-%m-%d %H:%M')}",
-            "",
-            f"**Scénarios détectés** : {', '.join(scenarios)}",
-            "",
-            f"**Action** : Réponse générée et draft créé",
-            ""
-        ]
+        # === EN-TÊTE ===
+        lines.append(f"Réponse ticket #{ticket_id}")
+        lines.append(datetime.now().strftime("%d/%m/%Y %H:%M"))
+        lines.append("")
 
+        # === CONTEXTE (statut candidat) ===
+        deal_data = analysis_result.get('deal_data', {})
+        examt3p_data = analysis_result.get('exament3p_data', {})
+        evalbox = deal_data.get('Evalbox', 'Non défini')
+
+        context_parts = [f"Statut: {evalbox}"]
+        if examt3p_data.get('compte_existe'):
+            context_parts.append("Compte ExamT3P ✓")
+        lines.append(" | ".join(context_parts))
+        lines.append("")
+
+        # === ACTIONS CRM ===
+        actions = []
+
+        # Sync ExamT3P
+        sync_result = analysis_result.get('sync_result', {})
+        if sync_result and sync_result.get('changes_made'):
+            for change in sync_result['changes_made']:
+                field = change['field']
+                old_val = change.get('old_value', '') or '—'
+                new_val = change.get('new_value', '')
+                if 'MDP' in field:
+                    new_val = '***'
+                    old_val = '***' if old_val != '—' else '—'
+                actions.append(f"{field}: {old_val} → {new_val}")
+
+        # Mises à jour depuis la réponse
+        crm_updates = response_result.get('crm_updates', {})
         if crm_updates:
-            note_lines.append(f"**Champs CRM mis à jour** : {', '.join(crm_updates)}")
-            note_lines.append("")
+            for field, value in crm_updates.items():
+                # Éviter les doublons avec sync
+                if not any(field in a for a in actions):
+                    actions.append(f"{field}: → {value}")
 
-        # Add validation warnings
-        validation_warnings = []
+        if actions:
+            lines.append("Actions CRM:")
+            for action in actions:
+                lines.append(f"  • {action}")
+            lines.append("")
+
+        # === RÉSUMÉ RÉPONSE ===
+        response_text = response_result.get('response_text', '')
+        if response_text:
+            # Extraire les premiers 200 caractères significatifs
+            summary = response_text.replace('\n', ' ').strip()
+            # Éviter les signatures et formules de politesse
+            if 'Cordialement' in summary:
+                summary = summary.split('Cordialement')[0].strip()
+            if len(summary) > 200:
+                summary = summary[:197] + "..."
+            lines.append(f"Réponse: {summary}")
+            lines.append("")
+
+        # === ALERTES & CORRECTIONS MANUELLES ===
+        alerts = []
+
+        # Blocages de sync
+        if sync_result and sync_result.get('blocked_changes'):
+            for blocked in sync_result['blocked_changes']:
+                alerts.append(f"⚠️ {blocked['field']} non modifié: {blocked['reason']}")
+
+        # Incohérences détectées
+        training_result = analysis_result.get('training_exam_consistency_result', {})
+
+        if training_result and training_result.get('problem_detected'):
+            alerts.append(f"⚠️ Formation manquée: {training_result.get('problem_description', 'vérifier cohérence formation/examen')}")
+
+        # Validations échouées
         for scenario_id, validation in response_result.get('validation', {}).items():
-            if not validation['compliant']:
-                validation_warnings.append(
-                    f"⚠️  {scenario_id}: blocs manquants {validation['missing_blocks']}"
-                )
+            if not validation.get('compliant'):
+                missing = validation.get('missing_blocks', [])
+                if missing:
+                    alerts.append(f"⚠️ {scenario_id}: vérifier {', '.join(missing)}")
 
-        if validation_warnings:
-            note_lines.append("**Avertissements** :")
-            note_lines.extend(f"  - {w}" for w in validation_warnings)
-            note_lines.append("")
+        # Double compte ExamT3P
+        if examt3p_data.get('duplicate_paid_accounts'):
+            alerts.append("⚠️ DOUBLE COMPTE PAYÉ détecté - vérifier paiement")
 
-        # Add similar tickets reference
-        similar_tickets = response_result.get('similar_tickets', [])
-        if similar_tickets:
-            note_lines.append("**Tickets similaires utilisés** :")
-            for ticket in similar_tickets[:2]:
-                note_lines.append(
-                    f"  - #{ticket['ticket_number']} (score: {ticket['similarity_score']})"
-                )
+        if alerts:
+            lines.append("À vérifier:")
+            for alert in alerts:
+                lines.append(f"  {alert}")
 
-        return "\n".join(note_lines)
+        return "\n".join(lines)
 
     def _prepare_ticket_updates(self, response_result: Dict) -> Dict:
         """Prepare ticket field updates."""
