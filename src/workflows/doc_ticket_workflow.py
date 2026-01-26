@@ -768,10 +768,6 @@ Deux comptes ExamenT3P fonctionnels ont été détectés pour ce candidat, et le
         logger.info("  🚗 Vérification éligibilité Uber 20€...")
         uber_eligibility_result = analyze_uber_eligibility(deal_data)
 
-        # Log éligibilité Uber si applicable
-        if uber_eligibility_result.get('is_uber_20_deal') and deal_id:
-            log_uber_eligibility_check(deal_id, self.crm_client, uber_eligibility_result, ticket_id)
-
         # ================================================================
         # FLAG: Blocage dates/sessions si CAS A ou B (dossier non reçu)
         # ================================================================
