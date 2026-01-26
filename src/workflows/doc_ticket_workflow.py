@@ -1095,23 +1095,36 @@ Deux comptes ExamenT3P fonctionnels ont été détectés pour ce candidat, et le
         from src.utils.session_helper import analyze_session_situation
 
         next_dates = date_examen_vtc_result.get('next_dates', [])
+        date_examen_info = date_examen_vtc_result.get('date_examen_info')
 
         # Vérifier si session déjà assignée dans CRM
         current_session = deal_data.get('Session')
         session_is_empty = not current_session
 
-        # Dates à utiliser pour la proposition de sessions:
-        # - Si next_dates existe → utiliser next_dates (nouvelles dates proposées)
-        # - Si next_dates vide MAIS date_examen_info existe ET session vide → utiliser la date existante
-        exam_dates_for_session = next_dates
+        # ================================================================
+        # LOGIQUE PRIORITÉ DATES POUR SESSIONS:
+        # ================================================================
+        # 1. Si date déjà assignée + CONFIRMATION_SESSION → utiliser UNIQUEMENT date assignée
+        #    (le candidat confirme son choix, pas besoin de proposer d'autres dates)
+        # 2. Sinon si next_dates existe → utiliser next_dates (nouvelles dates proposées)
+        # 3. Sinon si date assignée existe ET session vide → utiliser date assignée
+        # ================================================================
+        detected_intent = triage_result.get('detected_intent', '') if triage_result else ''
+        has_assigned_date = date_examen_info and isinstance(date_examen_info, dict) and date_examen_info.get('Date_Examen')
 
-        if not next_dates and session_is_empty:
-            # Pas de nouvelles dates, mais on a peut-être une date d'examen déjà assignée
-            date_examen_info = date_examen_vtc_result.get('date_examen_info')
-            if date_examen_info and isinstance(date_examen_info, dict):
-                # Utiliser la date d'examen existante pour proposer des sessions
-                exam_dates_for_session = [date_examen_info]
-                logger.info("  📚 Session vide mais date examen assignée - recherche sessions correspondantes...")
+        if has_assigned_date and detected_intent == 'CONFIRMATION_SESSION':
+            # CAS PRIORITAIRE: Candidat confirme sa session → utiliser SA date assignée
+            exam_dates_for_session = [date_examen_info]
+            logger.info(f"  📚 CONFIRMATION_SESSION + date assignée ({date_examen_info.get('Date_Examen')}) → sessions pour cette date uniquement")
+        elif next_dates:
+            # Nouvelles dates proposées (changement de date ou première attribution)
+            exam_dates_for_session = next_dates
+        elif has_assigned_date and session_is_empty:
+            # Pas de nouvelles dates, mais date existante et session vide
+            exam_dates_for_session = [date_examen_info]
+            logger.info("  📚 Session vide mais date examen assignée - recherche sessions correspondantes...")
+        else:
+            exam_dates_for_session = []
 
         should_analyze_sessions = (
             not skip_date_session_analysis
@@ -1141,6 +1154,18 @@ Deux comptes ExamenT3P fonctionnels ont été détectés pour ce candidat, et le
             if date_depot < '2025-11-01':
                 ancien_dossier = True
                 logger.info("ℹ️  Ancien dossier (avant 01/11/2025) - traitement normal")
+
+        # ================================================================
+        # NETTOYAGE date_examen_vtc_result POUR CONFIRMATION_SESSION
+        # ================================================================
+        # Si c'est une confirmation de session avec date assignée,
+        # on ne veut pas que l'IA propose des dates alternatives
+        if has_assigned_date and detected_intent == 'CONFIRMATION_SESSION':
+            # Remplacer next_dates par uniquement la date assignée
+            date_examen_vtc_result = dict(date_examen_vtc_result)  # Copie pour ne pas modifier l'original
+            date_examen_vtc_result['next_dates'] = [date_examen_info]
+            date_examen_vtc_result['alternative_department_dates'] = []  # Pas d'alternatives
+            logger.info("  📝 CONFIRMATION_SESSION: dates alternatives supprimées du contexte IA")
 
         return {
             'contact_data': contact_data,
