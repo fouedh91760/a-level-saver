@@ -152,8 +152,28 @@ class DOCTicketWorkflow:
                 # Créer le brouillon si demandé
                 if auto_create_draft and duplicate_response.get('response_text'):
                     try:
-                        draft_result = self._create_draft_reply(ticket_id, duplicate_response['response_text'])
-                        result['draft_created'] = draft_result.get('success', False)
+                        # Récupérer les infos du ticket pour l'email
+                        ticket = self.desk_client.get_ticket(ticket_id)
+                        to_email = ticket.get('email', '')
+                        department = ticket.get('departmentId', '')
+
+                        # Convertir en HTML
+                        html_content = duplicate_response['response_text'].replace('\n', '<br>')
+
+                        # Email source selon le département
+                        from_email = settings.zoho_desk_email_doc or settings.zoho_desk_email_default
+
+                        logger.info(f"📧 Draft DOUBLON: from={from_email}, to={to_email}")
+
+                        self.desk_client.create_ticket_reply_draft(
+                            ticket_id=ticket_id,
+                            content=html_content,
+                            content_type="html",
+                            from_email=from_email,
+                            to_email=to_email
+                        )
+                        logger.info("✅ DRAFT DOUBLON → Brouillon créé dans Zoho Desk")
+                        result['draft_created'] = True
                     except Exception as e:
                         logger.error(f"Erreur création brouillon doublon: {e}")
                         result['draft_created'] = False
