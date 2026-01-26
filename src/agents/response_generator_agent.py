@@ -587,32 +587,35 @@ Génère uniquement le contenu de la réponse (pas de métadonnées)."""
             lines.append(f"  - Statut Evalbox : {date_examen_vtc_data.get('evalbox_status', 'N/A')}")
             if date_examen_vtc_data.get('should_include_in_response'):
                 lines.append(f"  - ⚠️ ACTION REQUISE : Inclure les informations date examen dans la réponse")
+
+                # ================================================================
+                # Extraire le message du candidat depuis les threads (pour filtrage)
+                # ================================================================
+                candidate_message = ""
+                if threads:
+                    for thread in threads:
+                        # Chercher le thread entrant (du candidat)
+                        direction = thread.get('direction', thread.get('type', ''))
+                        if direction in ['in', 'incoming', 'received']:
+                            candidate_message = thread.get('content', thread.get('summary', ''))
+                            break
+                    # Si pas de direction, prendre le premier thread
+                    if not candidate_message and threads:
+                        candidate_message = threads[0].get('content', threads[0].get('summary', ''))
+
+                # Extraire le département du CRM
+                candidate_dept = None
+                if crm_data:
+                    cma_depot = crm_data.get('CMA_de_depot')
+                    if cma_depot and isinstance(cma_depot, dict):
+                        candidate_dept = cma_depot.get('name', '').split('_')[0] if '_' in str(cma_depot.get('name', '')) else None
+
                 # Inclure les prochaines dates disponibles explicitement
                 next_dates = date_examen_vtc_data.get('next_dates', [])
                 if next_dates:
                     # ================================================================
                     # FILTRAGE INTELLIGENT PAR RÉGION (Backend - pas d'hallucination)
                     # ================================================================
-                    # Extraire le message du candidat depuis les threads
-                    candidate_message = ""
-                    if threads:
-                        for thread in threads:
-                            # Chercher le thread entrant (du candidat)
-                            direction = thread.get('direction', thread.get('type', ''))
-                            if direction in ['in', 'incoming', 'received']:
-                                candidate_message = thread.get('content', thread.get('summary', ''))
-                                break
-                        # Si pas de direction, prendre le premier thread
-                        if not candidate_message and threads:
-                            candidate_message = threads[0].get('content', threads[0].get('summary', ''))
-
-                    # Extraire le département du CRM
-                    candidate_dept = None
-                    if crm_data:
-                        cma_depot = crm_data.get('CMA_de_depot')
-                        if cma_depot and isinstance(cma_depot, dict):
-                            candidate_dept = cma_depot.get('name', '').split('_')[0] if '_' in str(cma_depot.get('name', '')) else None
-
                     # Appliquer le filtrage intelligent
                     filtered_dates = filter_dates_by_region_relevance(
                         all_dates=next_dates,
