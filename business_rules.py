@@ -117,14 +117,31 @@ class BusinessRules:
             # RÈGLE PRIORITAIRE: Si deal 20€ existe MAIS candidat demande autre service → Contact
             # Mots-clés à détecter dans le sujet et/ou dernier thread
             other_service_keywords = [
+                # Examen pratique (hors partenariat Uber €20 qui ne couvre que le théorique)
+                "examen pratique",
+                "pratique vtc",
+                "convocation pratique",
+                "épreuve pratique",
+                "epreuve pratique",
+                # Autres formations
                 "autre formation",
                 "formation pratique",
                 "double commande",
+                # Location véhicule
                 "location véhicule",
                 "location de véhicule",
+                "louer un véhicule",
+                "louer véhicule",
+                # CPF
                 "cpf",
                 "formation cpf",
-                "mon compte cpf"
+                "mon compte cpf",
+                "compte cpf",
+                # Taxi / autres métiers
+                "taxi",
+                "ambulance",
+                "capacité de transport",
+                "capacite de transport"
             ]
 
             # Vérifier sujet et dernier thread
