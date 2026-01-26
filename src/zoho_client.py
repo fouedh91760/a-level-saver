@@ -250,7 +250,9 @@ class ZohoDeskClient(ZohoAPIClient):
         self,
         ticket_id: str,
         content: str,
-        content_type: str = "html"
+        content_type: str = "plainText",
+        from_email: str = None,
+        to_email: str = None
     ) -> Dict[str, Any]:
         """
         Create a draft reply for a ticket.
@@ -261,7 +263,9 @@ class ZohoDeskClient(ZohoAPIClient):
         Args:
             ticket_id: The ticket ID
             content: The draft content (HTML or plain text)
-            content_type: "html" or "plainText" (default: "html")
+            content_type: "html" or "plainText" (default: "plainText")
+            from_email: Sender email address (optional)
+            to_email: Recipient email address (optional)
 
         Returns:
             Dict containing the draft thread details
@@ -272,10 +276,20 @@ class ZohoDeskClient(ZohoAPIClient):
         url = f"{settings.zoho_desk_api_url}/tickets/{ticket_id}/draftReply"
         params = {"orgId": settings.zoho_desk_org_id}
         data = {
+            "channel": "EMAIL",
             "contentType": content_type,
-            "content": content
+            "content": content,
+            "isForward": False
         }
+        # Ajouter fromEmailAddress si fourni
+        if from_email:
+            data["fromEmailAddress"] = from_email
+        # Ajouter to si fourni
+        if to_email:
+            data["to"] = to_email
+
         logger.info(f"Creating draft reply for ticket {ticket_id}")
+        logger.debug(f"Draft payload: channel=EMAIL, contentType={content_type}, content_length={len(content)}")
         return self._make_request("POST", url, params=params, json=data)
 
     def get_ticket_threads(self, ticket_id: str) -> Dict[str, Any]:
