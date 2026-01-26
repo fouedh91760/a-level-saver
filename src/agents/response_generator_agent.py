@@ -414,9 +414,14 @@ Preference_horaire: jour|soir (si préférence confirmée)
         date_examen_vtc_data: Optional[Dict] = None,
         session_data: Optional[Dict] = None,
         uber_eligibility_data: Optional[Dict] = None,
-        threads: Optional[List] = None
+        threads: Optional[List] = None,
+        intent_context: Optional[Dict] = None
     ) -> str:
-        """Build user prompt with context, examples, and full thread history."""
+        """Build user prompt with context, examples, and full thread history.
+
+        Args:
+            intent_context: Contexte d'intention du TriageAgent (wants_earlier_date, etc.)
+        """
         # Format similar tickets as few-shot examples
         few_shot_examples = self.rag.format_for_few_shot(similar_tickets)
 
@@ -428,7 +433,7 @@ Preference_horaire: jour|soir (si préférence confirmée)
         )
 
         # Format data sources
-        data_summary = self._format_data_sources(crm_data, exament3p_data, evalbox_data, date_examen_vtc_data, session_data, uber_eligibility_data, threads)
+        data_summary = self._format_data_sources(crm_data, exament3p_data, evalbox_data, date_examen_vtc_data, session_data, uber_eligibility_data, threads, intent_context)
 
         # Format thread history (full conversation)
         thread_history = self._format_thread_history(threads)
@@ -499,9 +504,14 @@ Génère uniquement le contenu de la réponse (pas de métadonnées)."""
         date_examen_vtc_data: Optional[Dict] = None,
         session_data: Optional[Dict] = None,
         uber_eligibility_data: Optional[Dict] = None,
-        threads: Optional[List] = None
+        threads: Optional[List] = None,
+        intent_context: Optional[Dict] = None
     ) -> str:
-        """Format available data sources for prompt."""
+        """Format available data sources for prompt.
+
+        Args:
+            intent_context: Contexte d'intention du TriageAgent (wants_earlier_date, etc.)
+        """
         from datetime import datetime
         lines = []
 
@@ -706,7 +716,11 @@ Génère uniquement le contenu de la réponse (pas de métadonnées)."""
                 # Dates alternatives dans d'autres départements
                 # SEULEMENT si le candidat demande explicitement des dates plus tôt ou autres options
                 alt_dates = date_examen_vtc_data.get('alternative_department_dates', [])
-                candidate_wants_earlier = _candidate_requests_earlier_dates(candidate_message)
+                # Utiliser l'intent_context du TriageAgent si disponible, sinon fallback sur keywords
+                candidate_wants_earlier = (
+                    (intent_context or {}).get('wants_earlier_date', False) or
+                    _candidate_requests_earlier_dates(candidate_message)  # Fallback rétrocompatibilité
+                )
                 if alt_dates and date_examen_vtc_data.get('can_choose_other_department') and candidate_wants_earlier:
                     lines.append(f"\n  - 🌍 DATES PLUS TÔT DANS D'AUTRES DÉPARTEMENTS (candidat a demandé) :")
                     lines.append(f"    ⚠️ IMPORTANT : Ces dates sont disponibles car le candidat n'a PAS encore de compte ExamT3P.")
@@ -928,7 +942,8 @@ Génère uniquement le contenu de la réponse (pas de métadonnées)."""
         threads: Optional[List] = None,
         top_k_similar: int = 3,
         temperature: float = 0.3,
-        max_tokens: int = 2000
+        max_tokens: int = 2000,
+        intent_context: Optional[Dict] = None
     ) -> Dict:
         """
         Generate response for a ticket.
@@ -946,6 +961,7 @@ Génère uniquement le contenu de la réponse (pas de métadonnées)."""
             top_k_similar: Number of similar tickets to use as examples
             temperature: Claude temperature (0-1, lower = more focused)
             max_tokens: Maximum tokens for response
+            intent_context: Contexte d'intention du TriageAgent (wants_earlier_date, etc.)
 
         Returns:
             {
@@ -995,7 +1011,8 @@ Génère uniquement le contenu de la réponse (pas de métadonnées)."""
             date_examen_vtc_data=date_examen_vtc_data,
             session_data=session_data,
             uber_eligibility_data=uber_eligibility_data,
-            threads=threads
+            threads=threads,
+            intent_context=intent_context
         )
 
         # 5. Call Claude API
@@ -1149,13 +1166,17 @@ Génère uniquement le contenu de la réponse (pas de métadonnées)."""
             )
 
         # ================================================================
+        # Extraire intent_context pour tous les cas (pas seulement REPORT_DATE)
+        # ================================================================
+        intent_context = triage_result.get('intent_context', {}) if triage_result else {}
+
+        # ================================================================
         # CAS SPÉCIAL: REPORT_DATE (Demande de changement de date)
         # ================================================================
         # Détecté par IA dans TriageAgent - applique la procédure stricte
         # Si dossier CMA clôturé → Force majeure OBLIGATOIRE
         if triage_result and triage_result.get('detected_intent') == 'REPORT_DATE':
             logger.info("🚨 MODE REPORT_DATE: Demande de changement de date détectée par IA")
-            intent_context = triage_result.get('intent_context', {})
 
             # Vérifier si le dossier CMA est clôturé (Evalbox avancé)
             evalbox_status = None
@@ -1193,7 +1214,8 @@ Génère uniquement le contenu de la réponse (pas de métadonnées)."""
                 date_examen_vtc_data=date_examen_vtc_data,
                 session_data=session_data,
                 uber_eligibility_data=uber_eligibility_data,
-                threads=threads  # Pass thread history for context
+                threads=threads,  # Pass thread history for context
+                intent_context=intent_context  # Pass intent context from triage (wants_earlier_date, etc.)
             )
 
             # Check if all validations passed

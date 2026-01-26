@@ -93,6 +93,11 @@ MOTIFS DE FORCE MAJEURE:
 - Accident: accident (voiture, travail, etc.)
 - Other: convocation judiciaire, catastrophe naturelle, force majeure explicite
 
+CONTEXTE SUPPLÉMENTAIRE (pour toutes les intentions):
+- wants_earlier_date: true si le candidat demande une date plus tôt, plus proche, plus rapide,
+  ou s'il mentionne vouloir un autre département, d'autres options, toutes les dates disponibles,
+  ou une urgence particulière (pressé, au plus vite, rapidement, etc.)
+
 ---
 
 Réponds UNIQUEMENT en JSON valide:
@@ -106,7 +111,8 @@ Réponds UNIQUEMENT en JSON valide:
         "is_urgent": true | false,
         "mentions_force_majeure": true | false,
         "force_majeure_type": "medical" | "death" | "accident" | "other" | null,
-        "force_majeure_details": "description courte si force majeure détectée" | null
+        "force_majeure_details": "description courte si force majeure détectée" | null,
+        "wants_earlier_date": true | false
     }
 }
 """
