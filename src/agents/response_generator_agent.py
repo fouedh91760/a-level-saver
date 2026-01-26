@@ -887,9 +887,13 @@ Génère uniquement le contenu de la réponse (pas de métadonnées)."""
                     customer_message=customer_message,
                     threads=threads
                 )
-            elif uber_case in ['A', 'B'] and is_uber_deal:
+            elif uber_case in ['A', 'B', 'D', 'E'] and is_uber_deal:
+                # CAS A: Documents non envoyés
+                # CAS B: Test de sélection non passé
+                # CAS D: Compte Uber non vérifié (email ≠ Uber Driver)
+                # CAS E: Non éligible selon Uber (raisons inconnues)
                 logger.info(f"🚨 MODE CAS {uber_case}: Utilisation message pré-généré Uber")
-                return self._generate_uber_case_a_b_response(
+                return self._generate_uber_case_response(
                     uber_eligibility_data=uber_eligibility_data,
                     customer_message=customer_message,
                     threads=threads
@@ -1302,23 +1306,26 @@ L'équipe Cab Formations"""
             }
         }
 
-    def _generate_uber_case_a_b_response(
+    def _generate_uber_case_response(
         self,
         uber_eligibility_data: Dict,
         customer_message: str = "",
         threads: Optional[List] = None
     ) -> Dict:
         """
-        Génère une réponse CONTEXTUELLE pour CAS A ou CAS B Uber.
+        Génère une réponse CONTEXTUELLE pour les CAS Uber (A, B, D, E).
 
         CAS A: Candidat a payé 20€ mais n'a pas finalisé son inscription
-               → Répondre à sa question spécifique
-               → Récapituler l'offre et ses avantages (241€ payés!)
-               → Être rassurant et pousser à l'action (envoyer dossier)
+               → Récapituler l'offre et pousser à envoyer le dossier
 
         CAS B: Candidat a envoyé documents mais n'a pas passé le test
-               → Répondre à sa question
                → Demander de passer le test de sélection
+
+        CAS D: Compte Uber non vérifié (email ≠ Uber Driver)
+               → Vérifier email, contacter Uber via l'app si nécessaire
+
+        CAS E: Non éligible selon Uber (raisons inconnues de CAB)
+               → Contacter Uber via l'app pour comprendre
 
         UTILISE CLAUDE pour générer une réponse contextuelle qui répond
         à la question du candidat tout en poussant à l'action.
@@ -1377,7 +1384,7 @@ RÈGLES DE RÉDACTION:
 DURÉES DE FORMATION - ABSOLUMENT CORRECT:
 - Cours du jour: 1 SEMAINE (pas 2!)
 - Cours du soir: 2 SEMAINES (pas 4!)"""
-        else:  # CAS B
+        elif uber_case == 'B':
             date_dossier = uber_eligibility_data.get('date_dossier_recu', '')
             system_prompt = f"""Tu es un assistant de Cab Formations, centre de formation VTC.
 Tu dois générer une réponse email professionnelle et rassurante.
@@ -1410,6 +1417,71 @@ RÈGLES:
 DURÉES DE FORMATION - ABSOLUMENT CORRECT:
 - Cours du jour: 1 SEMAINE (pas 2!)
 - Cours du soir: 2 SEMAINES (pas 4!)"""
+        elif uber_case == 'D':
+            # CAS D: Compte Uber non vérifié
+            system_prompt = """Tu es un assistant de Cab Formations, centre de formation VTC.
+Tu dois générer une réponse email professionnelle et empathique.
+
+CONTEXTE:
+- Le candidat a payé 20€ pour l'offre Uber VTC
+- L'email utilisé pour l'inscription n'est PAS lié à un compte Uber chauffeur actif
+- Tu dois RÉPONDRE À SA QUESTION tout en expliquant le problème du compte Uber
+
+SITUATION COMPTE UBER:
+- Pour bénéficier de l'offre partenariat Uber, l'email d'inscription DOIT être le même que celui du compte Uber Driver (chauffeur)
+- Si le candidat a utilisé un email différent → nous donner le bon email
+- Si c'est le même email mais compte non reconnu → contacter Uber
+
+COMMENT CONTACTER UBER:
+- Se connecter à l'application Uber Driver
+- Aller dans Compte → Aide
+- Utiliser le chat intégré pour échanger avec le support
+
+RÈGLES:
+- TOUJOURS répondre à la question posée en PREMIER
+- Ensuite expliquer le problème du compte Uber
+- Être empathique: on comprend que c'est frustrant
+- Expliquer que CAB n'a AUCUNE visibilité sur les critères Uber
+- Ne JAMAIS mentionner de dates d'examen (tant que le compte Uber n'est pas vérifié)
+- Ne JAMAIS demander d'identifiants ExamT3P
+- Terminer par "Cordialement, L'équipe Cab Formations"
+
+IMPORTANT: Ne pas inventer de numéro de téléphone ou email Uber. Le SEUL moyen de contacter Uber est via l'application."""
+        else:  # CAS E
+            # CAS E: Non éligible selon Uber
+            system_prompt = """Tu es un assistant de Cab Formations, centre de formation VTC.
+Tu dois générer une réponse email professionnelle et empathique.
+
+CONTEXTE:
+- Le candidat a payé 20€ pour l'offre Uber VTC
+- Uber considère le candidat comme NON ÉLIGIBLE à l'offre partenariat
+- CAB Formations n'a AUCUNE visibilité sur les raisons (critères internes Uber)
+- Tu dois RÉPONDRE À SA QUESTION tout en expliquant la situation
+
+CE QUE CELA SIGNIFIE:
+- Uber applique ses propres critères d'éligibilité
+- Seul Uber peut expliquer pourquoi le candidat n'est pas éligible
+- CAB ne peut pas inscrire le candidat tant qu'Uber ne le considère pas éligible
+
+COMMENT CONTACTER UBER:
+- Se connecter à l'application Uber Driver
+- Aller dans Compte → Aide
+- Utiliser le chat intégré pour échanger avec le support
+- Expliquer qu'il souhaite bénéficier de l'offre formation VTC en partenariat avec CAB Formations
+
+ALTERNATIVE:
+- Si Uber confirme la non-éligibilité, le candidat peut s'inscrire à la formation VTC classique
+- Ne pas donner de prix (nous contacter pour plus d'infos)
+
+RÈGLES:
+- TOUJOURS répondre à la question posée en PREMIER
+- Être empathique: on comprend la frustration
+- Expliquer clairement que CAB n'a pas de visibilité sur les raisons Uber
+- Ne JAMAIS mentionner de dates d'examen
+- Ne JAMAIS demander d'identifiants ExamT3P
+- Terminer par "Cordialement, L'équipe Cab Formations"
+
+IMPORTANT: Ne pas inventer de numéro de téléphone ou email Uber. Le SEUL moyen de contacter Uber est via l'application."""
 
         # Ajouter les alertes temporaires au prompt si présentes
         if alerts_text:
@@ -1421,12 +1493,20 @@ IMPORTANT: Si l'alerte ci-dessus correspond à la situation du candidat (par exe
 s'il mentionne avoir reçu deux convocations), TRAITE D'ABORD L'ALERTE avant de
 parler de l'offre ou de demander les documents. L'alerte est PRIORITAIRE."""
 
+        # Construire le user_prompt en fonction du cas
+        case_instructions = {
+            'A': "Récapitule les avantages de l'offre et pousse à envoyer le dossier",
+            'B': "Rappelle de passer le test de sélection",
+            'D': "Explique le problème du compte Uber et comment le résoudre",
+            'E': "Explique la non-éligibilité Uber et les alternatives"
+        }
+
         user_prompt = f"""MESSAGE DU CANDIDAT:
 {customer_message}
 
 Génère une réponse email complète qui:
 1. Répond à sa question spécifique
-2. {"Récapitule les avantages de l'offre et pousse à envoyer le dossier" if uber_case == 'A' else "Rappelle de passer le test de sélection"}
+2. {case_instructions.get(uber_case, "Explique la situation")}
 
 Commence par "Bonjour," (pas de prénom)."""
 
@@ -1443,19 +1523,14 @@ Commence par "Bonjour," (pas de prénom)."""
 
         except Exception as e:
             logger.error(f"  Erreur Claude API: {e}")
-            # Fallback sur message par défaut
-            if uber_case == 'A':
+            # Fallback sur message pré-généré de uber_eligibility_helper
+            pre_generated_message = uber_eligibility_data.get('response_message')
+            if pre_generated_message:
+                response_message = f"Bonjour,\n\n{pre_generated_message}\n\nCordialement,\nL'équipe Cab Formations"
+            elif uber_case == 'A':
                 response_message = """Bonjour,
 
 Merci pour votre message et votre intérêt pour notre formation VTC !
-
-Pour répondre à votre question : nos formations se déroulent à **horaires fixes** selon un planning établi. Nous proposons **deux types de sessions** pour nous adapter au mieux à vos contraintes :
-
-📅 **Cours du jour** : 8h30 - 16h30
-   → Durée : **1 semaine** (du lundi au vendredi)
-
-🌙 **Cours du soir** : 18h00 - 22h00
-   → Durée : **2 semaines** (soirées du lundi au vendredi)
 
 **Récapitulatif de votre offre Uber à 20€ :**
 
@@ -1470,22 +1545,14 @@ Pour répondre à votre question : nos formations se déroulent à **horaires fi
 2. **Nous envoyer vos documents** (pièce d'identité, justificatif de domicile, etc.)
 3. **Passer un test de sélection simple** - vous recevrez le lien par email
 
-Dès réception de votre dossier complet, nous pourrons vous proposer les prochaines dates d'examen disponibles dans votre région et vous inscrire à la session de formation qui vous convient le mieux.
-
 N'hésitez pas à nous envoyer vos documents dès que possible pour démarrer votre parcours vers la carte VTC !
 
 Cordialement,
 L'équipe Cab Formations"""
-            else:
-                response_message = f"""Bonjour,
+            elif uber_case == 'B':
+                response_message = """Bonjour,
 
 Merci pour votre message !
-
-Nous avons bien reçu votre dossier{' le ' + date_dossier if date_dossier else ''}. Merci !
-
-Pour répondre à votre question : nos formations se déroulent à **horaires fixes**. Nous proposons deux options :
-- **Cours du jour** : 8h30-16h30, durée **1 semaine**
-- **Cours du soir** : 18h00-22h00, durée **2 semaines**
 
 **Il vous reste une dernière étape pour finaliser votre inscription :**
 
@@ -1495,7 +1562,44 @@ Ce test est **simple et rapide**, il ne nécessite aucune préparation. Il nous 
 
 Si vous n'avez pas reçu l'email, n'hésitez pas à nous le signaler et nous vous renverrons le lien immédiatement.
 
-Dès que le test sera passé, nous pourrons vous proposer les prochaines dates d'examen et vous inscrire à la session de formation correspondante.
+Cordialement,
+L'équipe Cab Formations"""
+            elif uber_case == 'D':
+                response_message = """Bonjour,
+
+Nous avons vérifié votre inscription et constaté que l'adresse email utilisée n'est pas liée à un compte Uber chauffeur actif.
+
+**Voici les étapes à suivre :**
+
+1️⃣ **Vérifiez que vous utilisez la bonne adresse email**
+   - L'email utilisé pour votre inscription CAB Formations doit être **exactement le même** que celui de votre compte **Uber Driver** (chauffeur), et non votre compte Uber client.
+   - Si vous avez utilisé une adresse différente, merci de nous communiquer l'adresse email liée à votre compte Uber Driver.
+
+2️⃣ **Si les adresses sont identiques**
+   - Contactez directement le support Uber pour comprendre la situation.
+   - **Comment contacter Uber :** Connectez-vous à l'application Uber Driver → Compte → Aide → Chat
+
+⚠️ Nous n'avons aucune visibilité sur les critères internes d'Uber. Seul leur support peut vous expliquer pourquoi votre compte n'est pas reconnu.
+
+Cordialement,
+L'équipe Cab Formations"""
+            else:  # CAS E
+                response_message = """Bonjour,
+
+Nous avons vérifié votre dossier auprès d'Uber et malheureusement, votre profil n'est **pas éligible** à l'offre VTC en partenariat avec Uber.
+
+Uber applique ses propres critères d'éligibilité. Malheureusement, **nous n'avons aucune visibilité** sur les raisons de cette décision.
+
+**Ce que vous devez faire :**
+
+📱 Contactez le support Uber pour comprendre pourquoi :
+   - Connectez-vous à l'application Uber Driver
+   - Allez dans Compte → Aide
+   - Utilisez le chat intégré pour échanger avec le support
+
+Expliquez-leur que vous souhaitez bénéficier de l'offre de formation VTC en partenariat avec CAB Formations.
+
+**Alternative :** Si Uber confirme que vous n'êtes pas éligible, vous pouvez toujours vous inscrire à notre formation VTC classique. N'hésitez pas à nous contacter pour plus d'informations.
 
 Cordialement,
 L'équipe Cab Formations"""

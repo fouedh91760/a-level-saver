@@ -1000,8 +1000,11 @@ Deux comptes ExamenT3P fonctionnels ont été détectés pour ce candidat, et le
             'sync_result': sync_result,  # Résultat sync ExamT3P → CRM
             'ticket_confirmations': ticket_confirmations,  # Confirmations extraites du ticket
             # Flag critique: identifiants invalides = SEUL sujet de la réponse
-            'credentials_only_response': skip_date_session_analysis,
-            'skip_reason': skip_reason,  # Raison du skip (credentials_invalid, uber_case_a_or_b, dossier_not_received)
+            # IMPORTANT: credentials_only_response = True UNIQUEMENT si skip_reason == 'credentials_invalid'
+            # Pour les cas Uber (A, B, D, E), on utilise uber_case_response avec le message pré-généré
+            'credentials_only_response': skip_reason == 'credentials_invalid',
+            'uber_case_response': skip_reason and skip_reason.startswith('uber_case_'),
+            'skip_reason': skip_reason,  # Raison du skip (credentials_invalid, uber_case_X, dossier_not_received)
             'dossier_not_received': dossier_not_received_blocks_dates,
             'uber_case_blocks_dates': uber_case_blocks_dates,
             # Cohérence formation/examen (cas manqué formation + examen imminent)
