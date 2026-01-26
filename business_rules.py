@@ -34,8 +34,9 @@ DOCUMENT_KEYWORDS = [
     "attestation d'hébergement", "attestation d'hebergement", "attestation hebergement",
     "preuve de domicile",
 
-    # Signature
-    "signature", "signé", "signe"
+    # Signature de document (pas signature email)
+    # Note: "signature" retiré car trop de faux positifs avec signatures email
+    "document signé", "contrat signé", "formulaire signé"
 ]
 
 
