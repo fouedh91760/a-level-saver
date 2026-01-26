@@ -295,15 +295,27 @@ FORBIDDEN_TERMS = [
 def detect_scenario_from_text(
     subject: str,
     customer_message: str,
-    crm_data: Dict = None
+    crm_data: Dict = None,
+    examt3p_data: Dict = None
 ) -> List[str]:
     """
-    Detect which scenarios apply based on subject, message, and CRM data.
+    Detect which scenarios apply based on subject, message, and CRM/ExamT3P data.
+
+    Args:
+        subject: Ticket subject
+        customer_message: Customer message content
+        crm_data: CRM deal data (optional)
+        examt3p_data: ExamT3P extraction data including credentials status (optional)
 
     Returns list of scenario IDs (can be multiple scenarios).
     """
     detected_scenarios = []
     combined_text = (subject + " " + customer_message).lower()
+
+    # Check if credentials are already validated (from ExamT3P data)
+    credentials_validated = False
+    if examt3p_data:
+        credentials_validated = examt3p_data.get('connection_test_success', False)
 
     # =========================================================================
     # PRIORITY 1: CRM-based detection (HORS_PARTENARIAT)
@@ -331,6 +343,13 @@ def detect_scenario_from_text(
         # Skip scenarios without triggers (CRM-based or date-based detection)
         triggers = scenario_def.get("triggers", [])
         if not triggers:
+            continue
+
+        # =====================================================================
+        # SPECIAL CASE: SC-01_IDENTIFIANTS_EXAMENT3P
+        # Skip if credentials are already validated (candidate sent them, not asking)
+        # =====================================================================
+        if scenario_id == "SC-01_IDENTIFIANTS_EXAMENT3P" and credentials_validated:
             continue
 
         # Check if any trigger matches

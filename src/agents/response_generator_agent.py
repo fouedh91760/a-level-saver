@@ -727,7 +727,8 @@ Génère uniquement le contenu de la réponse (pas de métadonnées)."""
         detected_scenarios = detect_scenario_from_text(
             subject=ticket_subject,
             customer_message=customer_message,
-            crm_data=crm_data
+            crm_data=crm_data,
+            examt3p_data=exament3p_data
         )
         logger.info(f"Detected scenarios: {detected_scenarios}")
 
