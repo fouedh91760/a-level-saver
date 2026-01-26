@@ -284,6 +284,55 @@ def test_examt3p_connection(identifiant: str, mot_de_passe: str) -> Tuple[bool, 
         return False, str(e)
 
 
+def _is_account_paid(examt3p_data: Dict) -> bool:
+    """
+    Détermine si un compte ExamT3P a déjà été payé.
+
+    Un compte est considéré comme payé si:
+    - statut_dossier est "Valide", "En attente de convocation", "En cours d'instruction"
+    - OU paiement_cma.statut == "VALIDÉ"
+    - OU historique_paiements contient au moins un paiement VALIDÉ
+
+    Args:
+        examt3p_data: Données extraites du compte ExamT3P
+
+    Returns:
+        True si le compte est payé, False sinon
+    """
+    if not examt3p_data or examt3p_data.get('error'):
+        return False
+
+    # Vérifier le statut du dossier
+    statut = examt3p_data.get('statut_dossier', '').lower()
+    statuts_payes = [
+        'valide',
+        'en attente de convocation',
+        'en cours d\'instruction',
+        'en attente d\'instruction des pièces',
+        'dossier validé'
+    ]
+    if any(s in statut for s in statuts_payes):
+        return True
+
+    # Vérifier le paiement CMA
+    paiement_cma = examt3p_data.get('paiement_cma', {})
+    if paiement_cma.get('statut', '').upper() == 'VALIDÉ':
+        return True
+
+    # Vérifier l'historique des paiements
+    historique = examt3p_data.get('historique_paiements', [])
+    for paiement in historique:
+        if paiement.get('statut', '').upper() == 'VALIDÉ':
+            return True
+
+    # Vérifier la progression
+    progression = examt3p_data.get('progression', {})
+    if progression.get('paiement', '').upper() == 'VALIDÉ':
+        return True
+
+    return False
+
+
 def get_credentials_with_validation(
     deal_data: Dict,
     threads: List[Dict],
@@ -444,53 +493,157 @@ def get_credentials_with_validation(
     connection_ok, connection_error = test_examt3p_connection(identifiant, mot_de_passe)
 
     # ================================================================
-    # ÉTAPE 4: Si CRM échoue, essayer les identifiants des threads
+    # ÉTAPE 4: Gestion intelligente des identifiants multiples
     # ================================================================
-    if not connection_ok and source == 'crm':
-        # Vérifier si les threads ont des identifiants DIFFÉRENTS
-        if identifiant_threads and mdp_threads:
-            # Comparer (ignorer la casse pour l'identifiant)
-            is_different = (
-                identifiant_threads.lower() != identifiant_crm.lower() or
-                mdp_threads != mdp_crm
+    # Vérifier si les threads ont des identifiants DIFFÉRENTS
+    threads_have_different_creds = False
+    if identifiant_threads and mdp_threads and identifiant_crm and mdp_crm:
+        threads_have_different_creds = (
+            identifiant_threads.lower() != identifiant_crm.lower() or
+            mdp_threads != mdp_crm
+        )
+
+    # CAS 1: CRM échoue → tester threads
+    if not connection_ok and source == 'crm' and identifiant_threads and mdp_threads:
+        if threads_have_different_creds:
+            logger.info(f"  🔄 CRM échoué, test des identifiants des threads: {identifiant_threads}")
+            connection_ok_threads, connection_error_threads = test_examt3p_connection(
+                identifiant_threads, mdp_threads
             )
 
-            if is_different:
-                logger.info(f"  🔄 CRM échoué, test des identifiants des threads: {identifiant_threads}")
-                connection_ok_threads, connection_error_threads = test_examt3p_connection(
-                    identifiant_threads, mdp_threads
-                )
+            if connection_ok_threads:
+                logger.info("  ✅ Identifiants des threads VALIDES!")
+                identifiant = identifiant_threads
+                mot_de_passe = mdp_threads
+                source = 'email_threads'
+                connection_ok = True
+                connection_error = None
+                result['identifiant'] = identifiant
+                result['mot_de_passe'] = mot_de_passe
+                result['credentials_source'] = 'email_threads'
 
-                if connection_ok_threads:
-                    logger.info("  ✅ Identifiants des threads VALIDES!")
-                    # Utiliser les identifiants des threads
+                # Mettre à jour le CRM
+                if auto_update_crm and crm_client and deal_id:
+                    logger.info("  📝 Mise à jour du CRM avec les identifiants corrigés...")
+                    try:
+                        crm_client.update_deal(deal_id, {
+                            'IDENTIFIANT_EVALBOX': identifiant,
+                            'MDP_EVALBOX': mot_de_passe
+                        })
+                        logger.info("  ✅ CRM mis à jour avec les nouveaux identifiants")
+                        result['crm_updated'] = True
+                    except Exception as e:
+                        logger.error(f"  ❌ Erreur mise à jour CRM: {e}")
+            else:
+                logger.warning(f"  ❌ Identifiants threads également invalides: {connection_error_threads}")
+        else:
+            logger.info("  ⚠️  Threads ont les mêmes identifiants que CRM - pas de retry")
+
+    # CAS 2: CRM fonctionne MAIS threads ont des identifiants DIFFÉRENTS
+    # → Il faut vérifier si on doit basculer sur le compte du candidat
+    elif connection_ok and source == 'crm' and threads_have_different_creds:
+        logger.info(f"  🔍 CRM OK mais threads ont des identifiants différents: {identifiant_threads}")
+        logger.info("  🔍 Test du compte candidat pour comparaison...")
+
+        connection_ok_threads, _ = test_examt3p_connection(identifiant_threads, mdp_threads)
+
+        if connection_ok_threads:
+            # LES DEUX COMPTES FONCTIONNENT → Décision basée sur le statut de paiement
+            logger.info("  ⚠️  DEUX COMPTES VALIDES DÉTECTÉS!")
+            logger.info("  🔍 Extraction des données pour comparaison...")
+
+            # Importer l'extracteur ExamT3P
+            try:
+                from exament3p_playwright import extract_exament3p_sync
+
+                # Extraire les données des deux comptes
+                logger.info(f"  📊 Extraction compte CRM: {identifiant_crm}")
+                data_crm = extract_exament3p_sync(identifiant_crm, mdp_crm, max_retries=1)
+
+                logger.info(f"  📊 Extraction compte Thread: {identifiant_threads}")
+                data_threads = extract_exament3p_sync(identifiant_threads, mdp_threads, max_retries=1)
+
+                # Analyser les statuts de paiement
+                crm_paid = _is_account_paid(data_crm)
+                threads_paid = _is_account_paid(data_threads)
+
+                logger.info(f"  💰 Compte CRM payé: {crm_paid}")
+                logger.info(f"  💰 Compte Thread payé: {threads_paid}")
+
+                # RÈGLES DE DÉCISION
+                if crm_paid and threads_paid:
+                    # ⚠️ DOUBLON DE PAIEMENT - Alerter!
+                    logger.error("  🚨 ALERTE: DEUX COMPTES PAYÉS DÉTECTÉS!")
+                    logger.error(f"     CRM: {identifiant_crm}")
+                    logger.error(f"     Thread: {identifiant_threads}")
+                    result['duplicate_payment_alert'] = True
+                    result['duplicate_accounts'] = {
+                        'crm': {'identifiant': identifiant_crm, 'paid': True},
+                        'thread': {'identifiant': identifiant_threads, 'paid': True}
+                    }
+                    # Garder le compte CRM (déjà en place), mais alerter
+                    logger.warning("  → Garde du compte CRM, intervention manuelle requise")
+
+                elif crm_paid and not threads_paid:
+                    # CRM payé, threads non → Garder CRM
+                    logger.info("  ✅ Compte CRM déjà payé → On le garde")
+                    # Pas de changement, on garde les identifiants CRM
+
+                elif not crm_paid and threads_paid:
+                    # Thread payé, CRM non → Basculer sur thread!
+                    logger.info("  🔄 Compte candidat déjà payé → Bascule sur ses identifiants")
                     identifiant = identifiant_threads
                     mot_de_passe = mdp_threads
                     source = 'email_threads'
-                    connection_ok = True
-                    connection_error = None
-
-                    # Mettre à jour le résultat
                     result['identifiant'] = identifiant
                     result['mot_de_passe'] = mot_de_passe
                     result['credentials_source'] = 'email_threads'
+                    result['switched_to_paid_account'] = True
 
-                    # Mettre à jour le CRM avec les bons identifiants
+                    # Mettre à jour le CRM
                     if auto_update_crm and crm_client and deal_id:
-                        logger.info("  📝 Mise à jour du CRM avec les identifiants corrigés...")
+                        logger.info("  📝 Mise à jour du CRM avec le compte payé du candidat...")
                         try:
                             crm_client.update_deal(deal_id, {
                                 'IDENTIFIANT_EVALBOX': identifiant,
                                 'MDP_EVALBOX': mot_de_passe
                             })
-                            logger.info("  ✅ CRM mis à jour avec les nouveaux identifiants")
+                            logger.info("  ✅ CRM mis à jour")
                             result['crm_updated'] = True
                         except Exception as e:
                             logger.error(f"  ❌ Erreur mise à jour CRM: {e}")
+
                 else:
-                    logger.warning(f"  ❌ Identifiants threads également invalides: {connection_error_threads}")
-            else:
-                logger.info("  ⚠️  Threads ont les mêmes identifiants que CRM - pas de retry")
+                    # Aucun n'est payé → Préférer le compte du candidat
+                    logger.info("  🔄 Aucun compte payé → Préférence au compte candidat")
+                    identifiant = identifiant_threads
+                    mot_de_passe = mdp_threads
+                    source = 'email_threads'
+                    result['identifiant'] = identifiant
+                    result['mot_de_passe'] = mot_de_passe
+                    result['credentials_source'] = 'email_threads'
+
+                    # Mettre à jour le CRM
+                    if auto_update_crm and crm_client and deal_id:
+                        logger.info("  📝 Mise à jour du CRM avec les identifiants du candidat...")
+                        try:
+                            crm_client.update_deal(deal_id, {
+                                'IDENTIFIANT_EVALBOX': identifiant,
+                                'MDP_EVALBOX': mot_de_passe
+                            })
+                            logger.info("  ✅ CRM mis à jour")
+                            result['crm_updated'] = True
+                        except Exception as e:
+                            logger.error(f"  ❌ Erreur mise à jour CRM: {e}")
+
+            except ImportError:
+                logger.warning("  ⚠️  Module exament3p_playwright non disponible pour comparaison")
+                logger.info("  → On garde le compte CRM par défaut")
+            except Exception as e:
+                logger.error(f"  ❌ Erreur lors de la comparaison des comptes: {e}")
+                logger.info("  → On garde le compte CRM par défaut")
+        else:
+            logger.info("  ✅ Compte thread invalide, on garde le compte CRM")
 
     result['connection_test_success'] = connection_ok
     result['connection_error'] = connection_error
