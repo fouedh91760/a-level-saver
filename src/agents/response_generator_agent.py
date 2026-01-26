@@ -379,14 +379,20 @@ Preference_horaire: jour|soir (si préférence confirmée)
 [/CRM_UPDATES]
 ```
 
+**⚠️ DISTINCTION CRITIQUE : SESSION ≠ DATE D'EXAMEN :**
+- **Session de formation** (Session_choisie) = horaires de cours (jour 9h-13h / soir 18h-22h)
+- **Date d'examen VTC** (Date_examen_VTC) = date de passage de l'examen à la CMA
+- Ces sont DEUX CHOSES DIFFÉRENTES ! Un candidat qui dit "cours du soir" confirme sa SESSION, PAS sa date d'examen
+
 **Règles CRITIQUES pour Date_examen_VTC :**
 - ⚠️ NE JAMAIS mettre à jour Date_examen_VTC si tu PROPOSES des dates dans ta réponse (proposition ≠ confirmation)
-- ⚠️ NE JAMAIS changer une date existante sauf si le candidat DEMANDE EXPLICITEMENT un changement
-- ✅ Mettre à jour UNIQUEMENT si le candidat CONFIRME une date (dit "je choisis X", "Option 1", "je prends le 24/02", etc.)
+- ⚠️ NE JAMAIS changer une date existante sauf si le candidat DEMANDE EXPLICITEMENT un changement de date d'EXAMEN
+- ⚠️ NE PAS confondre confirmation de SESSION (cours jour/soir) avec confirmation de DATE D'EXAMEN
+- ✅ Mettre à jour UNIQUEMENT si le candidat CONFIRME une date D'EXAMEN (dit "je choisis la date du 24/02", "Option 1 pour l'examen", etc.)
 - Si le candidat demande des dates plus tôt : PROPOSE dans la réponse, mais NE MET PAS à jour le CRM
 
 **Règles générales :**
-- N'inclus QUE les champs qui doivent être mis à jour suite à une CONFIRMATION du candidat
+- N'inclus QUE les champs qui doivent être mis à jour suite à une CONFIRMATION EXPLICITE du candidat
 - Si aucune mise à jour n'est nécessaire, mets `[CRM_UPDATES][/CRM_UPDATES]` (bloc vide)
 - Les dates doivent être au format YYYY-MM-DD
 - Analyse le contexte complet : si le candidat dit "Option 1" en réponse à une question sur les dates, retrouve la date correspondante dans l'historique"""
