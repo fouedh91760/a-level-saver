@@ -152,6 +152,8 @@ class DOCTicketWorkflow:
                 # Créer le brouillon si demandé
                 if auto_create_draft and duplicate_response.get('response_text'):
                     try:
+                        from config import settings
+
                         # Récupérer les infos du ticket pour l'email
                         ticket = self.desk_client.get_ticket(ticket_id)
                         to_email = ticket.get('email', '')
