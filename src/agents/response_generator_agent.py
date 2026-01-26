@@ -2016,23 +2016,42 @@ L'équipe Cab Formations"""
         logger.info("Generating REPORT_DATE response (CMA closed - force majeure required)")
 
         intent_context = intent_context or {}
+        from datetime import datetime
 
-        # Extraire la date d'examen
+        # Extraire la date d'examen (plusieurs sources possibles)
         exam_date_formatted = "N/A"
+        exam_date_raw = None
+
+        # Source 1: date_examen_vtc_data (résultat de analyze_exam_date_situation)
         if date_examen_vtc_data:
-            exam_date_formatted = date_examen_vtc_data.get('exam_date_formatted') or date_examen_vtc_data.get('current_exam_date', 'N/A')
-        elif crm_data:
+            exam_date_raw = date_examen_vtc_data.get('date_examen_vtc')
+
+        # Source 2: crm_data (données CRM directes)
+        if not exam_date_raw and crm_data:
             exam_date_raw = crm_data.get('Date_examen_VTC')
+
+        # Parser la date selon son format
+        if exam_date_raw:
             if isinstance(exam_date_raw, dict):
+                # Format: {'name': '51_2026-01-27', 'id': '...'}
                 exam_name = exam_date_raw.get('name', '')
                 if '_' in exam_name:
                     date_part = exam_name.split('_')[1]
                     try:
-                        from datetime import datetime
                         exam_date = datetime.strptime(date_part, "%Y-%m-%d")
                         exam_date_formatted = exam_date.strftime("%d/%m/%Y")
                     except:
                         exam_date_formatted = date_part
+            elif isinstance(exam_date_raw, str):
+                # Format string: "2026-01-27" ou "27/01/2026"
+                try:
+                    if '-' in exam_date_raw:
+                        exam_date = datetime.strptime(exam_date_raw, "%Y-%m-%d")
+                        exam_date_formatted = exam_date.strftime("%d/%m/%Y")
+                    else:
+                        exam_date_formatted = exam_date_raw
+                except:
+                    exam_date_formatted = exam_date_raw
 
         # Extraire la prochaine date disponible
         next_exam_date = "la prochaine date disponible"
