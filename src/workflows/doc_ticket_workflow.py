@@ -1187,21 +1187,21 @@ Deux comptes ExamenT3P fonctionnels ont été détectés pour ce candidat, et le
 
 Je vous remercie pour votre message.
 
-Après vérification de votre dossier, je constate que vous avez déjà bénéficié de l'offre Uber à 20€ pour le passage de l'examen VTC. **Cette offre n'est valable qu'une seule fois par candidat.**
+Après vérification de votre dossier, je constate que vous avez déjà bénéficié de l'offre Uber à 20€ pour le passage de l'examen VTC. Cette offre n'est valable qu'une seule fois par candidat.
 
 Si vous souhaitez vous réinscrire à l'examen VTC, voici vos options :
 
-**Option 1 : Inscription autonome**
-- Vous pouvez vous inscrire vous-même sur le site de la CMA (ExamT3P)
-- Les frais d'inscription à l'examen s'élèvent à **241€**, à votre charge
-- Site d'inscription : https://exament3p.cma-france.fr
+OPTION 1 : Inscription autonome
+• Vous pouvez vous inscrire vous-même sur le site de la CMA (ExamT3P)
+• Les frais d'inscription à l'examen s'élèvent à 241€, à votre charge
+• Site d'inscription : https://exament3p.cma-france.fr
 
-**Option 2 : Formation avec CAB Formations**
+OPTION 2 : Formation avec CAB Formations
 Si vous souhaitez suivre une formation de préparation à l'examen VTC, nous pouvons vous proposer :
 
-📚 **Formation en présentiel** : sur l'un de nos centres de formation
+📚 Formation en présentiel : sur l'un de nos centres de formation
 
-📚 **Formation E-learning** : finançable via votre **CPF** (Compte Personnel de Formation)
+📚 Formation E-learning : finançable via votre CPF (Compte Personnel de Formation)
 
 Merci de me préciser si vous êtes intéressé(e) par l'une de ces options, et je vous transmettrai les tarifs et disponibilités.
 
