@@ -503,6 +503,13 @@ def analyze_session_situation(
         logger.info("  Pas de dates d'examen, pas de proposition de session")
         return result
 
+    # 3.5. Si session DÉJÀ ASSIGNÉE et PAS dans le passé → NE PAS proposer de nouvelles sessions
+    if current_session and not result['current_session_is_past']:
+        session_name = current_session.get('name', str(current_session)) if isinstance(current_session, dict) else str(current_session)
+        logger.info(f"  ✅ Session déjà assignée ({session_name}) et valide → Pas de proposition")
+        result['message'] = f"Votre session de formation est déjà programmée : {session_name}"
+        return result
+
     # 4. Récupérer les sessions pour chaque date d'examen UNIQUE (cache pour éviter doublons)
     if crm_client:
         # Cache: date_string -> sessions

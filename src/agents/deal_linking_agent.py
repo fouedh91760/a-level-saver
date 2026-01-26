@@ -247,7 +247,7 @@ INSTRUCTIONS:
 Emails alternatifs trouvés:"""
 
             response = client.messages.create(
-                model="claude-haiku-4-20250414",
+                model="claude-3-5-haiku-20241022",
                 max_tokens=200,
                 messages=[{"role": "user", "content": prompt}]
             )
