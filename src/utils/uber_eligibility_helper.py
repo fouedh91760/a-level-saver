@@ -20,16 +20,36 @@ CONTEXTE:
    → Pour les dossiers antérieurs, le test n'est PAS obligatoire
 
 CAS GÉRÉS:
+- PROSPECT: Opp 20€ EN ATTENTE (pas encore payé)
+            → Répondre aux questions générales sur l'offre
+
 - CAS A: Opp 20€ gagnée + Date_Dossier_re_u vide
          → Candidat a payé mais pas envoyé ses documents
          → Expliquer l'offre + demander de finaliser inscription
 
-- CAS B: Date_Dossier_re_u non vide + Date_test_selection vide
+- CAS D: Compte_Uber = false (après vérification à Date_Dossier_recu + 1 jour)
+         → Email inscription ≠ Email compte Uber Driver
+         → Demander de vérifier l'email ou contacter Uber via l'app
+
+- CAS E: ELIGIBLE = false (après vérification à Date_Dossier_recu + 1 jour)
+         → Uber considère le candidat non éligible (raisons inconnues de CAB)
+         → Demander de contacter Uber via l'app pour comprendre
+
+- CAS B: Date_Dossier_re_u non vide + Date_test_selection vide (si > 19/05/2025)
          → Candidat a envoyé documents mais pas passé le test
          → Demander de passer le test (mail reçu le jour de Date_Dossier_re_u)
 
-- ÉLIGIBLE: Date_Dossier_re_u non vide ET Date_test_selection non vide
+- ÉLIGIBLE: Toutes les vérifications OK
             → Candidat peut être inscrit à l'examen
+
+ORDRE DE VÉRIFICATION:
+1. PROSPECT (Stage = EN ATTENTE)
+2. NOT_UBER (Amount ≠ 20€)
+3. CAS A (Date_Dossier_recu vide)
+4. CAS D (Compte_Uber = false, après J+1)
+5. CAS E (ELIGIBLE = false, après J+1)
+6. CAS B (Test sélection non passé, si obligatoire)
+7. ÉLIGIBLE
 """
 import logging
 from datetime import datetime
@@ -168,6 +188,55 @@ def analyze_uber_eligibility(deal_data: Dict[str, Any]) -> Dict[str, Any]:
         result['response_message'] = generate_documents_missing_message()
         logger.info("  ➡️ CAS A: Documents non envoyés")
         return result
+
+    # ================================================================
+    # VÉRIFICATION COMPTE UBER ET ÉLIGIBILITÉ
+    # La vérification manuelle se fait à Date_Dossier_recu + 1 jour
+    # Avant ce délai, on ne sait pas encore → ne pas bloquer
+    # ================================================================
+    verification_done = False
+    try:
+        if date_dossier_recu:
+            if 'T' in str(date_dossier_recu):
+                dossier_date = datetime.fromisoformat(str(date_dossier_recu).replace('Z', '+00:00')).date()
+            else:
+                dossier_date = datetime.strptime(str(date_dossier_recu)[:10], '%Y-%m-%d').date()
+
+            # Vérification faite si Date_Dossier_recu + 1 jour est passé
+            from datetime import timedelta
+            verification_date = dossier_date + timedelta(days=1)
+            today = datetime.now().date()
+            verification_done = today >= verification_date
+            logger.info(f"  📋 Vérification Uber: {'✅ Faite' if verification_done else '⏳ En attente'} (dossier: {dossier_date}, vérif: {verification_date})")
+    except (ValueError, TypeError) as e:
+        logger.warning(f"  ⚠️ Impossible de parser la date dossier pour vérif: {date_dossier_recu} - {e}")
+        verification_done = False
+
+    # CAS D & E : Vérification Compte_Uber et ELIGIBLE (uniquement si vérification faite)
+    if verification_done:
+        compte_uber = deal_data.get('Compte_Uber', False)
+        eligible = deal_data.get('ELIGIBLE', False)
+
+        logger.info(f"  Compte_Uber: {compte_uber}")
+        logger.info(f"  ELIGIBLE: {eligible}")
+
+        # CAS D: Compte_Uber = false → Email pas lié à un compte Uber Driver
+        if not compte_uber:
+            result['case'] = 'D'
+            result['case_description'] = "Compte Uber non vérifié - Email non lié à un compte Uber Driver"
+            result['should_include_in_response'] = True
+            result['response_message'] = generate_compte_uber_missing_message()
+            logger.info("  ➡️ CAS D: Compte_Uber non vérifié")
+            return result
+
+        # CAS E: ELIGIBLE = false → Uber considère le candidat non éligible
+        if not eligible:
+            result['case'] = 'E'
+            result['case_description'] = "Non éligible selon Uber - Raisons inconnues de CAB"
+            result['should_include_in_response'] = True
+            result['response_message'] = generate_not_eligible_message()
+            logger.info("  ➡️ CAS E: Non éligible selon Uber")
+            return result
 
     # CAS B: Date_Dossier_re_u OK mais Date_test_selection vide → Test non passé
     # IMPORTANT: Le test de sélection n'est obligatoire que pour les dossiers
@@ -313,3 +382,61 @@ Vous devez passer le **test de sélection**. Un email contenant le lien vers ce 
 Si vous n'avez pas reçu l'email ou si vous avez des difficultés pour accéder au test, n'hésitez pas à nous le signaler et nous vous renverrons le lien.
 
 Merci de passer ce test dès que possible afin que nous puissions vous proposer les prochaines dates d'examen."""
+
+
+def generate_compte_uber_missing_message() -> str:
+    """
+    Génère le message pour CAS D: Compte_Uber = false après vérification.
+
+    L'email utilisé pour l'inscription n'est pas lié à un compte Uber Driver actif.
+    Le candidat doit vérifier son email et contacter Uber si nécessaire.
+    """
+    return """Nous avons vérifié votre inscription et constaté que l'adresse email utilisée n'est pas liée à un compte Uber chauffeur actif.
+
+**Voici les étapes à suivre :**
+
+1️⃣ **Vérifiez que vous utilisez la bonne adresse email**
+   - L'email utilisé pour votre inscription CAB Formations doit être **exactement le même** que celui de votre compte **Uber Driver** (chauffeur), et non votre compte Uber client.
+   - Si vous avez utilisé une adresse différente, merci de nous communiquer l'adresse email liée à votre compte Uber Driver afin que nous puissions mettre à jour votre dossier.
+
+2️⃣ **Si les adresses sont identiques**
+   - Votre compte Uber chauffeur semble inactif ou non reconnu par Uber.
+   - Vous devez contacter directement le support Uber pour comprendre la situation.
+
+**Comment contacter Uber :**
+   - Connectez-vous à l'application **Uber Driver**
+   - Allez dans **Compte** → **Aide**
+   - Utilisez le **chat intégré** pour échanger avec le support Uber
+
+⚠️ **Important :** Nous n'avons aucune visibilité sur les critères internes d'Uber. Seul leur support peut vous expliquer pourquoi votre compte n'est pas reconnu.
+
+Une fois la situation clarifiée avec Uber, revenez vers nous pour que nous puissions finaliser votre inscription."""
+
+
+def generate_not_eligible_message() -> str:
+    """
+    Génère le message pour CAS E: ELIGIBLE = false après vérification.
+
+    Uber considère le candidat comme non éligible à l'offre partenariat.
+    CAB n'a aucune visibilité sur les raisons - le candidat doit contacter Uber.
+    """
+    return """Nous avons vérifié votre dossier auprès d'Uber et malheureusement, votre profil n'est **pas éligible** à l'offre VTC en partenariat avec Uber.
+
+**Ce que cela signifie :**
+
+Uber applique ses propres critères d'éligibilité pour cette offre partenariat. Malheureusement, **nous n'avons aucune visibilité** sur les raisons de cette décision - seul Uber peut vous les communiquer.
+
+**Ce que vous devez faire :**
+
+📱 **Contactez le support Uber** pour comprendre pourquoi vous n'êtes pas éligible :
+   - Connectez-vous à l'application **Uber Driver**
+   - Allez dans **Compte** → **Aide**
+   - Utilisez le **chat intégré** pour échanger avec le support
+
+Expliquez-leur que vous souhaitez bénéficier de l'offre de formation VTC en partenariat avec CAB Formations et demandez pourquoi votre profil n'est pas éligible.
+
+**Alternatives possibles :**
+
+Si Uber confirme que vous n'êtes pas éligible à leur offre partenariat, vous pouvez toujours vous inscrire à notre formation VTC classique. N'hésitez pas à nous contacter pour plus d'informations sur cette option.
+
+Nous restons à votre disposition pour toute question."""

@@ -787,13 +787,18 @@ Deux comptes ExamenT3P fonctionnels ont été détectés pour ce candidat, et le
         uber_eligibility_result = analyze_uber_eligibility(deal_data)
 
         # ================================================================
-        # FLAG: Blocage dates/sessions si CAS A ou B (dossier non reçu)
+        # FLAG: Blocage dates/sessions si CAS A, B, D ou E
+        # A = documents non envoyés
+        # B = test sélection non passé
+        # D = Compte_Uber non vérifié (email ≠ compte Uber Driver)
+        # E = Non éligible selon Uber (raisons inconnues)
         # ================================================================
         uber_case_blocks_dates = False
         if uber_eligibility_result.get('is_uber_20_deal'):
-            if uber_eligibility_result.get('case') in ['A', 'B']:
+            blocking_cases = ['A', 'B', 'D', 'E']
+            if uber_eligibility_result.get('case') in blocking_cases:
                 logger.warning(f"  🚨 CAS {uber_eligibility_result['case']}: {uber_eligibility_result['case_description']}")
-                logger.warning("  ⛔ BLOCAGE DATES/SESSIONS: Candidat doit compléter les étapes préalables")
+                logger.warning("  ⛔ BLOCAGE DATES/SESSIONS: Candidat doit résoudre le problème")
                 uber_case_blocks_dates = True
             else:
                 logger.info("  ✅ Candidat Uber éligible - peut être inscrit à l'examen")
@@ -853,11 +858,12 @@ Deux comptes ExamenT3P fonctionnels ont été détectés pour ce candidat, et le
             skip_date_session_analysis = True
             skip_reason = 'credentials_invalid'
 
-        # Raison 2: CAS A ou B (dossier non reçu / test non passé pour Uber)
+        # Raison 2: CAS A, B, D ou E (problème Uber - vérification/éligibilité)
         if uber_case_blocks_dates:
             skip_date_session_analysis = True
-            skip_reason = skip_reason or 'uber_case_a_or_b'
-            logger.warning("  → La réponse doit UNIQUEMENT traiter CAS A/B (finaliser inscription ou passer test)")
+            uber_case = uber_eligibility_result.get('case', '?')
+            skip_reason = skip_reason or f'uber_case_{uber_case}'
+            logger.warning(f"  → La réponse doit UNIQUEMENT traiter CAS {uber_case}: {uber_eligibility_result.get('case_description', '')}")
 
         # Raison 3: Dossier non reçu (pour tous les deals)
         if dossier_not_received_blocks_dates and not skip_date_session_analysis:
@@ -883,11 +889,16 @@ Deux comptes ExamenT3P fonctionnels ont été détectés pour ce candidat, et le
             else:
                 logger.info(f"  ✅ Date examen VTC OK (CAS {date_examen_vtc_result['case']})")
         else:
+            # Construire le message de raison du skip
             skip_reason_msg = {
                 'credentials_invalid': 'identifiants invalides',
-                'uber_case_a_or_b': 'CAS A/B Uber',
                 'dossier_not_received': 'dossier non reçu'
-            }.get(skip_reason, skip_reason or 'raison inconnue')
+            }.get(skip_reason, None)
+            # Gérer les cas Uber dynamiquement (uber_case_A, uber_case_B, uber_case_D, uber_case_E)
+            if not skip_reason_msg and skip_reason and skip_reason.startswith('uber_case_'):
+                uber_case = skip_reason.replace('uber_case_', '')
+                skip_reason_msg = f'CAS {uber_case} Uber'
+            skip_reason_msg = skip_reason_msg or skip_reason or 'raison inconnue'
             logger.info(f"  📅 Vérification date examen VTC... SKIPPED ({skip_reason_msg})")
 
         # ================================================================
