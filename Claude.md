@@ -96,6 +96,20 @@ git push origin main
 - **Avant** : Bloquer les anciens dossiers (avant 01/11/2025)
 - **Maintenant** : Bloquer **uniquement si échec connexion ExamT3P**
 
+#### 📧 Configuration emails par département (Drafts Zoho Desk)
+
+| Variable .env | Département | Email |
+|---------------|-------------|-------|
+| `ZOHO_DESK_EMAIL_DOC` | DOC | doc@cab-formations.fr |
+| `ZOHO_DESK_EMAIL_CONTACT` | Contact | contact@cab-formations.fr |
+| `ZOHO_DESK_EMAIL_COMPTA` | Comptabilité | compta@cab-formations.fr |
+| `ZOHO_DESK_EMAIL_DEFAULT` | Fallback | contact@cab-formations.fr |
+
+**TODO** : Ajouter les emails des autres départements si nécessaire :
+- [ ] Vérifier les autres départements dans Zoho Desk
+- [ ] Ajouter les variables correspondantes dans `config.py` et `.env`
+- [ ] Mettre à jour le mapping dans `src/workflows/doc_ticket_workflow.py`
+
 #### 📄 Détection statut "À CORRIGER"
 
 - Fichier: `src/utils/exament3p_playwright.py`
