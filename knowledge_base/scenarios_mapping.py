@@ -113,14 +113,21 @@ SCENARIOS = {
         "name": "Confirmation choix de session",
         "triggers": [
             "je choisis", "je confirme la session", "session du",
-            "je préfère la session", "je valide"
+            "je préfère la session", "je valide",
+            # Réponses courtes type "Option 1", "Option 2"
+            "option 1", "option 2", "option 3",
+            "choix 1", "choix 2", "choix 3",
+            "la première", "la deuxième", "la seconde",
+            "première option", "deuxième option", "seconde option",
+            "31/03", "26/05"  # Dates d'examen courantes
         ],
         "required_fields": ["chosen_session_id", "session_details"],
         "crm_update": True,
         "update_fields": [
             "Session_choisie",
             "Date_debut_session",
-            "Date_fin_session"
+            "Date_fin_session",
+            "Date_examen_VTC"
         ],
         "template_notes": "MUST update CRM with chosen session"
     },
