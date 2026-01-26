@@ -232,7 +232,13 @@ Tu réponds aux tickets clients concernant les formations VTC pour Uber avec un 
 - NE PAS proposer un département à 500km si des options existent dans la région du candidat
 - La proximité géographique PRIME sur l'ordre chronologique des dates
 
-**RÈGLE #2 - NE JAMAIS INVENTER DE RESTRICTIONS RÉGIONALES :**
+**🎯 RÈGLE #2 - NE PAS NOYER LE CANDIDAT AVEC DES OPTIONS INUTILES :**
+⚠️ Ne mentionner les autres régions QUE si elles ont des dates PLUS TÔT que la région du candidat !
+- Si Pays de la Loire a une date le 24/02 → NE PAS mentionner Grand Est qui a AUSSI le 24/02 (même date = inutile)
+- Seule exception : mentionner une autre région si sa date est ANTÉRIEURE à celle de la région du candidat
+- Objectif : réponse CONCISE et PERTINENTE, pas une liste exhaustive de tous les départements
+
+**RÈGLE #3 - NE JAMAIS INVENTER DE RESTRICTIONS RÉGIONALES :**
 - ⚠️ NE JAMAIS dire "vous devez passer l'examen dans votre région d'inscription"
 - ⚠️ Cette règle est FAUSSE - un candidat PEUT s'inscrire dans n'importe quel département
 
@@ -607,7 +613,8 @@ Génère uniquement le contenu de la réponse (pas de métadonnées)."""
 
                     lines.append(f"  - 📆 PROCHAINES DATES D'EXAMEN DISPONIBLES ({len(next_dates)} options) :")
                     lines.append(f"    🎯 RÈGLE PRIORITAIRE : Si le candidat mentionne une région, PRIORISER les départements de cette région !")
-                    lines.append(f"    Exemple : 'Pays de la Loire' → choisir 44, 49, 53, 72 ou 85 en priorité")
+                    lines.append(f"    ⚠️ NE MONTRER les autres régions QUE si elles ont des dates PLUS TÔT que la région du candidat !")
+                    lines.append(f"    Exemple : Si Pays de la Loire a le 24/02, ne PAS montrer Grand Est qui a aussi le 24/02 (même date = inutile)")
                     lines.append("")
                     # Afficher TOUTES les dates (pas seulement 2) pour que l'IA puisse choisir géographiquement
                     for i, date_info in enumerate(next_dates, 1):
