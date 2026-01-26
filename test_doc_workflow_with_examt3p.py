@@ -102,6 +102,18 @@ def test_doc_workflow(ticket_id: str):
             print(f"      Source: {examt3p.get('credentials_source')}")
             print(f"      Connexion testée: {examt3p.get('connection_test_success')}")
 
+        # ALERTE DOUBLON DE PAIEMENT
+        if examt3p.get('duplicate_payment_alert'):
+            print(f"\n      🚨🚨🚨 ALERTE CRITIQUE: DOUBLE PAIEMENT DÉTECTÉ! 🚨🚨🚨")
+            dup_accounts = examt3p.get('duplicate_accounts', {})
+            print(f"      Compte CRM: {dup_accounts.get('crm', {}).get('identifiant')}")
+            print(f"      Compte Candidat: {dup_accounts.get('thread', {}).get('identifiant')}")
+            print(f"      → INTERVENTION MANUELLE REQUISE!")
+
+        # Info si basculement vers compte payé
+        if examt3p.get('switched_to_paid_account'):
+            print(f"\n      🔄 BASCULEMENT: Utilisation du compte candidat (déjà payé)")
+
         # NOUVEAU: Afficher le comportement selon nos règles
         if examt3p.get('should_respond_to_candidate'):
             print(f"\n      ⚠️  DEMANDE DE RÉINITIALISATION AU CANDIDAT")
@@ -213,7 +225,11 @@ def test_doc_workflow(ticket_id: str):
         if analysis.get('exament3p_data'):
             examt3p = analysis['exament3p_data']
             print(f"\n   🌐 ExamT3P:")
-            if examt3p.get('should_respond_to_candidate'):
+            if examt3p.get('duplicate_payment_alert'):
+                print(f"      → 🚨 ALERTE: DOUBLE PAIEMENT DÉTECTÉ!")
+            elif examt3p.get('switched_to_paid_account'):
+                print(f"      → 🔄 Basculé vers compte candidat (déjà payé)")
+            elif examt3p.get('should_respond_to_candidate'):
                 print(f"      → Demande réinitialisation au candidat")
             elif not examt3p.get('identifiant'):
                 print(f"      → Identifiants absents (création de compte)")

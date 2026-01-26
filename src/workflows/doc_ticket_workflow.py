@@ -600,6 +600,51 @@ class DOCTicketWorkflow:
             'candidate_response_message': credentials_result.get('candidate_response_message')
         }
 
+        # ================================================================
+        # ALERTE DOUBLON DE PAIEMENT
+        # ================================================================
+        if credentials_result.get('duplicate_payment_alert'):
+            logger.error("  🚨🚨🚨 ALERTE CRITIQUE: DEUX COMPTES EXAMT3P PAYÉS DÉTECTÉS! 🚨🚨🚨")
+            duplicate_accounts = credentials_result.get('duplicate_accounts', {})
+            logger.error(f"     → Compte CRM: {duplicate_accounts.get('crm', {}).get('identifiant')}")
+            logger.error(f"     → Compte Candidat: {duplicate_accounts.get('thread', {}).get('identifiant')}")
+            logger.error("     → INTERVENTION MANUELLE REQUISE - Vérifier les paiements!")
+
+            # Ajouter le flag dans exament3p_data pour visibilité
+            exament3p_data['duplicate_payment_alert'] = True
+            exament3p_data['duplicate_accounts'] = duplicate_accounts
+
+            # Créer une note CRM d'alerte
+            try:
+                alert_content = f"""⚠️ ATTENTION - INTERVENTION MANUELLE REQUISE ⚠️
+
+Deux comptes ExamenT3P fonctionnels ont été détectés pour ce candidat, et les deux semblent avoir été payés.
+
+📧 Compte 1 (CRM): {duplicate_accounts.get('crm', {}).get('identifiant')}
+📧 Compte 2 (Candidat): {duplicate_accounts.get('thread', {}).get('identifiant')}
+
+✅ Action requise:
+1. Vérifier les deux comptes sur ExamenT3P
+2. Identifier lequel a réellement été payé par CAB Formations
+3. Si double paiement confirmé, demander remboursement
+4. Mettre à jour le CRM avec le bon compte
+
+⚠️ Risque: Paiement en double des frais CMA (60€)"""
+
+                self.crm_client.add_deal_note(
+                    deal_id=deal_id,
+                    note_title="🚨 ALERTE: DOUBLE COMPTE EXAMT3P PAYÉ",
+                    note_content=alert_content
+                )
+                logger.info("  ✅ Note CRM d'alerte créée")
+            except Exception as e:
+                logger.error(f"  ❌ Erreur création note CRM d'alerte: {e}")
+
+        # Info si basculement vers compte payé du candidat
+        if credentials_result.get('switched_to_paid_account'):
+            logger.info("  🔄 Basculement vers le compte ExamT3P déjà payé du candidat")
+            exament3p_data['switched_to_paid_account'] = True
+
         # Si les identifiants sont valides, procéder à l'extraction
         if credentials_result.get('connection_test_success'):
             logger.info(f"  ✅ Identifiants validés (source: {credentials_result['credentials_source']})")
