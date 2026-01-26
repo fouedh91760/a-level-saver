@@ -42,12 +42,13 @@ CONFIRMATION_PATTERNS = {
         r"examen\s+(?:du\s+)?(\d{1,2}[/.\-]\d{1,2}(?:[/.\-]\d{2,4})?)\s+(?:me\s+convient|ok|parfait)",
     ],
     # Réponses type "Option 1", "Option 2" (sans date explicite)
+    # Note: patterns sans ^ ni $ pour matcher dans un texte plus long
     'option_choice': [
-        r"^option\s*([123])$",
-        r"^([123])$",  # Juste le chiffre
-        r"^choix\s*([123])$",
-        r"^la\s+(première|premi[eè]re|1[eè]?re?)(?:\s+option)?$",
-        r"^la\s+(deuxi[eè]me|seconde|2[eè]?me?)(?:\s+option)?$",
+        r"(?:^|\n)\s*option\s*([123])\s*(?:\n|$)",
+        r"(?:^|\n)\s*([123])\s*(?:\n|$)",  # Juste le chiffre seul sur une ligne
+        r"(?:^|\n)\s*choix\s*([123])\s*(?:\n|$)",
+        r"(?:^|\n)\s*la\s+(première|premi[eè]re|1[eè]?re?)(?:\s+option)?\s*(?:\n|$)",
+        r"(?:^|\n)\s*la\s+(deuxi[eè]me|seconde|2[eè]?me?)(?:\s+option)?\s*(?:\n|$)",
     ],
     'session_preference': [
         # Cours du jour
@@ -265,7 +266,7 @@ def extract_confirmations_from_threads(
         # 2b. Détecter choix "Option 1/2" et extraire date du contexte
         if not result['date_examen_confirmed']:
             for pattern in CONFIRMATION_PATTERNS.get('option_choice', []):
-                match = re.search(pattern, content.strip(), re.IGNORECASE)
+                match = re.search(pattern, content, re.IGNORECASE | re.MULTILINE)
                 if match:
                     option_value = match.group(1).lower()
                     # Convertir en numéro
