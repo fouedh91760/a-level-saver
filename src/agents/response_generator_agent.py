@@ -357,7 +357,7 @@ Preference_horaire: jour|soir (si préférence confirmée)
         )
 
         # Format data sources
-        data_summary = self._format_data_sources(crm_data, exament3p_data, evalbox_data, date_examen_vtc_data, session_data, uber_eligibility_data)
+        data_summary = self._format_data_sources(crm_data, exament3p_data, evalbox_data, date_examen_vtc_data, session_data, uber_eligibility_data, threads)
 
         # Format thread history (full conversation)
         thread_history = self._format_thread_history(threads)
@@ -427,7 +427,8 @@ Génère uniquement le contenu de la réponse (pas de métadonnées)."""
         evalbox_data: Optional[Dict],
         date_examen_vtc_data: Optional[Dict] = None,
         session_data: Optional[Dict] = None,
-        uber_eligibility_data: Optional[Dict] = None
+        uber_eligibility_data: Optional[Dict] = None,
+        threads: Optional[List] = None
     ) -> str:
         """Format available data sources for prompt."""
         lines = []
@@ -616,10 +617,12 @@ Génère uniquement le contenu de la réponse (pas de métadonnées)."""
         # ALERTES TEMPORAIRES
         # ================================================================
         # Alertes temporaires (bugs CMA, situations exceptionnelles)
+        # Déclenchées par statut Evalbox OU par mots-clés dans le message
         from src.utils.alerts_helper import get_alerts_for_response
         alerts_text = get_alerts_for_response(
             deal_data=crm_data,
-            examt3p_data=exament3p_data
+            examt3p_data=exament3p_data,
+            threads=threads
         )
         if alerts_text:
             lines.append(alerts_text)

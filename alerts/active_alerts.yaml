@@ -6,6 +6,13 @@
 # L'équipe peut modifier ce fichier directement sans toucher au code.
 # Les alertes sont automatiquement filtrées par date et statut.
 #
+# MODES DE DÉCLENCHEMENT:
+# =======================
+# 1. Par statut Evalbox (applies_to.evalbox) - si le candidat a ce statut
+# 2. Par mots-clés (trigger_keywords) - si le message contient ces mots
+#
+# L'alerte se déclenche si (Evalbox correspond OU mot-clé trouvé)
+#
 # Format:
 #   - id: identifiant unique
 #     active: true/false (désactiver sans supprimer)
@@ -14,6 +21,7 @@
 #     title: titre court
 #     context: description du problème
 #     instruction: comment répondre au candidat
+#     trigger_keywords: liste de mots-clés pour déclencher l'alerte
 #     applies_to: (optionnel) filtres pour appliquer l'alerte
 #       evalbox: liste des statuts Evalbox concernés
 #       departments: liste des départements concernés
@@ -37,6 +45,21 @@ alerts:
       3. Préciser que la convocation officielle est aussi disponible
          en téléchargement sur son compte ExamT3P (onglet "Mes Examens")
       4. Lui souhaiter bonne chance pour son examen
+
+      NE PAS dire que ce sont deux examens différents (théorique/pratique).
+      C'est UNE SEULE convocation, la seconde annule la première.
+    trigger_keywords:
+      - "deux convocations"
+      - "deux conventions"
+      - "2 convocations"
+      - "2 conventions"
+      - "double convocation"
+      - "reçu deux"
+      - "annule et remplace"
+      - "27/01"
+      - "28/01"
+      - "27 janvier"
+      - "28 janvier"
     applies_to:
       evalbox: ["Convoc CMA reçue", "VALIDE CMA"]
 
@@ -46,3 +69,7 @@ alerts:
   #   title: "Bug paiement CB CMA"
   #   context: "Le paiement par CB sur ExamT3P est temporairement indisponible"
   #   instruction: "Proposer le paiement par chèque en alternative"
+  #   trigger_keywords:
+  #     - "paiement carte"
+  #     - "paiement cb"
+  #     - "carte bancaire"
