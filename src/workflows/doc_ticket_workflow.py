@@ -30,6 +30,7 @@ sys.path.insert(0, str(project_root))
 from src.agents.response_generator_agent import ResponseGeneratorAgent
 from src.agents.deal_linking_agent import DealLinkingAgent
 from src.agents.examt3p_agent import ExamT3PAgent
+from src.agents.dispatcher_agent import TicketDispatcherAgent
 from src.zoho_client import ZohoDeskClient, ZohoCRMClient
 from knowledge_base.scenarios_mapping import (
     detect_scenario_from_text,
@@ -52,6 +53,7 @@ class DOCTicketWorkflow:
         self.response_generator = ResponseGeneratorAgent()
         self.deal_linker = DealLinkingAgent()
         self.examt3p_agent = ExamT3PAgent()
+        self.dispatcher = TicketDispatcherAgent()
 
         logger.info("✅ DOCTicketWorkflow initialized")
 
@@ -376,56 +378,117 @@ class DOCTicketWorkflow:
             traceback.print_exc()
             return result
 
-    def _run_triage(self, ticket_id: str) -> Dict:
+    def _run_triage(self, ticket_id: str, auto_transfer: bool = True) -> Dict:
         """
-        Run AGENT TRIEUR logic.
+        Run AGENT TRIEUR logic with full business rules.
+
+        Uses BusinessRules from business_rules.py for complete routing logic:
+        - Deal-based routing (Uber €20, CMA, etc.)
+        - Evalbox status (Refusé CMA, Documents manquants, etc.)
+        - Document submission detection
+        - Keyword-based fallback
+
+        Args:
+            ticket_id: Ticket to triage
+            auto_transfer: If True, automatically transfer ticket to target department
 
         Returns:
             {
                 'action': 'GO' | 'ROUTE' | 'SPAM',
                 'target_department': str (if ROUTE),
-                'reason': str
+                'reason': str,
+                'transferred': bool (if auto_transfer and ROUTE)
             }
         """
+        from src.utils.text_utils import get_clean_thread_content
+        from business_rules import BusinessRules
+
         # Get ticket details
         ticket = self.desk_client.get_ticket(ticket_id)
-
         subject = ticket.get('subject', '')
-        email = ticket.get('email', '')
+        current_department = ticket.get('departmentId') or ticket.get('department', {}).get('name', 'Unknown')
 
-        # Get first customer message with FULL content
-        from src.utils.text_utils import get_clean_thread_content
-
+        # Get threads for content analysis
         threads = self.desk_client.get_all_threads_with_full_content(ticket_id)
-        customer_message = ""
+        last_thread_content = ""
         for thread in threads:
             if thread.get('direction') == 'in':
-                customer_message = get_clean_thread_content(thread)
+                last_thread_content = get_clean_thread_content(thread)
                 break
 
-        # Apply triage rules (simplified - full logic would check all 7 rules)
+        # Default result
         triage_result = {
-            'action': 'GO',  # Default: continue workflow
+            'action': 'GO',
             'target_department': None,
-            'reason': 'No routing needed'
+            'reason': 'Ticket reste dans DOC',
+            'transferred': False,
+            'current_department': current_department
         }
 
-        # Rule #3: SPAM detection
-        spam_keywords = ['viagra', 'casino', 'lottery', 'prince nigerian']
-        if any(kw in subject.lower() or kw in customer_message.lower() for kw in spam_keywords):
+        # Rule #1: SPAM detection
+        spam_keywords = ['viagra', 'casino', 'lottery', 'prince nigerian', 'bitcoin gratuit']
+        combined_content = (subject + ' ' + last_thread_content).lower()
+        if any(kw in combined_content for kw in spam_keywords):
             triage_result['action'] = 'SPAM'
-            triage_result['reason'] = 'Spam detected'
+            triage_result['reason'] = 'Spam détecté'
+            logger.info("🚫 SPAM détecté → Clôturer sans réponse")
             return triage_result
 
-        # Rule #2: HORS PARTENARIAT (taxi, ambulance, etc.)
-        hors_partenariat_keywords = ['taxi', 'ambulance', 'autre formation']
-        if any(kw in subject.lower() or kw in customer_message.lower() for kw in hors_partenariat_keywords):
+        # Rule #2: Get deals from CRM for routing decision
+        linking_result = self.deal_linker.process({"ticket_id": ticket_id})
+        all_deals = linking_result.get('all_deals', [])
+
+        # If no deals found, also check by email directly
+        if not all_deals:
+            email = ticket.get('email', '')
+            if email:
+                try:
+                    all_deals = self.crm_client.search_deals_by_email(email) or []
+                except Exception as e:
+                    logger.warning(f"Erreur recherche deals: {e}")
+                    all_deals = []
+
+        # Rule #3: Use BusinessRules for department determination
+        recommended_dept = BusinessRules.determine_department_from_deals_and_ticket(
+            all_deals=all_deals,
+            ticket=ticket,
+            last_thread_content=last_thread_content
+        )
+
+        # If no deal-based recommendation, use keyword rules
+        if not recommended_dept:
+            routing_rules = BusinessRules.get_department_routing_rules()
+            for dept, rules in routing_rules.items():
+                keywords = rules.get('keywords', [])
+                if any(kw.lower() in combined_content for kw in keywords):
+                    recommended_dept = dept
+                    break
+
+        # Determine action based on recommended department
+        if recommended_dept and recommended_dept != 'DOC':
             triage_result['action'] = 'ROUTE'
-            triage_result['target_department'] = 'Contact'
-            triage_result['reason'] = 'Formation hors partenariat Uber'
-            return triage_result
+            triage_result['target_department'] = recommended_dept
+            triage_result['reason'] = f'Routing vers {recommended_dept} (règles métier)'
 
-        # More rules would be implemented here...
+            # Auto-transfer if enabled
+            if auto_transfer:
+                logger.info(f"🔄 Transfert automatique vers {recommended_dept}...")
+                try:
+                    # Use dispatcher to reassign
+                    transfer_success = self.dispatcher._reassign_ticket(ticket_id, recommended_dept)
+                    triage_result['transferred'] = transfer_success
+                    if transfer_success:
+                        logger.info(f"✅ Ticket transféré vers {recommended_dept}")
+                    else:
+                        logger.warning(f"⚠️ Échec transfert vers {recommended_dept}")
+                except Exception as e:
+                    logger.error(f"❌ Erreur transfert: {e}")
+                    triage_result['transferred'] = False
+        else:
+            # Stay in DOC
+            triage_result['action'] = 'GO'
+            triage_result['target_department'] = 'DOC'
+            triage_result['reason'] = 'Ticket DOC valide - continuer workflow'
 
         return triage_result
 
@@ -963,6 +1026,8 @@ class DOCTicketWorkflow:
             self.crm_client.close()
         if hasattr(self, 'deal_linker') and hasattr(self.deal_linker, 'close'):
             self.deal_linker.close()
+        if hasattr(self, 'dispatcher') and hasattr(self.dispatcher, 'close'):
+            self.dispatcher.close()
         # ExamT3PAgent doesn't have close() method, skip it
 
 
