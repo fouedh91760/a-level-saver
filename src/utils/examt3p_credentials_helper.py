@@ -659,7 +659,18 @@ def get_credentials_with_validation(
                 logger.error(f"  ❌ Erreur lors de la comparaison des comptes: {e}")
                 logger.info("  → On garde le compte CRM par défaut")
         else:
+            # Le compte thread ne fonctionne pas avec le mot de passe extrait
+            # MAIS le candidat pourrait avoir un compte perso avec un AUTRE mot de passe !
             logger.info("  ✅ Compte thread invalide, on garde le compte CRM")
+            logger.warning(f"  ⚠️  ATTENTION: Le candidat a peut-être un compte personnel avec {identifiant_threads}")
+            logger.warning("     Le test a échoué car le mot de passe extrait est probablement différent")
+            result['potential_personal_account'] = True
+            result['potential_personal_email'] = identifiant_threads
+            result['personal_account_warning'] = (
+                f"Le candidat a potentiellement un compte ExamT3P personnel avec l'email {identifiant_threads}. "
+                "Il pourrait se connecter à ce compte et voir un statut différent (non payé, non validé). "
+                "La réponse doit clairement indiquer d'utiliser UNIQUEMENT le compte CAB."
+            )
 
     result['connection_test_success'] = connection_ok
     result['connection_error'] = connection_error

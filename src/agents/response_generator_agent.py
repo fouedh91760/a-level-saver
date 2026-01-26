@@ -581,6 +581,19 @@ Génère uniquement le contenu de la réponse (pas de métadonnées)."""
                 lines.append(f"  - Documents manquants : {len(exament3p_data.get('documents_manquants', []))}")
                 lines.append(f"  - Paiement CMA : {exament3p_data.get('paiement_cma_status', 'N/A')}")
 
+                # ⚠️ ALERTE COMPTE PERSONNEL POTENTIEL
+                if exament3p_data.get('potential_personal_account'):
+                    personal_email = exament3p_data.get('potential_personal_email', 'inconnu')
+                    lines.append("")
+                    lines.append(f"  🚨 **ATTENTION - COMPTE PERSONNEL POTENTIEL DÉTECTÉ** 🚨")
+                    lines.append(f"  - Le candidat a peut-être un compte ExamT3P personnel avec : {personal_email}")
+                    lines.append(f"  - Il pourrait se connecter à CE compte et voir : PAS DE PAIEMENT, PAS DE VALIDATION")
+                    lines.append(f"  - C'est probablement pourquoi il est confus !")
+                    lines.append(f"  - ⚠️ **DANS TA RÉPONSE, TU DOIS :**")
+                    lines.append(f"    1. Expliquer clairement qu'il doit utiliser UNIQUEMENT le compte CAB")
+                    lines.append(f"    2. Préciser que son email personnel ({personal_email}) N'EST PAS le bon identifiant")
+                    lines.append(f"    3. Rassurer que tout est fait sur le compte CAB (paiement, validation)")
+
         if date_examen_vtc_data:
             lines.append("\n### Date Examen VTC :")
             lines.append(f"  - Cas détecté : CAS {date_examen_vtc_data.get('case', 'N/A')} - {date_examen_vtc_data.get('case_description', '')}")
