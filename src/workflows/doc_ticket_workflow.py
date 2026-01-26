@@ -256,12 +256,17 @@ class DOCTicketWorkflow:
                         analysis_result
                     )
                     if deal_updates:
-                        self.crm_client.update_deal(
-                            analysis_result['deal_id'],
-                            deal_updates
-                        )
-                        logger.info(f"✅ DEAL UPDATE → {len(deal_updates)} champs mis à jour: {list(deal_updates.keys())}")
-                        result['crm_updated'] = True
+                        try:
+                            self.crm_client.update_deal(
+                                analysis_result['deal_id'],
+                                deal_updates
+                            )
+                            logger.info(f"✅ DEAL UPDATE → {len(deal_updates)} champs mis à jour: {list(deal_updates.keys())}")
+                            result['crm_updated'] = True
+                        except Exception as crm_error:
+                            logger.error(f"⚠️ DEAL UPDATE ÉCHOUÉ: {crm_error}")
+                            logger.warning("→ Le workflow continue malgré l'erreur CRM")
+                            result['crm_update_error'] = str(crm_error)
                     else:
                         logger.info("✅ DEAL UPDATE → Aucune mise à jour préparée")
                 else:
@@ -1017,16 +1022,74 @@ class DOCTicketWorkflow:
 
         Uses AI-extracted updates from ResponseGeneratorAgent (crm_updates)
         which analyzes the conversation context to determine what needs updating.
+
+        IMPORTANT: Certains champs CRM attendent des IDs (bigint), pas des strings.
+        - Date_examen_VTC: ID de la session d'examen (module Sessions_Examens)
+        - Session_choisie: ID de la session de formation (module Sessions1)
         """
         # Get AI-extracted updates (primary source)
         ai_updates = response_result.get('crm_updates', {})
 
-        if ai_updates:
-            logger.info(f"  📊 AI extracted CRM updates: {ai_updates}")
-            return ai_updates
-        else:
+        if not ai_updates:
             logger.info(f"  📊 No CRM updates extracted by AI")
             return {}
+
+        logger.info(f"  📊 AI extracted CRM updates (raw): {ai_updates}")
+
+        # Map AI values to CRM field IDs
+        crm_updates = {}
+
+        # Get session data from analysis if available
+        session_data = analysis_result.get('session_data', {})
+        date_examen_vtc_result = analysis_result.get('date_examen_vtc_result', {})
+
+        # Map Date_examen_VTC (date string -> session ID)
+        if 'Date_examen_VTC' in ai_updates:
+            date_str = ai_updates['Date_examen_VTC']
+            # Find matching exam session ID from next_dates
+            next_dates = date_examen_vtc_result.get('next_dates', [])
+            for exam_date in next_dates:
+                if exam_date.get('Date_Examen') == date_str:
+                    exam_id = exam_date.get('id')
+                    if exam_id:
+                        crm_updates['Date_examen_VTC'] = exam_id
+                        logger.info(f"  📊 Mapped Date_examen_VTC: {date_str} → ID {exam_id}")
+                    break
+            if 'Date_examen_VTC' not in crm_updates:
+                logger.warning(f"  ⚠️ Could not find exam session ID for date {date_str}")
+
+        # Map Session_choisie (session name -> session ID)
+        if 'Session_choisie' in ai_updates:
+            session_name = ai_updates['Session_choisie']
+            # Find matching session ID from proposed options
+            proposed_options = session_data.get('proposed_options', [])
+            for option in proposed_options:
+                for sess in option.get('sessions', []):
+                    sess_id = sess.get('id')
+                    if sess_id:
+                        # Check if session matches (by name or date range)
+                        sess_debut = sess.get('Date_d_but', '')
+                        sess_fin = sess.get('Date_fin', '')
+                        if sess_debut in session_name or sess_fin in session_name:
+                            crm_updates['Session_choisie'] = sess_id
+                            logger.info(f"  📊 Mapped Session_choisie: {session_name} → ID {sess_id}")
+                            break
+                if 'Session_choisie' in crm_updates:
+                    break
+            if 'Session_choisie' not in crm_updates:
+                logger.warning(f"  ⚠️ Could not find session ID for: {session_name}")
+
+        # Copy other fields directly (strings are OK for text fields)
+        for key, value in ai_updates.items():
+            if key not in ['Date_examen_VTC', 'Session_choisie']:
+                crm_updates[key] = value
+
+        if crm_updates:
+            logger.info(f"  📊 Final CRM updates: {crm_updates}")
+        else:
+            logger.warning(f"  ⚠️ No valid CRM updates after mapping")
+
+        return crm_updates
 
     def close(self):
         """Clean up resources."""
