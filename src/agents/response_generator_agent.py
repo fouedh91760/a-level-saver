@@ -2036,19 +2036,28 @@ L'équipe Cab Formations"""
         # Parser la date selon son format
         if exam_date_raw:
             if isinstance(exam_date_raw, dict):
-                # Format: {'name': '51_2026-01-27', 'id': '...'}
-                exam_name = exam_date_raw.get('name', '')
-                logger.info(f"  📅 exam_name from dict: {exam_name}")
-                if '_' in exam_name:
-                    date_part = exam_name.split('_')[1]
+                # Priorité 1: Champ Date_Examen du module Dates_Examens_VTC_TAXI (si appel API réussi)
+                date_examen = exam_date_raw.get('Date_Examen')
+                if date_examen:
+                    logger.info(f"  📅 Date_Examen from API: {date_examen}")
                     try:
-                        exam_date = datetime.strptime(date_part, "%Y-%m-%d")
+                        exam_date = datetime.strptime(date_examen, "%Y-%m-%d")
                         exam_date_formatted = exam_date.strftime("%d/%m/%Y")
                     except:
-                        exam_date_formatted = date_part
-                elif exam_name:
-                    # Peut-être format sans préfixe département
-                    exam_date_formatted = exam_name
+                        exam_date_formatted = date_examen
+                else:
+                    # Priorité 2: Parser depuis 'name' (format '51_2026-01-27' si lookup brut)
+                    exam_name = exam_date_raw.get('name', '')
+                    logger.info(f"  📅 exam_name from dict: {exam_name}")
+                    if '_' in exam_name:
+                        date_part = exam_name.split('_')[1]
+                        try:
+                            exam_date = datetime.strptime(date_part, "%Y-%m-%d")
+                            exam_date_formatted = exam_date.strftime("%d/%m/%Y")
+                        except:
+                            exam_date_formatted = date_part
+                    elif exam_name:
+                        exam_date_formatted = exam_name
             elif isinstance(exam_date_raw, str):
                 # Format string: "2026-01-27" ou "27/01/2026"
                 try:
