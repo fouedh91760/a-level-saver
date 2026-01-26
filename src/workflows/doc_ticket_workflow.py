@@ -32,6 +32,7 @@ from src.agents.deal_linking_agent import DealLinkingAgent
 from src.agents.examt3p_agent import ExamT3PAgent
 from src.agents.dispatcher_agent import TicketDispatcherAgent
 from src.agents.crm_update_agent import CRMUpdateAgent
+from src.agents.triage_agent import TriageAgent
 from src.zoho_client import ZohoDeskClient, ZohoCRMClient
 from knowledge_base.scenarios_mapping import (
     detect_scenario_from_text,
@@ -56,6 +57,7 @@ class DOCTicketWorkflow:
         self.examt3p_agent = ExamT3PAgent()
         self.dispatcher = TicketDispatcherAgent()
         self.crm_update_agent = CRMUpdateAgent()
+        self.triage_agent = TriageAgent()
 
         logger.info("✅ DOCTicketWorkflow initialized")
 
@@ -403,13 +405,13 @@ class DOCTicketWorkflow:
 
     def _run_triage(self, ticket_id: str, auto_transfer: bool = True) -> Dict:
         """
-        Run AGENT TRIEUR logic with full business rules.
+        Run AGENT TRIEUR logic with AI-based triage.
 
-        Uses BusinessRules from business_rules.py for complete routing logic:
+        Uses TriageAgent (Claude) for intelligent context-aware routing:
+        - Comprend le SENS du message, pas juste les mots-clés
+        - Évite les faux positifs ("j'ai envoyé mes documents" ≠ Refus CMA)
         - Deal-based routing (Uber €20, CMA, etc.)
         - Evalbox status (Refusé CMA, Documents manquants, etc.)
-        - Document submission detection
-        - Keyword-based fallback
 
         Args:
             ticket_id: Ticket to triage
@@ -424,12 +426,11 @@ class DOCTicketWorkflow:
             }
         """
         from src.utils.text_utils import get_clean_thread_content
-        from business_rules import BusinessRules
 
         # Get ticket details
         ticket = self.desk_client.get_ticket(ticket_id)
         subject = ticket.get('subject', '')
-        current_department = ticket.get('departmentId') or ticket.get('department', {}).get('name', 'Unknown')
+        current_department = ticket.get('departmentId') or ticket.get('department', {}).get('name', 'DOC')
 
         # Get threads for content analysis
         threads = self.desk_client.get_all_threads_with_full_content(ticket_id)
@@ -442,24 +443,27 @@ class DOCTicketWorkflow:
         # Default result
         triage_result = {
             'action': 'GO',
-            'target_department': None,
+            'target_department': 'DOC',
             'reason': 'Ticket reste dans DOC',
             'transferred': False,
-            'current_department': current_department
+            'current_department': current_department,
+            'method': 'default'
         }
 
-        # Rule #1: SPAM detection
+        # Rule #1: SPAM detection (simple keywords - pas besoin d'IA)
         spam_keywords = ['viagra', 'casino', 'lottery', 'prince nigerian', 'bitcoin gratuit']
         combined_content = (subject + ' ' + last_thread_content).lower()
         if any(kw in combined_content for kw in spam_keywords):
             triage_result['action'] = 'SPAM'
             triage_result['reason'] = 'Spam détecté'
+            triage_result['method'] = 'spam_filter'
             logger.info("🚫 SPAM détecté → Clôturer sans réponse")
             return triage_result
 
-        # Rule #2: Get deals from CRM for routing decision
+        # Rule #2: Get deals from CRM for context
         linking_result = self.deal_linker.process({"ticket_id": ticket_id})
         all_deals = linking_result.get('all_deals', [])
+        selected_deal = linking_result.get('selected_deal') or linking_result.get('deal') or {}
 
         # If no deals found, also check by email directly
         if not all_deals:
@@ -467,43 +471,45 @@ class DOCTicketWorkflow:
             if email:
                 try:
                     all_deals = self.crm_client.search_deals_by_email(email) or []
+                    if all_deals:
+                        selected_deal = all_deals[0]
                 except Exception as e:
                     logger.warning(f"Erreur recherche deals: {e}")
                     all_deals = []
 
-        # Rule #3: Use BusinessRules for department determination
-        recommended_dept = BusinessRules.determine_department_from_deals_and_ticket(
-            all_deals=all_deals,
-            ticket=ticket,
-            last_thread_content=last_thread_content
+        # Rule #3: UTILISER L'IA POUR LE TRIAGE INTELLIGENT
+        # L'IA comprend le contexte et évite les faux positifs
+        logger.info("🤖 Triage IA en cours...")
+        ai_triage = self.triage_agent.triage_ticket(
+            ticket_subject=subject,
+            thread_content=last_thread_content,
+            deal_data=selected_deal,
+            current_department='DOC'
         )
 
-        # If no deal-based recommendation, use keyword rules
-        if not recommended_dept:
-            routing_rules = BusinessRules.get_department_routing_rules()
-            for dept, rules in routing_rules.items():
-                keywords = rules.get('keywords', [])
-                if any(kw.lower() in combined_content for kw in keywords):
-                    recommended_dept = dept
-                    break
+        logger.info(f"  🤖 Résultat IA: {ai_triage['action']} → {ai_triage['target_department']} ({ai_triage['reason']})")
+        logger.info(f"  🤖 Confiance: {ai_triage['confidence']:.0%} | Méthode: {ai_triage['method']}")
 
-        # Determine action based on recommended department
-        if recommended_dept and recommended_dept != 'DOC':
-            triage_result['action'] = 'ROUTE'
-            triage_result['target_department'] = recommended_dept
-            triage_result['reason'] = f'Routing vers {recommended_dept} (règles métier)'
+        # Appliquer le résultat de l'IA
+        triage_result['action'] = ai_triage['action']
+        triage_result['target_department'] = ai_triage['target_department']
+        triage_result['reason'] = ai_triage['reason']
+        triage_result['method'] = ai_triage['method']
+        triage_result['confidence'] = ai_triage['confidence']
 
+        # Determine action based on AI recommendation
+        if ai_triage['action'] == 'ROUTE' and ai_triage['target_department'] != 'DOC':
             # Auto-transfer if enabled
             if auto_transfer:
-                logger.info(f"🔄 Transfert automatique vers {recommended_dept}...")
+                logger.info(f"🔄 Transfert automatique vers {ai_triage['target_department']}...")
                 try:
                     # Use dispatcher to reassign
-                    transfer_success = self.dispatcher._reassign_ticket(ticket_id, recommended_dept)
+                    transfer_success = self.dispatcher._reassign_ticket(ticket_id, ai_triage['target_department'])
                     triage_result['transferred'] = transfer_success
                     if transfer_success:
-                        logger.info(f"✅ Ticket transféré vers {recommended_dept}")
+                        logger.info(f"✅ Ticket transféré vers {ai_triage['target_department']}")
                     else:
-                        logger.warning(f"⚠️ Échec transfert vers {recommended_dept}")
+                        logger.warning(f"⚠️ Échec transfert vers {ai_triage['target_department']}")
                 except Exception as e:
                     logger.error(f"❌ Erreur transfert: {e}")
                     triage_result['transferred'] = False
@@ -1136,7 +1142,7 @@ class DOCTicketWorkflow:
             self.dispatcher.close()
         if hasattr(self, 'crm_update_agent') and hasattr(self.crm_update_agent, 'close'):
             self.crm_update_agent.close()
-        # ExamT3PAgent doesn't have close() method, skip it
+        # ExamT3PAgent and TriageAgent don't have close() method, skip them
 
 
 def test_workflow():
