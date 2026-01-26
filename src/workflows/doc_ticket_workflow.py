@@ -783,28 +783,33 @@ Deux comptes ExamenT3P fonctionnels ont été détectés pour ce candidat, et le
             logger.info("  ℹ️ Pas une opportunité Uber 20€")
 
         # ================================================================
-        # RÈGLE GÉNÉRALE: Si pas de Date_Dossier_re_u → pas de dates/sessions
+        # RÈGLE: Si pas de Date_Dossier_re_u → pas de dates/sessions
         # ================================================================
-        # Même pour les deals NON-Uber, sans dossier reçu on ne peut pas proposer de dates
-        # EXCEPTION: Si Evalbox est avancé, le dossier a clairement été traité
+        # IMPORTANT: Cette règle ne s'applique QU'AUX DEALS 20€ (Uber)
+        # Pour les deals classiques (1299€, etc.), pas besoin de Date_Dossier_re_u
         dossier_not_received_blocks_dates = False
-        date_dossier_recu = deal_data.get('Date_Dossier_re_u')
-        evalbox_status = deal_data.get('Evalbox', '')
+        deal_amount = deal_data.get('Amount', 0)
+        is_uber_20_deal = (deal_amount == 20)
 
-        # Statuts Evalbox qui prouvent que le dossier a été traité (même si Date_Dossier_re_u non rempli)
-        ADVANCED_EVALBOX_STATUSES = {
-            "VALIDE CMA", "Convoc CMA reçue", "Dossier Synchronisé",
-            "Pret a payer", "Refusé CMA"
-        }
+        if is_uber_20_deal:
+            date_dossier_recu = deal_data.get('Date_Dossier_re_u')
+            evalbox_status = deal_data.get('Evalbox', '')
 
-        if not date_dossier_recu:
-            if evalbox_status in ADVANCED_EVALBOX_STATUSES:
-                # Evalbox avancé = dossier clairement traité, Date_Dossier_re_u juste pas rempli
-                logger.info(f"  ℹ️ Date_Dossier_re_u vide MAIS Evalbox='{evalbox_status}' → dossier traité")
-            else:
-                logger.warning("  🚨 PAS DE DATE_DOSSIER_RECU: Dossier non reçu")
-                logger.warning("  ⛔ BLOCAGE DATES/SESSIONS: On ne peut pas proposer de dates sans dossier")
-                dossier_not_received_blocks_dates = True
+            # Statuts Evalbox qui prouvent que le dossier a été traité
+            ADVANCED_EVALBOX_STATUSES = {
+                "VALIDE CMA", "Convoc CMA reçue", "Dossier Synchronisé",
+                "Pret a payer", "Refusé CMA"
+            }
+
+            if not date_dossier_recu:
+                if evalbox_status in ADVANCED_EVALBOX_STATUSES:
+                    logger.info(f"  ℹ️ Deal 20€: Date_Dossier_re_u vide MAIS Evalbox='{evalbox_status}' → OK")
+                else:
+                    logger.warning("  🚨 Deal 20€: PAS DE DATE_DOSSIER_RECU")
+                    logger.warning("  ⛔ BLOCAGE: On ne peut pas proposer de dates sans dossier")
+                    dossier_not_received_blocks_dates = True
+        else:
+            logger.info(f"  ℹ️ Deal {deal_amount}€ (non-Uber): règle Date_Dossier_re_u non applicable")
 
         # ================================================================
         # RÈGLE CRITIQUE: SI IDENTIFIANTS NON ACCESSIBLES → SKIP DATES/SESSIONS

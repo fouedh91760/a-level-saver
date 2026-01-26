@@ -16,6 +16,8 @@ CONTEXTE:
    → Champ: Date_Dossier_re_u non vide
 3. Réussir le test de sélection (lien envoyé par mail après finalisation)
    → Champ: Date_test_selection non vide
+   → IMPORTANT: Obligatoire UNIQUEMENT si Date_Dossier_re_u > 19/05/2025
+   → Pour les dossiers antérieurs, le test n'est PAS obligatoire
 
 CAS GÉRÉS:
 - CAS A: Opp 20€ gagnée + Date_Dossier_re_u vide
@@ -168,7 +170,26 @@ def analyze_uber_eligibility(deal_data: Dict[str, Any]) -> Dict[str, Any]:
         return result
 
     # CAS B: Date_Dossier_re_u OK mais Date_test_selection vide → Test non passé
-    if not date_test_selection:
+    # IMPORTANT: Le test de sélection n'est obligatoire que pour les dossiers
+    # reçus APRÈS le 19/05/2025. Pour les dossiers antérieurs, on passe directement
+    # à ÉLIGIBLE sans exiger le test.
+    TEST_SELECTION_MANDATORY_FROM = datetime(2025, 5, 19).date()
+
+    # Déterminer si le test est obligatoire en fonction de la date de réception
+    test_is_mandatory = False
+    try:
+        if date_dossier_recu:
+            if 'T' in str(date_dossier_recu):
+                dossier_date = datetime.fromisoformat(str(date_dossier_recu).replace('Z', '+00:00')).date()
+            else:
+                dossier_date = datetime.strptime(str(date_dossier_recu)[:10], '%Y-%m-%d').date()
+            test_is_mandatory = dossier_date > TEST_SELECTION_MANDATORY_FROM
+            logger.info(f"  📅 Date dossier: {dossier_date} | Test obligatoire: {test_is_mandatory} (seuil: {TEST_SELECTION_MANDATORY_FROM})")
+    except (ValueError, TypeError) as e:
+        logger.warning(f"  ⚠️ Impossible de parser la date dossier: {date_dossier_recu} - {e}")
+        test_is_mandatory = False  # En cas de doute, ne pas bloquer
+
+    if not date_test_selection and test_is_mandatory:
         result['case'] = 'B'
         result['case_description'] = "Test de sélection non passé - Demander de passer le test"
         result['should_include_in_response'] = True
@@ -176,8 +197,10 @@ def analyze_uber_eligibility(deal_data: Dict[str, Any]) -> Dict[str, Any]:
         # Formater la date de réception du dossier pour le message
         date_dossier_formatted = format_date_for_display(date_dossier_recu)
         result['response_message'] = generate_test_selection_missing_message(date_dossier_formatted)
-        logger.info("  ➡️ CAS B: Test de sélection non passé")
+        logger.info("  ➡️ CAS B: Test de sélection non passé (obligatoire car dossier après 19/05/2025)")
         return result
+    elif not date_test_selection and not test_is_mandatory:
+        logger.info("  ℹ️ Test de sélection non passé MAIS non obligatoire (dossier avant 19/05/2025)")
 
     # ÉLIGIBLE: Les deux dates sont remplies
     result['case'] = 'ELIGIBLE'
