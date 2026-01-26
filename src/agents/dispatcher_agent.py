@@ -410,16 +410,28 @@ SIGNALS: [comma-separated keywords/patterns that influenced your decision]
         """
         Reassign ticket to a new department.
 
+        Args:
+            ticket_id: Ticket ID to reassign
+            new_department: Department name (e.g., "Contact", "DOC", "Refus CMA")
+
         Returns:
             True if successful, False otherwise
         """
         try:
             logger.info(f"Reassigning ticket {ticket_id} to department: {new_department}")
 
-            # Update ticket department
+            # Convert department name to ID (Zoho API requires numeric ID)
+            dept_id = self.desk_client.get_department_id_by_name(new_department)
+            if not dept_id:
+                logger.error(f"Department '{new_department}' not found in Zoho Desk")
+                return False
+
+            logger.info(f"Department ID for '{new_department}': {dept_id}")
+
+            # Update ticket department with numeric ID
             self.desk_client.update_ticket(
                 ticket_id=ticket_id,
-                data={"departmentId": new_department}  # Note: May need department ID, not name
+                data={"departmentId": int(dept_id)}  # Must be numeric (long)
             )
 
             logger.info(f"Successfully reassigned ticket {ticket_id} to {new_department}")

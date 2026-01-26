@@ -221,6 +221,34 @@ class ZohoDeskClient(ZohoAPIClient):
 
         return self._get_all_pages(url, params, limit_per_page)
 
+    def list_departments(self) -> List[Dict[str, Any]]:
+        """
+        List all departments in Zoho Desk.
+
+        Returns:
+            List of departments with id, name, etc.
+        """
+        url = f"{settings.zoho_desk_api_url}/departments"
+        params = {"orgId": settings.zoho_desk_org_id}
+        response = self._make_request("GET", url, params=params)
+        return response.get("data", [])
+
+    def get_department_id_by_name(self, name: str) -> Optional[str]:
+        """
+        Get department ID by name.
+
+        Args:
+            name: Department name (e.g., "Contact", "DOC", "Refus CMA")
+
+        Returns:
+            Department ID as string, or None if not found
+        """
+        departments = self.list_departments()
+        for dept in departments:
+            if dept.get("name", "").lower() == name.lower():
+                return str(dept.get("id"))
+        return None
+
     def update_ticket(
         self,
         ticket_id: str,
