@@ -264,30 +264,30 @@ class DOCTicketWorkflow:
             result['workflow_stage'] = 'DRAFT_CREATION'
 
             if auto_create_draft:
-                # Convertir markdown en HTML pour Zoho Desk
+                # Envoyer en plainText (plus fiable avec Zoho Desk)
                 draft_content = response_result['response_text']
-                # Conversion simple markdown → HTML
+                # Nettoyer le markdown pour plainText
                 import re
-                html_content = draft_content
-                # Liens markdown [text](url) → <a href="url">text</a>
-                html_content = re.sub(r'\[([^\]]+)\]\(([^)]+)\)', r'<a href="\2">\1</a>', html_content)
-                # Gras **text** → <strong>text</strong>
-                html_content = re.sub(r'\*\*([^*]+)\*\*', r'<strong>\1</strong>', html_content)
-                # Headers ## text → <h3>text</h3>
-                html_content = re.sub(r'^## (.+)$', r'<h3>\1</h3>', html_content, flags=re.MULTILINE)
-                # Puces - text → <li>text</li>
-                html_content = re.sub(r'^- (.+)$', r'<li>\1</li>', html_content, flags=re.MULTILINE)
-                # Retours à la ligne → <br>
-                html_content = html_content.replace('\n\n', '</p><p>').replace('\n', '<br>')
-                html_content = f'<p>{html_content}</p>'
+                plain_content = draft_content
+                # Convertir liens [text](url) → text (url)
+                plain_content = re.sub(r'\[([^\]]+)\]\(([^)]+)\)', r'\1 (\2)', plain_content)
+                # Retirer les ** du gras
+                plain_content = re.sub(r'\*\*([^*]+)\*\*', r'\1', plain_content)
+                # Retirer les ## des headers
+                plain_content = re.sub(r'^## ', '', plain_content, flags=re.MULTILINE)
 
-                self.desk_client.create_ticket_reply_draft(
-                    ticket_id=ticket_id,
-                    content=html_content,
-                    content_type="html"
-                )
-                logger.info("✅ DRAFT CREATION → Brouillon créé dans Zoho Desk")
-                result['draft_created'] = True
+                try:
+                    self.desk_client.create_ticket_reply_draft(
+                        ticket_id=ticket_id,
+                        content=plain_content,
+                        content_type="plainText"
+                    )
+                    logger.info("✅ DRAFT CREATION → Brouillon créé dans Zoho Desk")
+                    result['draft_created'] = True
+                except Exception as draft_error:
+                    logger.warning(f"⚠️ Impossible de créer le draft dans Zoho Desk: {draft_error}")
+                    logger.info("📋 La réponse est disponible ci-dessus pour copier-coller manuellement")
+                    result['draft_created'] = False
 
                 # Log la réponse dans une note CRM
                 if analysis_result.get('deal_id'):
