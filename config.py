@@ -20,7 +20,11 @@ class Settings(BaseSettings):
 
     # Zoho Desk
     zoho_desk_org_id: str
-    zoho_desk_from_email: Optional[str] = None  # Email support pour les réponses (fromEmailAddress API)
+    # Emails par département pour les réponses (fromEmailAddress API)
+    zoho_desk_email_doc: Optional[str] = None      # DOC department
+    zoho_desk_email_contact: Optional[str] = None  # Contact department
+    zoho_desk_email_compta: Optional[str] = None   # Comptabilité department
+    zoho_desk_email_default: Optional[str] = None  # Fallback
 
     # Zoho CRM (credentials séparées si nécessaire)
     zoho_crm_client_id: Optional[str] = None

@@ -277,13 +277,25 @@ class DOCTicketWorkflow:
                 plain_content = re.sub(r'^## ', '', plain_content, flags=re.MULTILINE)
 
                 try:
-                    # Récupérer from_email depuis la config
+                    # Récupérer from_email selon le département
                     from config import settings
-                    from_email = settings.zoho_desk_from_email
 
-                    # Récupérer l'email du ticket (destinataire de la réponse)
+                    # Récupérer le ticket pour le département et l'email destinataire
                     ticket = self.desk_client.get_ticket(ticket_id)
+                    department = ticket.get('departmentId') or ticket.get('department', {}).get('name', '')
                     to_email = ticket.get('email')
+
+                    # Mapping département → email expéditeur
+                    dept_email_map = {
+                        'DOC': settings.zoho_desk_email_doc,
+                        'Contact': settings.zoho_desk_email_contact,
+                        'Comptabilité': settings.zoho_desk_email_compta,
+                    }
+
+                    # Déterminer l'email selon le département
+                    from_email = dept_email_map.get(department) or settings.zoho_desk_email_doc or settings.zoho_desk_email_default
+
+                    logger.info(f"📧 Draft: from={from_email}, to={to_email}, dept={department}")
 
                     self.desk_client.create_ticket_reply_draft(
                         ticket_id=ticket_id,
