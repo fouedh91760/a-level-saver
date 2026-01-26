@@ -267,7 +267,9 @@ Always respond in JSON format with the following structure:
             "routing_explanation": "",
             "deal_id": None,
             "deal": None,
-            "deal_found": False
+            "deal_found": False,
+            "has_duplicate_uber_offer": False,  # True si candidat a déjà bénéficié de l'offre Uber 20€
+            "duplicate_deals": []  # Liste des deals 20€ GAGNÉ si doublon détecté
         }
 
         # Step 1: Get ticket details
@@ -402,12 +404,26 @@ Always respond in JSON format with the following structure:
                     selection_method = f"Priority 1 - Examen proche ({exam_date.strftime('%d/%m/%Y')})"
                     logger.info(f"🎯 Deal sélectionné par date d'examen: {selected_deal.get('Deal_Name')} - examen le {exam_date}")
 
+            # ==================================================================
+            # DÉTECTION DOUBLON UBER 20€ (candidat ayant déjà bénéficié de l'offre)
+            # ==================================================================
+            deals_20_won = [d for d in all_deals if d.get("Amount") == 20 and d.get("Stage") == "GAGNÉ"]
+            if len(deals_20_won) > 1:
+                # DOUBLON DÉTECTÉ : Le candidat a plusieurs opportunités 20€ GAGNÉ
+                # Cela signifie qu'il a déjà bénéficié de l'offre Uber une fois
+                result["has_duplicate_uber_offer"] = True
+                result["duplicate_deals"] = deals_20_won
+                logger.warning(f"⚠️ DOUBLON UBER 20€ DÉTECTÉ: {len(deals_20_won)} opportunités 20€ GAGNÉ pour ce contact")
+                for d in deals_20_won:
+                    logger.warning(f"   - {d.get('Deal_Name')} (ID: {d.get('id')}, Closing: {d.get('Closing_Date')})")
+
             # PRIORITÉ 2 : Deals 20€ GAGNÉ (candidats payés en cours de traitement)
             if not selected_deal:
-                deals_20_won = [d for d in all_deals if d.get("Amount") == 20 and d.get("Stage") == "GAGNÉ"]
                 if deals_20_won:
                     selected_deal = sorted(deals_20_won, key=lambda d: d.get("Closing_Date", ""), reverse=True)[0]
                     selection_method = "Priority 2 - 20€ GAGNÉ (most recent)"
+                    if result["has_duplicate_uber_offer"]:
+                        selection_method += " [DOUBLON DÉTECTÉ]"
 
             # PRIORITÉ 3 : Autres deals GAGNÉ
             if not selected_deal:

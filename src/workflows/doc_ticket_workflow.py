@@ -135,6 +135,32 @@ class DOCTicketWorkflow:
                 result['success'] = True
                 return result
 
+            # Check if DUPLICATE UBER 20€
+            if triage_result.get('action') == 'DUPLICATE_UBER':
+                logger.warning("⚠️  DOUBLON UBER 20€ → Candidat a déjà bénéficié de l'offre")
+                result['workflow_stage'] = 'DUPLICATE_UBER_OFFER'
+                result['duplicate_deals'] = triage_result.get('duplicate_deals', [])
+
+                # Générer une réponse spécifique pour ce cas
+                duplicate_response = self._generate_duplicate_uber_response(
+                    ticket_id=ticket_id,
+                    triage_result=triage_result
+                )
+                result['response_result'] = duplicate_response
+                result['duplicate_response'] = duplicate_response.get('response_text', '')
+
+                # Créer le brouillon si demandé
+                if auto_create_draft and duplicate_response.get('response_text'):
+                    try:
+                        draft_result = self._create_draft_reply(ticket_id, duplicate_response['response_text'])
+                        result['draft_created'] = draft_result.get('success', False)
+                    except Exception as e:
+                        logger.error(f"Erreur création brouillon doublon: {e}")
+                        result['draft_created'] = False
+
+                result['success'] = True
+                return result
+
             # FEU VERT → Continue
             logger.info("✅ TRIAGE → FEU VERT (continue workflow)")
 
@@ -464,6 +490,19 @@ class DOCTicketWorkflow:
         linking_result = self.deal_linker.process({"ticket_id": ticket_id})
         all_deals = linking_result.get('all_deals', [])
         selected_deal = linking_result.get('selected_deal') or linking_result.get('deal') or {}
+
+        # Rule #2.5: VÉRIFICATION DOUBLON UBER 20€
+        # Si le candidat a déjà bénéficié de l'offre Uber 20€, il ne peut pas en bénéficier à nouveau
+        if linking_result.get('has_duplicate_uber_offer'):
+            duplicate_deals = linking_result.get('duplicate_deals', [])
+            logger.warning(f"⚠️ DOUBLON UBER 20€ DÉTECTÉ: {len(duplicate_deals)} opportunités 20€ GAGNÉ")
+            triage_result['action'] = 'DUPLICATE_UBER'
+            triage_result['reason'] = f"Candidat a déjà bénéficié de l'offre Uber 20€ ({len(duplicate_deals)} opportunités GAGNÉ)"
+            triage_result['method'] = 'duplicate_detection'
+            triage_result['duplicate_deals'] = duplicate_deals
+            triage_result['selected_deal'] = selected_deal
+            logger.info("🚫 DOUBLON UBER → Workflow spécifique (pas de gratuité)")
+            return triage_result
 
         # If no deals found, also check by email directly
         if not all_deals:
@@ -1009,6 +1048,72 @@ Deux comptes ExamenT3P fonctionnels ont été détectés pour ce candidat, et le
             'uber_case_blocks_dates': uber_case_blocks_dates,
             # Cohérence formation/examen (cas manqué formation + examen imminent)
             'training_exam_consistency_result': training_exam_consistency_result,
+        }
+
+    def _generate_duplicate_uber_response(
+        self,
+        ticket_id: str,
+        triage_result: Dict
+    ) -> Dict:
+        """
+        Génère une réponse pour les candidats ayant déjà bénéficié de l'offre Uber 20€.
+
+        L'offre Uber 20€ n'est valable qu'UNE SEULE FOIS.
+        Si le candidat souhaite se réinscrire, il devra :
+        - Payer lui-même les frais d'examen (241€)
+        - Gérer son inscription sur ExamT3P
+        - Nous pouvons lui proposer la formation (VISIO ou présentiel)
+        """
+        logger.info("📝 Génération de la réponse DOUBLON UBER 20€...")
+
+        duplicate_deals = triage_result.get('duplicate_deals', [])
+        selected_deal = triage_result.get('selected_deal', {})
+
+        # Formater les dates des opportunités précédentes
+        previous_dates = []
+        for deal in duplicate_deals:
+            closing_date = deal.get('Closing_Date', 'N/A')
+            deal_name = deal.get('Deal_Name', 'Opportunité')
+            previous_dates.append(f"{deal_name} ({closing_date})")
+
+        # Générer la réponse
+        response_text = """Bonjour,
+
+Je vous remercie pour votre message.
+
+Après vérification de votre dossier, je constate que vous avez déjà bénéficié de l'offre Uber à 20€ pour le passage de l'examen VTC. **Cette offre n'est valable qu'une seule fois par candidat.**
+
+Si vous souhaitez vous réinscrire à l'examen VTC, voici vos options :
+
+**Option 1 : Inscription autonome**
+- Vous pouvez vous inscrire vous-même sur le site de la CMA (ExamT3P)
+- Les frais d'inscription à l'examen s'élèvent à **241€**, à votre charge
+- Site d'inscription : https://exament3p.cma-france.fr
+
+**Option 2 : Formation avec CAB Formations**
+Si vous souhaitez suivre une formation de préparation à l'examen VTC, nous pouvons vous proposer :
+
+📚 **Formation en visioconférence (VISIO)** : 40 heures
+   - Cours du jour : 8h30-16h30 (1 semaine)
+   - Cours du soir : 18h00-22h00 (2 semaines)
+
+📚 **Formation en présentiel** : sur l'un de nos centres de formation
+
+Merci de me préciser si vous êtes intéressé(e) par l'une de ces options, et je vous transmettrai les tarifs et disponibilités.
+
+Bien cordialement,
+
+L'équipe Cab Formations"""
+
+        logger.info(f"✅ Réponse DOUBLON générée ({len(response_text)} caractères)")
+
+        return {
+            'response_text': response_text,
+            'is_duplicate_uber_response': True,
+            'duplicate_deals_count': len(duplicate_deals),
+            'previous_dates': previous_dates,
+            'crm_updates': {},  # Pas de mise à jour CRM pour les doublons
+            'detected_scenarios': ['DUPLICATE_UBER_OFFER']
         }
 
     def _run_response_generation(

@@ -420,6 +420,29 @@ Next steps CAB:
 **Timing vérification Uber :** La vérification Compte_Uber et ELIGIBLE se fait à `Date_Dossier_recu + 1 jour`.
 Avant ce délai, on ne bloque pas le candidat (vérification en attente).
 
+### Doublon Uber 20€ (IMPORTANT)
+**L'offre Uber 20€ n'est valable qu'UNE SEULE FOIS par candidat.**
+
+**Détection :** Si un contact a plusieurs opportunités avec `Amount = 20` ET `Stage = GAGNÉ` → DOUBLON
+
+**Comportement du workflow :**
+1. Le `DealLinkingAgent` détecte automatiquement les doublons (`has_duplicate_uber_offer = True`)
+2. Le workflow s'arrête à l'étape TRIAGE avec l'action `DUPLICATE_UBER`
+3. Une réponse spécifique est générée expliquant que l'offre a déjà été utilisée
+
+**Options proposées au candidat :**
+- **Inscription autonome** : S'inscrire sur ExamT3P et payer les 241€ lui-même
+- **Formation avec nous** : Formation VISIO ou présentiel (à ses frais)
+
+**Code de détection :**
+```python
+# Dans DealLinkingAgent.process()
+deals_20_won = [d for d in all_deals if d.get("Amount") == 20 and d.get("Stage") == "GAGNÉ"]
+if len(deals_20_won) > 1:
+    result["has_duplicate_uber_offer"] = True
+    result["duplicate_deals"] = deals_20_won
+```
+
 ---
 
 ## Structure des Données
