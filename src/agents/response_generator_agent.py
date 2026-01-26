@@ -220,6 +220,8 @@ Tu réponds aux tickets clients concernant les formations VTC pour Uber avec un 
 - ⚠️ OBLIGATOIRE : Inclure les dates exactes dans la réponse avec leur format (ex: "31/03/2026", "30/06/2026")
 - Ne jamais paraphraser par "prochaine session disponible" sans donner les dates précises
 - Format : lister les dates avec leurs infos (date examen + date clôture si disponible)
+- ⚠️ CRITIQUE : Vérifier que la date de clôture est APRÈS la DATE DU JOUR (voir en haut)
+- Si une date de clôture est PASSÉE → NE PAS proposer cette session (elle est expirée !)
 
 ### 🌍 RÈGLES DÉPARTEMENT ET CHOIX DE CMA :
 
@@ -449,7 +451,16 @@ Génère uniquement le contenu de la réponse (pas de métadonnées)."""
         threads: Optional[List] = None
     ) -> str:
         """Format available data sources for prompt."""
+        from datetime import datetime
         lines = []
+
+        # ================================================================
+        # DATE DU JOUR - CRITIQUE POUR ÉVALUER LES DÉLAIS
+        # ================================================================
+        today = datetime.now()
+        lines.append(f"📅 **DATE DU JOUR : {today.strftime('%d/%m/%Y')}**")
+        lines.append("⚠️ IMPORTANT : Toute date de clôture AVANT cette date est EXPIRÉE - ne PAS proposer ces sessions !")
+        lines.append("")
 
         # ================================================================
         # ÉLIGIBILITÉ UBER 20€ - PRIORITAIRE
@@ -540,18 +551,28 @@ Génère uniquement le contenu de la réponse (pas de métadonnées)."""
                             date_formatted = date_obj.strftime("%d/%m/%Y")
                         except:
                             date_formatted = str(date_examen)
-                        # Formater date clôture
+                        # Formater date clôture et vérifier si expirée
                         cloture_formatted = ""
+                        is_expired = False
                         if date_cloture:
                             try:
                                 if 'T' in str(date_cloture):
                                     cloture_obj = datetime.fromisoformat(str(date_cloture).replace('Z', '+00:00'))
+                                    cloture_obj = cloture_obj.replace(tzinfo=None)
                                 else:
                                     cloture_obj = datetime.strptime(str(date_cloture), "%Y-%m-%d")
-                                cloture_formatted = f" (clôture: {cloture_obj.strftime('%d/%m/%Y')})"
+                                # Vérifier si la clôture est passée
+                                is_expired = cloture_obj.date() < datetime.now().date()
+                                if is_expired:
+                                    cloture_formatted = f" (clôture: {cloture_obj.strftime('%d/%m/%Y')} ⛔ EXPIRÉE - NE PAS PROPOSER)"
+                                else:
+                                    cloture_formatted = f" (clôture: {cloture_obj.strftime('%d/%m/%Y')})"
                             except:
                                 pass
-                        lines.append(f"      {i}. {date_formatted}{cloture_formatted}")
+                        if is_expired:
+                            lines.append(f"      {i}. ⛔ {date_formatted}{cloture_formatted}")
+                        else:
+                            lines.append(f"      {i}. {date_formatted}{cloture_formatted}")
 
                 # Dates alternatives dans d'autres départements (si candidat peut choisir)
                 alt_dates = date_examen_vtc_data.get('alternative_department_dates', [])
@@ -569,16 +590,26 @@ Génère uniquement le contenu de la réponse (pas de métadonnées)."""
                         except:
                             alt_date_formatted = str(alt_date_examen)
                         alt_cloture_formatted = ""
+                        alt_is_expired = False
                         if alt_cloture:
                             try:
                                 if 'T' in str(alt_cloture):
                                     alt_cloture_obj = datetime.fromisoformat(str(alt_cloture).replace('Z', '+00:00'))
+                                    alt_cloture_obj = alt_cloture_obj.replace(tzinfo=None)
                                 else:
                                     alt_cloture_obj = datetime.strptime(str(alt_cloture), "%Y-%m-%d")
-                                alt_cloture_formatted = f" (clôture: {alt_cloture_obj.strftime('%d/%m/%Y')})"
+                                # Vérifier si la clôture est passée
+                                alt_is_expired = alt_cloture_obj.date() < datetime.now().date()
+                                if alt_is_expired:
+                                    alt_cloture_formatted = f" (clôture: {alt_cloture_obj.strftime('%d/%m/%Y')} ⛔ EXPIRÉE)"
+                                else:
+                                    alt_cloture_formatted = f" (clôture: {alt_cloture_obj.strftime('%d/%m/%Y')})"
                             except:
                                 pass
-                        lines.append(f"      {j}. {alt_date_formatted} - Département {alt_dept}{alt_cloture_formatted}")
+                        if alt_is_expired:
+                            lines.append(f"      {j}. ⛔ {alt_date_formatted} - Département {alt_dept}{alt_cloture_formatted} - NE PAS PROPOSER")
+                        else:
+                            lines.append(f"      {j}. {alt_date_formatted} - Département {alt_dept}{alt_cloture_formatted}")
 
                 # Inclure le message complet (non tronqué)
                 if date_examen_vtc_data.get('response_message'):
