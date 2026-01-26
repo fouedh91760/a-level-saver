@@ -526,8 +526,13 @@ def get_examt3p_exam_date(examt3p_data: Dict[str, Any]) -> Optional[str]:
     """
     Extrait la date d'examen des données ExamT3P au format dd/mm/yyyy.
 
+    Gère plusieurs formats de date:
+    - dd/mm/yyyy (standard)
+    - yyyy-mm-dd (ISO)
+    - "1 mars 2026" (format français extrait de "À partir du...")
+
     Returns:
-        Date formatée ou None
+        Date formatée au format dd/mm/yyyy ou None
     """
     date_examen = (
         examt3p_data.get('date_examen') or
@@ -537,16 +542,44 @@ def get_examt3p_exam_date(examt3p_data: Dict[str, Any]) -> Optional[str]:
     if not date_examen:
         return None
 
-    # Normaliser au format dd/mm/yyyy
-    if '/' in str(date_examen):
-        return str(date_examen)
-    elif '-' in str(date_examen):
+    date_str = str(date_examen).strip()
+
+    # Format dd/mm/yyyy - déjà bon
+    if '/' in date_str:
+        return date_str
+
+    # Format yyyy-mm-dd (ISO)
+    if '-' in date_str and len(date_str) == 10:
         try:
-            date_obj = datetime.strptime(str(date_examen), "%Y-%m-%d")
+            date_obj = datetime.strptime(date_str, "%Y-%m-%d")
             return date_obj.strftime("%d/%m/%Y")
         except:
-            return str(date_examen)
+            pass
 
+    # Format français "1 mars 2026" ou "15 février 2026"
+    # Extraire jour, mois (texte), année
+    import re
+    match = re.match(r'(\d{1,2})\s+(\w+)\s+(\d{4})', date_str)
+    if match:
+        jour = int(match.group(1))
+        mois_texte = match.group(2).lower()
+        annee = int(match.group(3))
+
+        # Mapping mois français → numéro
+        mois_mapping = {
+            'janvier': 1, 'février': 2, 'fevrier': 2, 'mars': 3,
+            'avril': 4, 'mai': 5, 'juin': 6, 'juillet': 7,
+            'août': 8, 'aout': 8, 'septembre': 9, 'octobre': 10,
+            'novembre': 11, 'décembre': 12, 'decembre': 12
+        }
+
+        mois = mois_mapping.get(mois_texte)
+        if mois:
+            return f"{jour:02d}/{mois:02d}/{annee}"
+        else:
+            logger.warning(f"  ⚠️ Mois non reconnu dans date ExamT3P: {mois_texte}")
+
+    logger.warning(f"  ⚠️ Format de date ExamT3P non reconnu: {date_str}")
     return None
 
 
