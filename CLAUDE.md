@@ -230,6 +230,52 @@ alt_dates = get_earlier_dates_other_departments(
 - Le candidat peut alors s'inscrire dans N'IMPORTE QUEL département
 - Si compte ExamT3P existe → département assigné, changement = nouveau compte avec identifiants différents
 
+### Filtrage Intelligent par Région (`src/utils/date_examen_vtc_helper.py`)
+
+**Filtre automatiquement les dates d'examen selon la région du candidat.**
+
+```python
+from src.utils.date_examen_vtc_helper import (
+    detect_candidate_region,
+    filter_dates_by_region_relevance,
+    DEPT_TO_REGION,
+    REGION_TO_DEPTS,
+    CITY_TO_REGION,
+    REGION_ALIASES
+)
+
+# Détecter la région du candidat
+region = detect_candidate_region(
+    text="Je suis dans le Pays de la Loire",  # Message du candidat
+    department="49"  # Ou département CRM (optionnel)
+)
+# Retourne: "Pays de la Loire"
+
+# Filtrer les dates intelligemment
+filtered_dates = filter_dates_by_region_relevance(
+    all_dates=next_dates,  # 15 dates de tous départements
+    candidate_message="Je suis dans le Pays de la Loire",
+    candidate_department=None
+)
+# Retourne: dates Pays de la Loire + dates antérieures d'autres régions
+```
+
+**Logique de filtrage :**
+1. Détecte la région via : département CRM → mention région dans texte → mention ville
+2. Garde TOUTES les dates de la région du candidat
+3. Garde les autres régions SEULEMENT si date PLUS TÔT que la 1ère date de la région du candidat
+4. Élimine les régions éloignées avec mêmes dates (évite de noyer le candidat)
+
+**Mappings disponibles :**
+- `DEPT_TO_REGION` : tous les départements français → région
+- `REGION_TO_DEPTS` : région → liste de départements
+- `CITY_TO_REGION` : 50+ villes principales → région (Nantes, Lyon, etc.)
+- `REGION_ALIASES` : aliases ("PDL", "IDF", "alsace") → région officielle
+
+**Intégration automatique :**
+Le filtrage est appliqué automatiquement dans `ResponseGeneratorAgent._format_data_sources()`.
+L'IA reçoit uniquement les dates pertinentes, pas besoin de règles manuelles dans le prompt.
+
 ### Sessions de Formation (`src/utils/session_helper.py`)
 
 ```python
