@@ -215,9 +215,14 @@ Tu réponds aux tickets clients concernant les formations VTC pour Uber avec un 
 
 **Les identifiants ExamT3P et E-learning sont DIFFÉRENTS :**
 - **ExamT3P** : identifiants fournis dans les données → les donner avec le lien
-- **E-learning** : le candidat a DÉJÀ ses identifiants (reçus lors de l'inscription) → donner UNIQUEMENT le lien [Mon E-LEARNING](https://cab-formations.fr/user) SANS identifiants
-- NE JAMAIS inventer d'identifiants e-learning
-- Si le candidat dit avoir perdu ses identifiants e-learning → lui dire de nous contacter
+- **E-learning** : l'identifiant est l'EMAIL D'INSCRIPTION du candidat (voir "Email contact CRM" ci-dessous)
+
+**Si le candidat demande ses identifiants e-learning :**
+1. Lui indiquer que son identifiant est l'email utilisé lors de son inscription
+2. S'il a perdu son mot de passe → cliquer sur **"Mot de passe oublié"** sur la page de connexion
+3. Donner le lien : [Mon E-LEARNING](https://cab-formations.fr/user)
+
+⚠️ NE JAMAIS inventer d'identifiants e-learning - utiliser uniquement l'email du contact CRM si disponible
 
 ### 💬 COMMUNICATION DIPLOMATIQUE (TRÈS IMPORTANT) :
 
@@ -582,7 +587,18 @@ Génère uniquement le contenu de la réponse (pas de métadonnées)."""
 
         if crm_data:
             lines.append("### CRM Zoho :")
-            lines.append(f"  - Contact : {crm_data.get('email', 'N/A')}")
+            # Email du contact = identifiant e-learning
+            contact_email = crm_data.get('Email') or crm_data.get('email') or crm_data.get('IDENTIFIANT_EVALBOX')
+            if not contact_email:
+                # Essayer d'extraire depuis Contact_Name si c'est un lookup
+                contact_info = crm_data.get('Contact_Name')
+                if isinstance(contact_info, dict):
+                    contact_email = contact_info.get('email')
+            lines.append(f"  - 📧 Email contact CRM : {contact_email or 'N/A'}")
+            lines.append(f"  - 🎓 **Email e-learning (identifiant)** : {contact_email or 'N/A'}")
+            if contact_email:
+                lines.append(f"  - ⚠️ Si demande identifiants e-learning → utiliser cet email + 'Mot de passe oublié'")
+
             # Extraire le nom de la session (peut être un dict avec 'name' ou une string)
             session_data_crm = crm_data.get('Session_choisie') or crm_data.get('Session')
             if isinstance(session_data_crm, dict):
