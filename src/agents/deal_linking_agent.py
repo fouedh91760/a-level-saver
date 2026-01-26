@@ -447,9 +447,8 @@ Always respond in JSON format with the following structure:
         # Format: https://crm.zoho.{datacenter}/crm/tab/Potentials/{deal_id}
         deal_url = f"https://crm.zoho.{settings.zoho_datacenter}/crm/tab/Potentials/{deal_id}"
 
-        # Format as plain text with deal name and URL
-        # Zoho Desk will automatically make the URL clickable in the UI
-        field_value = f"{deal_name} - {deal_url}"
+        # Format: just the URL (Zoho Desk will make it clickable)
+        field_value = deal_url
 
         # Update ticket with custom field in the correct format
         # Zoho Desk requires custom fields to be nested under "cf" key
@@ -461,7 +460,7 @@ Always respond in JSON format with the following structure:
 
         try:
             self.desk_client.update_ticket(ticket_id, update_data)
-            logger.info(f"Updated ticket {ticket_id} custom field 'cf_opportunite': {deal_name} -> {deal_url}")
+            logger.info(f"Updated ticket {ticket_id} custom field 'cf_opportunite' with deal URL: {deal_url}")
         except Exception as e:
             logger.error(f"Failed to update ticket {ticket_id} with deal URL: {e}")
             raise e
