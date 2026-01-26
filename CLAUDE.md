@@ -192,7 +192,11 @@ alerts:
 ### Analyse Date Examen VTC (`src/utils/date_examen_vtc_helper.py`)
 
 ```python
-from src.utils.date_examen_vtc_helper import analyze_exam_date_situation
+from src.utils.date_examen_vtc_helper import (
+    analyze_exam_date_situation,
+    get_earlier_dates_other_departments,
+    get_next_exam_dates
+)
 
 result = analyze_exam_date_situation(
     deal_data=deal_data,
@@ -200,11 +204,31 @@ result = analyze_exam_date_situation(
     crm_client=crm_client,
     examt3p_data=examt3p_data
 )
-# Retourne: case (1-10), next_dates, should_include_in_response, response_message
+# Retourne:
+#   case (1-10), next_dates, should_include_in_response, response_message,
+#   alternative_department_dates, can_choose_other_department, current_departement
 ```
 
 **CAS gérés :** 1-Date vide, 2-Date passée, 3-Refusé CMA, 4-VALIDE CMA, 5-Dossier Synchronisé,
 6-Autre statut, 7-Examen passé, 8-Deadline ratée, 9-Convoc reçue, 10-Prêt à payer
+
+**Dates alternatives dans d'autres départements :**
+```python
+# Rechercher des dates plus tôt dans d'autres départements
+# Utile si candidat n'a PAS encore de compte ExamT3P (peut choisir n'importe quel dept)
+alt_dates = get_earlier_dates_other_departments(
+    crm_client,
+    current_departement="75",
+    reference_date="2026-06-30",  # Première date du dept actuel
+    limit=3
+)
+# Retourne: Liste de sessions avec Date_Examen < reference_date
+```
+
+**Règles de flexibilité département :**
+- `can_choose_other_department = True` si `compte_existe == False` (pas de compte ExamT3P)
+- Le candidat peut alors s'inscrire dans N'IMPORTE QUEL département
+- Si compte ExamT3P existe → département assigné, changement = nouveau compte avec identifiants différents
 
 ### Sessions de Formation (`src/utils/session_helper.py`)
 
@@ -228,8 +252,10 @@ result = analyze_session_situation(
 from src.utils.uber_eligibility_helper import analyze_uber_eligibility
 
 result = analyze_uber_eligibility(deal_data)
-# Retourne: is_uber_20_deal, case (A/B/C/PROSPECT), is_eligible
+# Retourne: is_uber_20_deal, case (A/B/C/D/E/PROSPECT), is_eligible, response_message
 ```
+
+**Ordre de vérification :** PROSPECT → NOT_UBER → CAS A → CAS D → CAS E → CAS B → ÉLIGIBLE
 
 ### Cohérence Formation/Examen (`src/utils/training_exam_consistency_helper.py`)
 
@@ -340,8 +366,13 @@ Next steps CAB:
 
 ### Cas Uber 20€
 - **CAS A** : Payé 20€ mais dossier non envoyé → Demander les documents
-- **CAS B** : Dossier envoyé mais test non passé → Demander de passer le test
-- **CAS C** : Éligible → Peut être inscrit à l'examen
+- **CAS D** : Compte_Uber = false (après vérif J+1) → Email ≠ compte Uber Driver → Contacter Uber
+- **CAS E** : ELIGIBLE = false (après vérif J+1) → Non éligible selon Uber → Contacter Uber
+- **CAS B** : Dossier envoyé mais test non passé (si > 19/05/2025) → Demander de passer le test
+- **ÉLIGIBLE** : Toutes vérifications OK → Peut être inscrit à l'examen
+
+**Timing vérification Uber :** La vérification Compte_Uber et ELIGIBLE se fait à `Date_Dossier_recu + 1 jour`.
+Avant ce délai, on ne bloque pas le candidat (vérification en attente).
 
 ---
 
