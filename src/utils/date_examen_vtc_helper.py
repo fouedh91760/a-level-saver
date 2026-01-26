@@ -786,8 +786,19 @@ def analyze_exam_date_situation(
         # CAS 6: Date future + autre statut + deadline pas encore passée
         result['case'] = 6
         result['case_description'] = "Date future + autre statut - En attente"
-        result['should_include_in_response'] = False
-        result['response_message'] = None
+
+        # Si le candidat peut choisir un autre département, fournir les dates alternatives
+        # pour qu'il puisse demander une date plus tôt s'il le souhaite
+        if result['can_choose_other_department'] and crm_client:
+            logger.info("  📅 CAS 6 + pas de compte ExamT3P → récupération des dates alternatives")
+            # Récupérer les prochaines dates (tous départements) pour offrir des alternatives
+            result['next_dates'] = get_next_exam_dates_any_department(crm_client, limit=6)
+            result['should_include_in_response'] = True  # L'IA doit avoir accès aux dates
+            result['response_message'] = None  # L'IA adaptera selon la demande du candidat
+        else:
+            result['should_include_in_response'] = False
+            result['response_message'] = None
+
         logger.info(f"  ➡️ CAS 6: Date future + autre statut ({evalbox_status})")
         return result
 
