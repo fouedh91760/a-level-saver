@@ -14,6 +14,7 @@ Avant de coder une nouvelle fonctionnalité, **TOUJOURS vérifier** si elle exis
 2. Les helpers (`src/utils/`)
 3. Le client Zoho (`src/zoho_client.py`)
 4. Les alertes temporaires (`alerts/active_alerts.yaml`)
+5. Les fichiers de référence (`crm_schema.json`, `desk_departments.json`)
 
 ---
 
@@ -370,6 +371,34 @@ Next steps CAB:
     'departement': '75'
 }
 ```
+
+---
+
+## Fichiers de Référence
+
+### `crm_schema.json`
+Schéma complet des modules et champs Zoho CRM (extrait automatiquement).
+Utile pour connaître les noms API exacts des champs.
+
+### `desk_departments.json`
+Liste de tous les départements Zoho Desk avec leurs IDs.
+```python
+# Structure
+{
+    "departments": {
+        "DOC": {"id": "198709000025523146", "is_enabled": true},
+        "DOCS CAB": {"id": "198709000102030275", "is_enabled": true},
+        "Refus CMA": {"id": "198709000092515473", "is_enabled": true},
+        "Contact": {"id": "198709000025227670", "is_enabled": true},
+        ...
+    },
+    "active_department_names": ["DOC", "DOCS CAB", "Refus CMA", ...]
+}
+```
+
+**Scripts de mise à jour :**
+- `python extract_crm_schema.py` → Met à jour `crm_schema.json`
+- `python list_departments.py` → Affiche les départements (màj manuelle du JSON)
 
 ---
 
