@@ -636,8 +636,21 @@ class DOCTicketWorkflow:
             'documents_manquants': [],
             'paiement_cma_status': 'N/A',
             'should_respond_to_candidate': credentials_result.get('should_respond_to_candidate', False),
-            'candidate_response_message': credentials_result.get('candidate_response_message')
+            'candidate_response_message': credentials_result.get('candidate_response_message'),
+            # Flag compte personnel potentiel
+            'potential_personal_account': credentials_result.get('potential_personal_account', False),
+            'potential_personal_email': credentials_result.get('potential_personal_email'),
+            'personal_account_warning': credentials_result.get('personal_account_warning')
         }
+
+        # ================================================================
+        # ALERTE COMPTE PERSONNEL POTENTIEL
+        # ================================================================
+        if credentials_result.get('potential_personal_account'):
+            personal_email = credentials_result.get('potential_personal_email', 'inconnu')
+            logger.warning(f"  🚨 COMPTE PERSONNEL POTENTIEL: {personal_email}")
+            logger.warning(f"     → Le candidat pourrait voir un statut différent sur son compte perso")
+            logger.warning(f"     → La réponse doit clarifier d'utiliser UNIQUEMENT le compte CAB")
 
         # ================================================================
         # ALERTE DOUBLON DE PAIEMENT
