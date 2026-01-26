@@ -371,6 +371,24 @@ class DOCTicketWorkflow:
             else:
                 logger.info("✅ VALIDATION → Tous les contrôles passés")
 
+            # ================================================================
+            # STEP 8b: TRANSFER TO DOC CAB (si VTC hors partenariat)
+            # ================================================================
+            # Les deals VTC classiques (Amount != 20€) doivent être transférés
+            # vers DOC CAB après création du draft
+            deal_amount = analysis_result.get('deal_data', {}).get('Amount', 0)
+            is_vtc_hors_partenariat = (deal_amount != 0 and deal_amount != 20)
+
+            if is_vtc_hors_partenariat and result.get('draft_created'):
+                logger.info("\n8️⃣b TRANSFER DOC CAB - Deal VTC classique (hors partenariat)...")
+                try:
+                    self.desk_client.move_ticket_to_department(ticket_id, "DOC CAB")
+                    logger.info("✅ TRANSFER → Ticket transféré vers DOC CAB")
+                    result['transferred_to'] = "DOC CAB"
+                except Exception as transfer_error:
+                    logger.warning(f"⚠️ Impossible de transférer vers DOC CAB: {transfer_error}")
+                    result['transfer_error'] = str(transfer_error)
+
             result['success'] = True
             logger.info("\n" + "=" * 80)
             logger.info("✅ WORKFLOW COMPLET TERMINÉ")

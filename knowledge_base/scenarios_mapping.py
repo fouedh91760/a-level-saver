@@ -215,15 +215,13 @@ SCENARIOS = {
     },
 
     "SC-VTC_HORS_PARTENARIAT": {
-        "name": "VTC hors partenariat",
-        "triggers": [
-            # Removed "vtc" alone - too broad, all DOC tickets contain "vtc"
-            # Detection based on CRM Amount field instead
-        ],
-        "detection": "Amount != 20€ (checked via CRM data)",
-        "routing": "DOCS CAB",
-        "stop_workflow": True,
-        "template_notes": "Route to DOCS CAB if not Uber partnership"
+        "name": "VTC classique (hors partenariat Uber)",
+        "triggers": [],  # Détection via Amount CRM uniquement
+        "detection": "Amount != 20€ AND VTC (not taxi/ambulance)",
+        "routing": "DOC CAB",
+        "stop_workflow": False,  # Continuer workflow, transférer à la fin
+        "skip_uber_checks": True,  # Ne pas vérifier test sélection, Date_Dossier_reçu
+        "template_notes": "Process normally (ExamT3P sync, response), then transfer to DOC CAB"
     },
 
     # ========== SPAM ==========
@@ -337,7 +335,11 @@ def detect_scenario_from_text(
 
         if is_taxi or is_ambulance:
             detected_scenarios.append("SC-HORS_PARTENARIAT")
-            # Note: SC-VTC_HORS_PARTENARIAT n'a plus de sens si c'est taxi/ambulance
+        else:
+            # VTC classique (hors partenariat Uber) = Amount != 20€ mais pas taxi/ambulance
+            amount = crm_data.get("Amount", 0)
+            if amount != 0 and amount != 20:
+                detected_scenarios.append("SC-VTC_HORS_PARTENARIAT")
 
     # =========================================================================
     # PRIORITY 2: Text-based detection
