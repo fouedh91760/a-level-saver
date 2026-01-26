@@ -31,6 +31,7 @@ from src.agents.response_generator_agent import ResponseGeneratorAgent
 from src.agents.deal_linking_agent import DealLinkingAgent
 from src.agents.examt3p_agent import ExamT3PAgent
 from src.agents.dispatcher_agent import TicketDispatcherAgent
+from src.agents.crm_update_agent import CRMUpdateAgent
 from src.zoho_client import ZohoDeskClient, ZohoCRMClient
 from knowledge_base.scenarios_mapping import (
     detect_scenario_from_text,
@@ -54,6 +55,7 @@ class DOCTicketWorkflow:
         self.deal_linker = DealLinkingAgent()
         self.examt3p_agent = ExamT3PAgent()
         self.dispatcher = TicketDispatcherAgent()
+        self.crm_update_agent = CRMUpdateAgent()
 
         logger.info("✅ DOCTicketWorkflow initialized")
 
@@ -235,9 +237,9 @@ class DOCTicketWorkflow:
                 logger.info("✅ TICKET UPDATE → Préparé (pas d'auto-update)")
 
             # ================================================================
-            # STEP 6: DEAL UPDATE (if scenario requires or AI extracted updates)
+            # STEP 6: DEAL UPDATE (via CRMUpdateAgent)
             # ================================================================
-            logger.info("\n6️⃣  DEAL UPDATE - Mise à jour CRM...")
+            logger.info("\n6️⃣  DEAL UPDATE - Mise à jour CRM via CRMUpdateAgent...")
             result['workflow_stage'] = 'DEAL_UPDATE'
 
             # Check both scenario flag and AI-extracted updates
@@ -251,24 +253,30 @@ class DOCTicketWorkflow:
                     logger.info(f"Champs à updater (AI): {response_result.get('crm_updates', {})}")
 
                 if auto_update_crm and analysis_result.get('deal_id'):
-                    deal_updates = self._prepare_deal_updates(
-                        response_result,
-                        analysis_result
+                    # Utiliser CRMUpdateAgent pour centraliser la logique
+                    crm_update_result = self.crm_update_agent.update_from_ticket_response(
+                        deal_id=analysis_result['deal_id'],
+                        ai_updates=response_result.get('crm_updates', {}),
+                        deal_data=analysis_result.get('deal_data', {}),
+                        session_data=analysis_result.get('session_data', {}),
+                        ticket_id=ticket_id
                     )
-                    if deal_updates:
-                        try:
-                            self.crm_client.update_deal(
-                                analysis_result['deal_id'],
-                                deal_updates
-                            )
-                            logger.info(f"✅ DEAL UPDATE → {len(deal_updates)} champs mis à jour: {list(deal_updates.keys())}")
-                            result['crm_updated'] = True
-                        except Exception as crm_error:
-                            logger.error(f"⚠️ DEAL UPDATE ÉCHOUÉ: {crm_error}")
-                            logger.warning("→ Le workflow continue malgré l'erreur CRM")
-                            result['crm_update_error'] = str(crm_error)
-                    else:
-                        logger.info("✅ DEAL UPDATE → Aucune mise à jour préparée")
+
+                    if crm_update_result.get('updates_applied'):
+                        logger.info(f"✅ DEAL UPDATE → {len(crm_update_result['updates_applied'])} champs mis à jour: {list(crm_update_result['updates_applied'].keys())}")
+                        result['crm_updated'] = True
+
+                    if crm_update_result.get('updates_blocked'):
+                        logger.warning(f"🔒 DEAL UPDATE → {len(crm_update_result['updates_blocked'])} champs bloqués (règles métier)")
+                        result['crm_updates_blocked'] = crm_update_result['updates_blocked']
+
+                    if crm_update_result.get('errors'):
+                        for error in crm_update_result['errors']:
+                            logger.warning(f"⚠️ DEAL UPDATE: {error}")
+                        result['crm_update_error'] = '; '.join(crm_update_result['errors'])
+
+                    if not crm_update_result.get('updates_applied') and not crm_update_result.get('updates_blocked'):
+                        logger.info("✅ DEAL UPDATE → Aucune mise à jour après mapping")
                 else:
                     logger.info("✅ DEAL UPDATE → Préparé (pas d'auto-update)")
             else:
@@ -1126,6 +1134,8 @@ class DOCTicketWorkflow:
             self.deal_linker.close()
         if hasattr(self, 'dispatcher') and hasattr(self.dispatcher, 'close'):
             self.dispatcher.close()
+        if hasattr(self, 'crm_update_agent') and hasattr(self.crm_update_agent, 'close'):
+            self.crm_update_agent.close()
         # ExamT3PAgent doesn't have close() method, skip it
 
 

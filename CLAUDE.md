@@ -18,8 +18,47 @@ Avant de coder une nouvelle fonctionnalité, **TOUJOURS vérifier** si elle exis
 
 ## Architecture des Agents
 
-### 1. CRMOpportunityAgent (`src/agents/crm_agent.py`)
-**Agent spécialisé pour les mises à jour CRM Zoho.**
+### 1. CRMUpdateAgent (`src/agents/crm_update_agent.py`) - RECOMMANDÉ
+**Agent spécialisé pour TOUTES les mises à jour CRM CAB Formations.**
+
+Centralise toute la logique de mise à jour CRM :
+- Mapping automatique string → ID pour les champs lookup
+- Respect des règles de blocage (VALIDE CMA + clôture passée)
+- Logging dans les notes CRM
+
+```python
+from src.agents.crm_update_agent import CRMUpdateAgent
+
+agent = CRMUpdateAgent()
+
+# Méthode recommandée pour les réponses tickets
+result = agent.update_from_ticket_response(
+    deal_id="123456",
+    ai_updates={'Date_examen_VTC': '2026-03-31', 'Session_choisie': 'Cours du soir'},
+    deal_data=deal_data,
+    session_data=session_data,  # Sessions proposées par session_helper
+    ticket_id="789012"
+)
+
+# Ou méthode générale
+result = agent.process({
+    'deal_id': '123456',
+    'ai_updates': {'Date_examen_VTC': '2026-03-31'},
+    'deal_data': deal_data,
+    'session_data': session_data,
+    'source': 'manual_update',
+    'auto_add_note': True,
+    'dry_run': False
+})
+```
+
+**IMPORTANT :** Cet agent gère automatiquement :
+- `Date_examen_VTC` : convertit date string → ID session via `find_exam_session_by_date_and_dept()`
+- `Session_choisie` : convertit nom → ID en cherchant dans les sessions proposées
+- Règles de blocage : refuse de modifier `Date_examen_VTC` si VALIDE CMA + clôture passée
+
+### 2. CRMOpportunityAgent (`src/agents/crm_agent.py`)
+**Agent générique pour l'analyse et mise à jour des deals (non spécialisé CAB Formations).**
 
 ```python
 from src.agents.crm_agent import CRMOpportunityAgent
@@ -211,15 +250,20 @@ client.search_deals(criteria="(Email:equals:test@example.com)")
 ## Workflow Principal (`src/workflows/doc_ticket_workflow.py`)
 
 ```
-1. AGENT TRIEUR    → Triage (GO/ROUTE/SPAM)
-2. AGENT ANALYSTE  → Extraction données 6 sources
-3. AGENT RÉDACTEUR → Génération réponse Claude + RAG
-4. CRM NOTE        → Note dans le deal
-5. TICKET UPDATE   → Tags, statut
-6. DEAL UPDATE     → Mise à jour champs CRM (Date_examen_VTC, Session_choisie)
-7. DRAFT CREATION  → Brouillon Zoho Desk
+1. AGENT TRIEUR     → Triage (GO/ROUTE/SPAM)
+2. AGENT ANALYSTE   → Extraction données 6 sources
+3. AGENT RÉDACTEUR  → Génération réponse Claude + RAG
+4. CRM NOTE         → Note dans le deal
+5. TICKET UPDATE    → Tags, statut
+6. DEAL UPDATE      → Via CRMUpdateAgent (mapping auto, règles de blocage)
+7. DRAFT CREATION   → Brouillon Zoho Desk
 8. FINAL VALIDATION
 ```
+
+**Note STEP 6 :** Le workflow utilise `CRMUpdateAgent.update_from_ticket_response()` qui :
+- Convertit automatiquement les dates/sessions en IDs
+- Applique les règles de blocage (VALIDE CMA + clôture passée)
+- Ajoute une note CRM avec le détail des mises à jour
 
 ---
 
