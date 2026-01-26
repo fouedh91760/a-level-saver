@@ -11,7 +11,10 @@ Modify the methods below to match your:
 - Customer segmentation
 - Automation preferences
 """
+import logging
 from typing import Dict, Any, Optional, List
+
+logger = logging.getLogger(__name__)
 
 
 # ===== KEYWORDS POUR DÉTECTION D'ENVOI DE DOCUMENTS =====
@@ -59,7 +62,14 @@ class BusinessRules:
             return False
 
         content_lower = thread_content.lower()
-        return any(keyword in content_lower for keyword in DOCUMENT_KEYWORDS)
+
+        # Log which keyword matched for debugging
+        for keyword in DOCUMENT_KEYWORDS:
+            if keyword in content_lower:
+                logger.info(f"📄 DOCUMENT_KEYWORD matched: '{keyword}' in content")
+                return True
+
+        return False
 
     @staticmethod
     def determine_department_from_deals_and_ticket(
@@ -181,16 +191,23 @@ class BusinessRules:
 
             # Vérifier le sujet du ticket
             ticket_subject = ticket.get("subject", "")
+            logger.info(f"🔍 Checking ticket subject for document keywords: '{ticket_subject}'")
             if ticket_subject and BusinessRules.is_document_submission(ticket_subject):
+                logger.info(f"⚠️ Document keyword found in SUBJECT")
                 has_document_keywords = True
 
             # Vérifier le contenu du dernier thread
+            logger.info(f"🔍 Checking thread content for document keywords (first 200 chars): '{(last_thread_content or '')[:200]}'")
             if last_thread_content and BusinessRules.is_document_submission(last_thread_content):
+                logger.info(f"⚠️ Document keyword found in THREAD CONTENT")
                 has_document_keywords = True
 
             # Si des mots-clés de documents sont détectés → Refus CMA
             if has_document_keywords:
+                logger.info(f"🚨 Routing to Refus CMA due to document keywords")
                 return "Refus CMA"
+            else:
+                logger.info(f"✅ No document keywords found - staying in DOC")
 
             # Sinon → DOC
             return "DOC"
