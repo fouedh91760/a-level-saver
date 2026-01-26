@@ -210,8 +210,9 @@ class DOCTicketWorkflow:
 
             if auto_update_crm and analysis_result.get('deal_id'):
                 # Add note to deal
-                self.crm_client.add_note_to_deal(
+                self.crm_client.add_deal_note(
                     deal_id=analysis_result['deal_id'],
+                    note_title="Note automatique - Ticket DOC",
                     note_content=crm_note
                 )
                 logger.info("✅ CRM NOTE → Note ajoutée au deal")
@@ -234,13 +235,20 @@ class DOCTicketWorkflow:
                 logger.info("✅ TICKET UPDATE → Préparé (pas d'auto-update)")
 
             # ================================================================
-            # STEP 6: DEAL UPDATE (if scenario requires)
+            # STEP 6: DEAL UPDATE (if scenario requires or AI extracted updates)
             # ================================================================
             logger.info("\n6️⃣  DEAL UPDATE - Mise à jour CRM...")
             result['workflow_stage'] = 'DEAL_UPDATE'
 
-            if response_result.get('requires_crm_update'):
-                logger.info(f"Champs à updater: {response_result['crm_update_fields']}")
+            # Check both scenario flag and AI-extracted updates
+            has_ai_updates = bool(response_result.get('crm_updates'))
+            scenario_requires_update = response_result.get('requires_crm_update')
+
+            if has_ai_updates or scenario_requires_update:
+                if scenario_requires_update:
+                    logger.info(f"Champs à updater (scénario): {response_result.get('crm_update_fields', [])}")
+                if has_ai_updates:
+                    logger.info(f"Champs à updater (AI): {response_result.get('crm_updates', {})}")
 
                 if auto_update_crm and analysis_result.get('deal_id'):
                     deal_updates = self._prepare_deal_updates(
@@ -252,8 +260,10 @@ class DOCTicketWorkflow:
                             analysis_result['deal_id'],
                             deal_updates
                         )
-                        logger.info(f"✅ DEAL UPDATE → {len(deal_updates)} champs mis à jour")
+                        logger.info(f"✅ DEAL UPDATE → {len(deal_updates)} champs mis à jour: {list(deal_updates.keys())}")
                         result['crm_updated'] = True
+                    else:
+                        logger.info("✅ DEAL UPDATE → Aucune mise à jour préparée")
                 else:
                     logger.info("✅ DEAL UPDATE → Préparé (pas d'auto-update)")
             else:
