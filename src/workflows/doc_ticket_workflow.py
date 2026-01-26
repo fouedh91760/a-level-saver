@@ -277,10 +277,20 @@ class DOCTicketWorkflow:
                 plain_content = re.sub(r'^## ', '', plain_content, flags=re.MULTILINE)
 
                 try:
+                    # Récupérer from_email depuis la config
+                    from config import settings
+                    from_email = settings.zoho_desk_from_email
+
+                    # Récupérer l'email du ticket (destinataire de la réponse)
+                    ticket = self.desk_client.get_ticket(ticket_id)
+                    to_email = ticket.get('email')
+
                     self.desk_client.create_ticket_reply_draft(
                         ticket_id=ticket_id,
                         content=plain_content,
-                        content_type="plainText"
+                        content_type="plainText",
+                        from_email=from_email,
+                        to_email=to_email
                     )
                     logger.info("✅ DRAFT CREATION → Brouillon créé dans Zoho Desk")
                     result['draft_created'] = True
