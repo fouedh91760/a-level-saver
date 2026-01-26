@@ -36,6 +36,7 @@ Autres champs synchronisés:
 - identifiant                   → IDENTIFIANT_EVALBOX (si vide)
 - mot_de_passe                  → MDP_EVALBOX (si vide)
 - departement                   → CMA_de_depot (si vide ou différent)
+- num_dossier                   → NUM_DOSSIER_EVALBOX (numéro de dossier CMA)
 - date_examen + departement     → Date_examen_VTC (lookup vers session CRM)
 """
 import logging
@@ -298,7 +299,23 @@ def sync_examt3p_to_crm(
             })
 
     # ================================================================
-    # 4. VÉRIFICATION RÈGLES CRITIQUES POUR DATE EXAMEN
+    # 4. SYNCHRONISATION NUM_DOSSIER_EVALBOX (numéro de dossier)
+    # ================================================================
+    crm_num_dossier = deal_data.get('NUM_DOSSIER_EVALBOX', '')
+    examt3p_num_dossier = examt3p_data.get('num_dossier', '')
+
+    if examt3p_num_dossier and str(examt3p_num_dossier) != str(crm_num_dossier):
+        logger.info(f"  📋 NUM_DOSSIER_EVALBOX: '{crm_num_dossier or 'VIDE'}' → '{examt3p_num_dossier}'")
+        updates_to_apply['NUM_DOSSIER_EVALBOX'] = str(examt3p_num_dossier)
+        result['changes_made'].append({
+            'field': 'NUM_DOSSIER_EVALBOX',
+            'old_value': crm_num_dossier or '',
+            'new_value': str(examt3p_num_dossier),
+            'source': 'examt3p'
+        })
+
+    # ================================================================
+    # 6. VÉRIFICATION RÈGLES CRITIQUES POUR DATE EXAMEN
     # ================================================================
     # Note: La modification de Date_examen_VTC est faite par sync_exam_date_from_examt3p()
     # qui est appelée séparément dans le workflow. On vérifie ici si on est dans un état bloqué
@@ -317,7 +334,7 @@ def sync_examt3p_to_crm(
         logger.warning(f"  🔒 {reason}")
 
     # ================================================================
-    # 5. APPLIQUER LES MISES À JOUR
+    # 7. APPLIQUER LES MISES À JOUR
     # ================================================================
     if updates_to_apply and not dry_run:
         try:
@@ -340,7 +357,7 @@ def sync_examt3p_to_crm(
         result['crm_updated'] = False
 
     # ================================================================
-    # 6. GÉNÉRER CONTENU POUR NOTE CRM
+    # 8. GÉNÉRER CONTENU POUR NOTE CRM
     # ================================================================
     if result['changes_made'] or result['blocked_changes']:
         note_lines = ["📊 SYNC EXAMT3P → CRM", f"Date: {datetime.now().strftime('%d/%m/%Y %H:%M')}"]
