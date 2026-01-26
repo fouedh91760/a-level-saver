@@ -505,11 +505,16 @@ def analyze_exam_date_situation(
         result['case_description'] = "Date examen VTC vide - Proposer 2 prochaines dates"
         result['should_include_in_response'] = True
 
-        if crm_client and departement:
-            result['next_dates'] = get_next_exam_dates(crm_client, departement, limit=2)
+        if crm_client:
+            if departement:
+                result['next_dates'] = get_next_exam_dates(crm_client, departement, limit=2)
+            else:
+                # Fallback when department is unknown - get dates from any department
+                logger.info("  ⚠️ Département inconnu - récupération des dates tous départements")
+                result['next_dates'] = get_next_exam_dates_any_department(crm_client, limit=2)
 
             # Si pas de compte ExamT3P, chercher des dates plus tôt dans d'autres départements
-            if result['can_choose_other_department'] and result['next_dates']:
+            if result['can_choose_other_department'] and result['next_dates'] and departement:
                 first_date = result['next_dates'][0].get('Date_Examen')
                 if first_date:
                     result['alternative_department_dates'] = get_earlier_dates_other_departments(
@@ -550,8 +555,13 @@ def analyze_exam_date_situation(
         # Récupérer UNE SEULE prochaine date (positionnement automatique)
         next_exam_date = None
         next_date_cloture = None
-        if crm_client and departement:
-            next_dates = get_next_exam_dates(crm_client, departement, limit=1)
+        if crm_client:
+            if departement:
+                next_dates = get_next_exam_dates(crm_client, departement, limit=1)
+            else:
+                # Fallback when department is unknown
+                logger.info("  ⚠️ Département inconnu - récupération des dates tous départements")
+                next_dates = get_next_exam_dates_any_department(crm_client, limit=1)
             if next_dates:
                 next_exam_date = next_dates[0]
                 # Utiliser la date de clôture de la PROCHAINE session (pas l'ancienne)
@@ -593,11 +603,16 @@ def analyze_exam_date_situation(
             result['case_description'] = "Date passée + dossier non validé - Proposer 2 prochaines dates"
             result['should_include_in_response'] = True
 
-            if crm_client and departement:
-                result['next_dates'] = get_next_exam_dates(crm_client, departement, limit=2)
+            if crm_client:
+                if departement:
+                    result['next_dates'] = get_next_exam_dates(crm_client, departement, limit=2)
+                else:
+                    # Fallback when department is unknown
+                    logger.info("  ⚠️ Département inconnu - récupération des dates tous départements")
+                    result['next_dates'] = get_next_exam_dates_any_department(crm_client, limit=2)
 
                 # Si pas de compte ExamT3P, chercher des dates plus tôt dans d'autres départements
-                if result['can_choose_other_department'] and result['next_dates']:
+                if result['can_choose_other_department'] and result['next_dates'] and departement:
                     first_date = result['next_dates'][0].get('Date_Examen')
                     if first_date:
                         result['alternative_department_dates'] = get_earlier_dates_other_departments(
@@ -635,8 +650,13 @@ def analyze_exam_date_situation(
             # Récupérer la prochaine date d'examen disponible
             next_exam_date = None
             if days_until_exam is not None and days_until_exam <= 7:
-                if crm_client and departement:
-                    next_dates = get_next_exam_dates(crm_client, departement, limit=2)
+                if crm_client:
+                    if departement:
+                        next_dates = get_next_exam_dates(crm_client, departement, limit=2)
+                    else:
+                        # Fallback when department is unknown
+                        logger.info("  ⚠️ Département inconnu - récupération des dates tous départements")
+                        next_dates = get_next_exam_dates_any_department(crm_client, limit=2)
                     # Prendre la 2ème date (la 1ère est celle qui est imminente)
                     if len(next_dates) >= 2:
                         next_exam_date = next_dates[1]
@@ -704,11 +724,16 @@ def analyze_exam_date_situation(
             result['case_description'] = "Date future + Deadline passée + dossier non validé - Report sur prochaine session"
             result['should_include_in_response'] = True
 
-            if crm_client and departement:
-                result['next_dates'] = get_next_exam_dates(crm_client, departement, limit=2)
+            if crm_client:
+                if departement:
+                    result['next_dates'] = get_next_exam_dates(crm_client, departement, limit=2)
+                else:
+                    # Fallback when department is unknown
+                    logger.info("  ⚠️ Département inconnu - récupération des dates tous départements")
+                    result['next_dates'] = get_next_exam_dates_any_department(crm_client, limit=2)
 
                 # Si pas de compte ExamT3P, chercher des dates plus tôt dans d'autres départements
-                if result['can_choose_other_department'] and result['next_dates']:
+                if result['can_choose_other_department'] and result['next_dates'] and departement:
                     first_date = result['next_dates'][0].get('Date_Examen')
                     if first_date:
                         result['alternative_department_dates'] = get_earlier_dates_other_departments(
