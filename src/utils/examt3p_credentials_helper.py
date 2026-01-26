@@ -18,15 +18,11 @@ logger = logging.getLogger(__name__)
 
 def extract_credentials_from_threads(threads: List[Dict]) -> Optional[Dict[str, str]]:
     """
-    Extrait les identifiants ExamT3P depuis les threads de mail.
+    Extrait les identifiants ExamT3P depuis les threads de mail en utilisant l'IA.
 
-    Cherche des patterns comme :
-    - Identifiant: xxx
-    - Email: xxx
-    - Mot de passe: xxx
-    - Password: xxx
-    - Login: xxx
-    - MDP: xxx
+    Utilise Claude pour comprendre le contexte et extraire:
+    - L'identifiant (généralement un email)
+    - Le mot de passe
 
     Args:
         threads: Liste des threads de ticket (direction 'in' = messages client)
@@ -36,89 +32,109 @@ def extract_credentials_from_threads(threads: List[Dict]) -> Optional[Dict[str, 
     """
     from src.utils.text_utils import get_clean_thread_content
 
-    # Patterns pour détecter les identifiants
-    # Pattern pour identifiant/email (amélioration: capture jusqu'à la fin de ligne ou prochain champ)
-    identifiant_patterns = [
-        r'identifiant\s*:?\s*([^\n]+?)(?:\s*(?:mot|mdp|password|pass|$))',
-        r'login\s*:?\s*([^\n]+?)(?:\s*(?:mot|mdp|password|pass|$))',
-        r'email\s*:?\s*([^\n]+?)(?:\s*(?:mot|mdp|password|pass|$))',
-        r'utilisateur\s*:?\s*([^\n]+?)(?:\s*(?:mot|mdp|password|pass|$))',
-        r'username\s*:?\s*([^\n]+?)(?:\s*(?:mot|mdp|password|pass|$))',
-        # Fallback simple patterns
-        r'identifiant\s*:?\s*([^\s\n]+)',
-        r'login\s*:?\s*([^\s\n]+)',
-        r'email\s*:?\s*([^\s\n]+)',
-    ]
-
-    # Pattern pour mot de passe (amélioration: capture jusqu'à la fin de ligne)
-    password_patterns = [
-        r'mot\s+de\s+passe\s*:?\s*([^\n]+?)(?:\n|$)',
-        r'mdp\s*:?\s*([^\n]+?)(?:\n|$)',
-        r'password\s*:?\s*([^\n]+?)(?:\n|$)',
-        r'pass\s*:?\s*([^\n]+?)(?:\n|$)',
-        # Fallback simple patterns
-        r'mot\s+de\s+passe\s*:?\s*([^\s\n]+)',
-        r'mdp\s*:?\s*([^\s\n]+)',
-        r'password\s*:?\s*([^\s\n]+)',
-    ]
-
-    identifiant = None
-    mot_de_passe = None
-
-    # Parcourir les threads (messages entrants du client)
+    # Collecter le contenu des messages entrants (du candidat)
+    messages_content = []
     for thread in threads:
         if thread.get('direction') != 'in':
             continue
-
-        # Nettoyer le contenu
         content = get_clean_thread_content(thread)
-        content_lower = content.lower()
+        if content and len(content.strip()) > 10:
+            messages_content.append(content)
 
-        # Chercher l'identifiant
-        if not identifiant:
-            for pattern in identifiant_patterns:
-                match = re.search(pattern, content_lower, re.IGNORECASE)
-                if match:
-                    # Récupérer l'identifiant et nettoyer les espaces
-                    extracted = match.group(1).strip()
-                    # Vérifier que ce n'est pas juste un fragment
-                    if len(extracted) > 3 and '@' in extracted or len(extracted) > 5:
-                        identifiant = extracted
-                        logger.info(f"Identifiant trouvé dans les threads: {identifiant}")
-                        break
+    if not messages_content:
+        logger.info("Pas de messages entrants dans les threads")
+        return None
 
-        # Chercher le mot de passe
-        if not mot_de_passe:
-            for pattern in password_patterns:
-                match = re.search(pattern, content_lower, re.IGNORECASE)
-                if match:
-                    # Récupérer le mot de passe et nettoyer les espaces
-                    extracted = match.group(1).strip()
-                    # Vérifier que ce n'est pas juste un fragment
-                    if len(extracted) > 3:
-                        mot_de_passe = extracted
-                        logger.info("Mot de passe trouvé dans les threads: ****")
-                        break
+    # Concaténer les messages (limiter la taille)
+    all_content = "\n---\n".join(messages_content[:5])  # Max 5 messages
+    if len(all_content) > 3000:
+        all_content = all_content[:3000]
 
-        # Si on a les deux, on peut arrêter
-        if identifiant and mot_de_passe:
-            break
+    # Appeler Claude pour extraire les identifiants
+    try:
+        from anthropic import Anthropic
 
-    if identifiant and mot_de_passe:
-        return {
-            'identifiant': identifiant,
-            'mot_de_passe': mot_de_passe,
-            'source': 'email_threads'
-        }
+        client = Anthropic()
 
-    if identifiant or mot_de_passe:
-        logger.warning(
-            f"Identifiants incomplets trouvés dans les threads: "
-            f"identifiant={'Oui' if identifiant else 'Non'}, "
-            f"mot_de_passe={'Oui' if mot_de_passe else 'Non'}"
+        prompt = f"""Analyse ces messages d'un candidat et extrait ses identifiants de connexion ExamT3P s'il les a communiqués.
+
+MESSAGES DU CANDIDAT:
+{all_content}
+
+INSTRUCTIONS:
+1. Cherche un email qui pourrait être son identifiant de connexion (pas les emails @cab-formations.fr)
+2. Cherche un mot de passe qu'il aurait communiqué (souvent après "mot de passe:", "mdp:", ou sur une ligne séparée)
+3. Le mot de passe peut être écrit sans label, juste comme une chaîne alphanumérique
+
+Réponds UNIQUEMENT en JSON valide (sans texte avant/après):
+{{
+    "identifiant": "email@exemple.com ou null si non trouvé",
+    "mot_de_passe": "le_mot_de_passe ou null si non trouvé",
+    "confidence": 0.0-1.0
+}}
+
+Si tu ne trouves pas d'identifiants, réponds:
+{{"identifiant": null, "mot_de_passe": null, "confidence": 0}}"""
+
+        response = client.messages.create(
+            model="claude-3-5-haiku-20241022",  # Modèle rapide pour extraction
+            max_tokens=200,
+            messages=[{"role": "user", "content": prompt}]
         )
 
-    return None
+        response_text = response.content[0].text.strip()
+        logger.debug(f"Réponse IA extraction credentials: {response_text}")
+
+        # Parser le JSON
+        import json
+
+        # Nettoyer le JSON si nécessaire
+        if response_text.startswith("```"):
+            response_text = response_text.split("```")[1]
+            if response_text.startswith("json"):
+                response_text = response_text[4:]
+
+        # Extraire uniquement le JSON
+        start_idx = response_text.find('{')
+        end_idx = response_text.rfind('}') + 1
+        if start_idx != -1 and end_idx > start_idx:
+            response_text = response_text[start_idx:end_idx]
+
+        result = json.loads(response_text)
+
+        identifiant = result.get('identifiant')
+        mot_de_passe = result.get('mot_de_passe')
+        confidence = result.get('confidence', 0)
+
+        # Valider les résultats
+        if identifiant and identifiant.lower() != 'null' and mot_de_passe and mot_de_passe.lower() != 'null':
+            logger.info(f"✅ Identifiants extraits par IA (confidence: {confidence}): {identifiant} / ****")
+            return {
+                'identifiant': identifiant,
+                'mot_de_passe': mot_de_passe,
+                'source': 'email_threads',
+                'extraction_method': 'ai',
+                'confidence': confidence
+            }
+
+        # Résultat partiel
+        if identifiant and identifiant.lower() != 'null':
+            logger.warning(f"Identifiant trouvé mais pas de mot de passe: {identifiant}")
+        if mot_de_passe and mot_de_passe.lower() != 'null':
+            logger.warning("Mot de passe trouvé mais pas d'identifiant")
+
+        if (identifiant and identifiant.lower() != 'null') or (mot_de_passe and mot_de_passe.lower() != 'null'):
+            logger.warning(
+                f"Identifiants incomplets trouvés dans les threads: "
+                f"identifiant={'Oui' if identifiant and identifiant.lower() != 'null' else 'Non'}, "
+                f"mot_de_passe={'Oui' if mot_de_passe and mot_de_passe.lower() != 'null' else 'Non'}"
+            )
+
+        return None
+
+    except Exception as e:
+        logger.error(f"Erreur extraction IA des identifiants: {e}")
+        return None
 
 
 def test_examt3p_connection(identifiant: str, mot_de_passe: str) -> Tuple[bool, Optional[str]]:
