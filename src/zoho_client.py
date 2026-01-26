@@ -249,6 +249,61 @@ class ZohoDeskClient(ZohoAPIClient):
                 return str(dept.get("id"))
         return None
 
+    def get_department_info(self, name: str) -> Optional[Dict[str, Any]]:
+        """
+        Get full department info by name.
+
+        Args:
+            name: Department name
+
+        Returns:
+            Department dict with id, name, layoutId, etc.
+        """
+        departments = self.list_departments()
+        for dept in departments:
+            if dept.get("name", "").lower() == name.lower():
+                return dept
+        return None
+
+    def move_ticket_to_department(
+        self,
+        ticket_id: str,
+        department_name: str
+    ) -> Dict[str, Any]:
+        """
+        Move a ticket to a different department.
+
+        This handles the department change properly by also updating
+        the layoutId to match the target department.
+
+        Args:
+            ticket_id: Ticket ID to move
+            department_name: Target department name
+
+        Returns:
+            Updated ticket data
+        """
+        # Get department info
+        dept_info = self.get_department_info(department_name)
+        if not dept_info:
+            raise ValueError(f"Department '{department_name}' not found")
+
+        dept_id = dept_info.get("id")
+
+        # Build update data with departmentId
+        update_data = {
+            "departmentId": int(dept_id)
+        }
+
+        # If department has a specific layoutId, include it
+        # This is often required when moving between departments
+        if dept_info.get("layoutId"):
+            update_data["layoutId"] = int(dept_info["layoutId"])
+
+        logger.info(f"Moving ticket {ticket_id} to department {department_name} (ID: {dept_id})")
+
+        return self.update_ticket(ticket_id, update_data)
+
     def update_ticket(
         self,
         ticket_id: str,
