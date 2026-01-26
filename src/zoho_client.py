@@ -590,6 +590,23 @@ class ZohoCRMClient(ZohoAPIClient):
         }
         return self._make_request("GET", url, params=params)
 
+    def search_deals_by_email(self, email: str) -> List[Dict[str, Any]]:
+        """
+        Search for deals by email address.
+
+        Args:
+            email: Email address to search for
+
+        Returns:
+            List of matching deals
+        """
+        if not email:
+            return []
+
+        criteria = f"(Email:equals:{email})"
+        response = self.search_deals(criteria=criteria)
+        return response.get("data", [])
+
     def search_all_deals(
         self,
         criteria: str,

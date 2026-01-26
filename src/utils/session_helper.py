@@ -503,19 +503,25 @@ def analyze_session_situation(
         logger.info("  Pas de dates d'examen, pas de proposition de session")
         return result
 
-    # 4. Récupérer les sessions pour chaque date d'examen
+    # 4. Récupérer les sessions pour chaque date d'examen UNIQUE (cache pour éviter doublons)
     if crm_client:
+        # Cache: date_string -> sessions
+        sessions_cache = {}
+
         for exam_info in exam_dates:
             exam_date = exam_info.get('Date_Examen')
             if exam_date:
-                sessions = get_sessions_for_exam_date(
-                    crm_client,
-                    exam_date,
-                    session_type=preference
-                )
+                # Utiliser le cache si on a déjà cherché cette date
+                if exam_date not in sessions_cache:
+                    sessions_cache[exam_date] = get_sessions_for_exam_date(
+                        crm_client,
+                        exam_date,
+                        session_type=preference
+                    )
+
                 result['proposed_options'].append({
                     'exam_info': exam_info,
-                    'sessions': sessions
+                    'sessions': sessions_cache[exam_date]
                 })
 
     # 5. CAS SPÉCIAL: Session passée + Examen futur = Proposer rafraîchissement
