@@ -80,6 +80,28 @@ Réponds UNIQUEMENT en JSON valide:
             system_prompt=self.SYSTEM_PROMPT
         )
 
+    def process(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Interface standard pour le traitement (requis par BaseAgent).
+
+        Args:
+            data: {
+                'ticket_subject': str,
+                'thread_content': str,
+                'deal_data': Dict (optionnel),
+                'current_department': str (optionnel)
+            }
+
+        Returns:
+            Résultat du triage
+        """
+        return self.triage_ticket(
+            ticket_subject=data.get('ticket_subject', ''),
+            thread_content=data.get('thread_content', ''),
+            deal_data=data.get('deal_data'),
+            current_department=data.get('current_department', 'DOC')
+        )
+
     def triage_ticket(
         self,
         ticket_subject: str,
