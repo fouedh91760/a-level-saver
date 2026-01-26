@@ -432,12 +432,14 @@ Preference_horaire: jour|soir (si préférence confirmée)
         session_data: Optional[Dict] = None,
         uber_eligibility_data: Optional[Dict] = None,
         threads: Optional[List] = None,
-        intent_context: Optional[Dict] = None
+        intent_context: Optional[Dict] = None,
+        uber_case_alert: Optional[Dict] = None
     ) -> str:
         """Build user prompt with context, examples, and full thread history.
 
         Args:
             intent_context: Contexte d'intention du TriageAgent (wants_earlier_date, etc.)
+            uber_case_alert: Alerte Uber CAS D/E à inclure dans la réponse normale.
         """
         # Format similar tickets as few-shot examples
         few_shot_examples = self.rag.format_for_few_shot(similar_tickets)
@@ -450,7 +452,7 @@ Preference_horaire: jour|soir (si préférence confirmée)
         )
 
         # Format data sources
-        data_summary = self._format_data_sources(crm_data, exament3p_data, evalbox_data, date_examen_vtc_data, session_data, uber_eligibility_data, threads, intent_context)
+        data_summary = self._format_data_sources(crm_data, exament3p_data, evalbox_data, date_examen_vtc_data, session_data, uber_eligibility_data, threads, intent_context, uber_case_alert)
 
         # Format thread history (full conversation)
         thread_history = self._format_thread_history(threads)
@@ -522,12 +524,14 @@ Génère uniquement le contenu de la réponse (pas de métadonnées)."""
         session_data: Optional[Dict] = None,
         uber_eligibility_data: Optional[Dict] = None,
         threads: Optional[List] = None,
-        intent_context: Optional[Dict] = None
+        intent_context: Optional[Dict] = None,
+        uber_case_alert: Optional[Dict] = None
     ) -> str:
         """Format available data sources for prompt.
 
         Args:
             intent_context: Contexte d'intention du TriageAgent (wants_earlier_date, etc.)
+            uber_case_alert: Alerte Uber CAS D/E à inclure (traitement normal + alerte)
         """
         from datetime import datetime
         lines = []
@@ -584,6 +588,44 @@ Génère uniquement le contenu de la réponse (pas de métadonnées)."""
                 lines.append("### 🚗 Candidat Uber 20€ :")
                 lines.append("  - ✅ Éligible - Peut être inscrit à l'examen")
                 lines.append("")
+
+        # ================================================================
+        # ALERTE UBER CAS D/E - À INCLURE DANS LA RÉPONSE NORMALE
+        # ================================================================
+        # CAS D: Compte Uber non vérifié (email ≠ compte Uber Driver)
+        # CAS E: Non éligible selon Uber (raisons inconnues)
+        # → Traitement NORMAL (dates, sessions) + ALERTE à inclure
+        if uber_case_alert:
+            alert_case = uber_case_alert.get('case', '?')
+            lines.append("=" * 60)
+            lines.append(f"⚠️ ALERTE UBER CAS {alert_case} - À INCLURE DANS LA RÉPONSE ⚠️")
+            lines.append("=" * 60)
+            lines.append(f"  Description : {uber_case_alert.get('description', '')}")
+            lines.append("")
+            lines.append("  📝 INSTRUCTIONS :")
+            lines.append("     1. Répondre NORMALEMENT à la demande du candidat (dates, sessions, etc.)")
+            lines.append("     2. AJOUTER UN PARAGRAPHE D'ALERTE à la fin concernant le compte Uber")
+            lines.append("")
+            if alert_case == 'D':
+                lines.append("  🚨 CONTENU DE L'ALERTE (à ajouter après la réponse principale) :")
+                lines.append("     - L'email utilisé n'est pas reconnu comme compte Uber Driver")
+                lines.append("     - SI autre email pour Uber Driver → nous le communiquer")
+                lines.append("     - SI même email → contacter support Uber (app Uber Driver → Compte → Aide)")
+                lines.append("     - CAB n'a pas de visibilité sur les critères Uber")
+            elif alert_case == 'E':
+                lines.append("  🚨 CONTENU DE L'ALERTE (à ajouter après la réponse principale) :")
+                lines.append("     - Le profil n'est pas éligible selon Uber (raisons inconnues)")
+                lines.append("     - Contacter support Uber pour comprendre (app Uber Driver → Compte → Aide)")
+                lines.append("     - CAB n'a pas de visibilité sur les critères Uber")
+            lines.append("")
+            lines.append("  💡 FORMAT SUGGÉRÉ :")
+            lines.append("     [Réponse normale: dates examen, sessions, etc.]")
+            lines.append("")
+            lines.append("     **Point important concernant votre compte Uber :**")
+            lines.append("     [Alerte selon le cas D ou E]")
+            lines.append("")
+            lines.append("=" * 60)
+            lines.append("")
 
         if crm_data:
             lines.append("### CRM Zoho :")
@@ -971,7 +1013,8 @@ Génère uniquement le contenu de la réponse (pas de métadonnées)."""
         top_k_similar: int = 3,
         temperature: float = 0.3,
         max_tokens: int = 2000,
-        intent_context: Optional[Dict] = None
+        intent_context: Optional[Dict] = None,
+        uber_case_alert: Optional[Dict] = None
     ) -> Dict:
         """
         Generate response for a ticket.
@@ -1040,7 +1083,8 @@ Génère uniquement le contenu de la réponse (pas de métadonnées)."""
             session_data=session_data,
             uber_eligibility_data=uber_eligibility_data,
             threads=threads,
-            intent_context=intent_context
+            intent_context=intent_context,
+            uber_case_alert=uber_case_alert
         )
 
         # 5. Call Claude API
@@ -1122,6 +1166,7 @@ Génère uniquement le contenu de la réponse (pas de métadonnées)."""
         threads: Optional[List] = None,
         training_exam_consistency_data: Optional[Dict] = None,
         triage_result: Optional[Dict] = None,
+        uber_case_alert: Optional[Dict] = None,
         max_retries: int = 2
     ) -> Dict:
         """
@@ -1137,6 +1182,8 @@ Génère uniquement le contenu de la réponse (pas de métadonnées)."""
                 Si 'has_consistency_issue' est True, utilise le message pré-généré.
             triage_result: Résultat du triage IA avec detected_intent et intent_context.
                 Permet d'appliquer des procédures strictes (ex: force majeure pour report).
+            uber_case_alert: Alerte Uber CAS D/E à inclure dans la réponse normale.
+                Le traitement continue normalement, mais une alerte est ajoutée.
         """
         # ================================================================
         # CAS SPÉCIAL #0: Prospect ou CAS A/B Uber (AVANT identifiants!)
@@ -1157,11 +1204,10 @@ Génère uniquement le contenu de la réponse (pas de métadonnées)."""
                     customer_message=customer_message,
                     threads=threads
                 )
-            elif uber_case in ['A', 'B', 'D', 'E'] and is_uber_deal:
-                # CAS A: Documents non envoyés
-                # CAS B: Test de sélection non passé
-                # CAS D: Compte Uber non vérifié (email ≠ Uber Driver)
-                # CAS E: Non éligible selon Uber (raisons inconnues)
+            elif uber_case in ['A', 'B'] and is_uber_deal:
+                # CAS A: Documents non envoyés → BLOCAGE
+                # CAS B: Test de sélection non passé → BLOCAGE
+                # (CAS D et E sont traités normalement avec une alerte)
                 logger.info(f"🚨 MODE CAS {uber_case}: Utilisation message pré-généré Uber")
                 return self._generate_uber_case_response(
                     uber_eligibility_data=uber_eligibility_data,
@@ -1243,7 +1289,8 @@ Génère uniquement le contenu de la réponse (pas de métadonnées)."""
                 session_data=session_data,
                 uber_eligibility_data=uber_eligibility_data,
                 threads=threads,  # Pass thread history for context
-                intent_context=intent_context  # Pass intent context from triage (wants_earlier_date, etc.)
+                intent_context=intent_context,  # Pass intent context from triage (wants_earlier_date, etc.)
+                uber_case_alert=uber_case_alert  # Alerte Uber CAS D/E à inclure dans la réponse
             )
 
             # Check if all validations passed

@@ -932,19 +932,31 @@ Deux comptes ExamenT3P fonctionnels ont été détectés pour ce candidat, et le
         uber_eligibility_result = analyze_uber_eligibility(deal_data)
 
         # ================================================================
-        # FLAG: Blocage dates/sessions si CAS A, B, D ou E
-        # A = documents non envoyés
-        # B = test sélection non passé
-        # D = Compte_Uber non vérifié (email ≠ compte Uber Driver)
-        # E = Non éligible selon Uber (raisons inconnues)
+        # FLAG: Blocage dates/sessions si CAS A ou B
+        # A = documents non envoyés → BLOCAGE (pas d'info candidat)
+        # B = test sélection non passé → BLOCAGE (workflow pas complet)
+        # D = Compte_Uber non vérifié → ALERTE (peut être résolu)
+        # E = Non éligible selon Uber → ALERTE (peut être résolu)
         # ================================================================
         uber_case_blocks_dates = False
+        uber_case_alert = None  # Pour CAS D/E: alerte à inclure dans la réponse normale
         if uber_eligibility_result.get('is_uber_20_deal'):
-            blocking_cases = ['A', 'B', 'D', 'E']
-            if uber_eligibility_result.get('case') in blocking_cases:
-                logger.warning(f"  🚨 CAS {uber_eligibility_result['case']}: {uber_eligibility_result['case_description']}")
+            uber_case = uber_eligibility_result.get('case')
+            blocking_cases = ['A', 'B']  # Seuls A et B bloquent
+            alert_cases = ['D', 'E']  # D et E = alerte sans blocage
+
+            if uber_case in blocking_cases:
+                logger.warning(f"  🚨 CAS {uber_case}: {uber_eligibility_result['case_description']}")
                 logger.warning("  ⛔ BLOCAGE DATES/SESSIONS: Candidat doit résoudre le problème")
                 uber_case_blocks_dates = True
+            elif uber_case in alert_cases:
+                logger.warning(f"  ⚠️ CAS {uber_case}: {uber_eligibility_result['case_description']}")
+                logger.info("  📝 Traitement normal + ALERTE Uber à inclure dans la réponse")
+                uber_case_alert = {
+                    'case': uber_case,
+                    'description': uber_eligibility_result.get('case_description', ''),
+                    'response_message': uber_eligibility_result.get('response_message', '')
+                }
             else:
                 logger.info("  ✅ Candidat Uber éligible - peut être inscrit à l'examen")
         else:
@@ -1146,9 +1158,11 @@ Deux comptes ExamenT3P fonctionnels ont été détectés pour ce candidat, et le
             'ticket_confirmations': ticket_confirmations,  # Confirmations extraites du ticket
             # Flag critique: identifiants invalides = SEUL sujet de la réponse
             # IMPORTANT: credentials_only_response = True UNIQUEMENT si skip_reason == 'credentials_invalid'
-            # Pour les cas Uber (A, B, D, E), on utilise uber_case_response avec le message pré-généré
+            # Pour les cas Uber A/B, on utilise uber_case_response avec le message pré-généré
+            # Pour D/E, on utilise uber_case_alert (alerte dans réponse normale)
             'credentials_only_response': skip_reason == 'credentials_invalid',
-            'uber_case_response': skip_reason and skip_reason.startswith('uber_case_'),
+            'uber_case_response': uber_case_blocks_dates,  # True seulement pour CAS A/B
+            'uber_case_alert': uber_case_alert,  # Pour CAS D/E: alerte à inclure dans réponse normale
             'skip_reason': skip_reason,  # Raison du skip (credentials_invalid, uber_case_X, dossier_not_received)
             'dossier_not_received': dossier_not_received_blocks_dates,
             'uber_case_blocks_dates': uber_case_blocks_dates,
@@ -1308,7 +1322,8 @@ L'équipe Cab Formations"""
             credentials_only_response=analysis_result.get('credentials_only_response', False),
             threads=analysis_result.get('threads'),  # Historique complet des échanges
             training_exam_consistency_data=analysis_result.get('training_exam_consistency_result'),  # Cohérence formation/examen
-            triage_result=triage_result  # Intention détectée par IA (REPORT_DATE, etc.)
+            triage_result=triage_result,  # Intention détectée par IA (REPORT_DATE, etc.)
+            uber_case_alert=analysis_result.get('uber_case_alert')  # Alerte Uber CAS D/E à inclure
         )
 
         return response_result
