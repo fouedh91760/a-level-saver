@@ -457,7 +457,8 @@ Réponds toujours en JSON avec la structure:
         ai_updates: Dict[str, Any],
         deal_data: Dict[str, Any],
         session_data: Optional[Dict] = None,
-        ticket_id: Optional[str] = None
+        ticket_id: Optional[str] = None,
+        auto_add_note: bool = False
     ) -> Dict[str, Any]:
         """
         Méthode simplifiée pour les mises à jour depuis une réponse ticket.
@@ -468,6 +469,7 @@ Réponds toujours en JSON avec la structure:
             deal_data: Données actuelles du deal
             session_data: Sessions proposées
             ticket_id: ID du ticket (pour la note)
+            auto_add_note: Si True, ajoute une note CRM (défaut: False car note consolidée dans workflow)
 
         Returns:
             Résultat du process()
@@ -480,7 +482,7 @@ Réponds toujours en JSON avec la structure:
             'deal_data': deal_data,
             'session_data': session_data or {},
             'source': source,
-            'auto_add_note': True
+            'auto_add_note': auto_add_note
         })
 
     def update_from_examt3p_sync(
