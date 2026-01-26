@@ -1816,7 +1816,13 @@ Génère une réponse email complète qui:
 1. Répond à sa question spécifique
 2. {case_instructions.get(uber_case, "Explique la situation")}
 
-Commence par "Bonjour," (pas de prénom)."""
+Commence par "Bonjour," (pas de prénom).
+
+IMPORTANT - À la fin de ta réponse, ajoute sur une nouvelle ligne:
+[PREFERENCE:jour] si le candidat mentionne vouloir le cours de JOUR (8h-16h30, matin, journée)
+[PREFERENCE:soir] si le candidat mentionne vouloir le cours du SOIR (18h-22h)
+[PREFERENCE:aucune] si aucune préférence n'est mentionnée
+Cette ligne sera retirée du message final, c'est juste pour l'extraction."""
 
         try:
             response = self.anthropic_client.messages.create(
@@ -1914,6 +1920,22 @@ L'équipe Cab Formations"""
 
         logger.info(f"  Message généré: {len(response_message)} caractères")
 
+        # ================================================================
+        # EXTRACTION DE LA PRÉFÉRENCE HORAIRE
+        # ================================================================
+        import re
+        crm_updates = {}
+        preference_match = re.search(r'\[PREFERENCE:(jour|soir|aucune)\]', response_message, re.IGNORECASE)
+        if preference_match:
+            preference = preference_match.group(1).lower()
+            # Retirer le tag du message
+            response_message = re.sub(r'\s*\[PREFERENCE:(jour|soir|aucune)\]\s*', '', response_message, flags=re.IGNORECASE).strip()
+            if preference != 'aucune':
+                crm_updates['Preference_horaire'] = preference
+                logger.info(f"  📝 Préférence horaire détectée: {preference}")
+
+        has_crm_updates = bool(crm_updates)
+
         return {
             'response_text': response_message,
             'detected_scenarios': [f'SC-UBER_CAS_{uber_case}'],
@@ -1925,8 +1947,9 @@ L'équipe Cab Formations"""
                     'forbidden_terms_found': []
                 }
             },
-            'requires_crm_update': False,
-            'crm_update_fields': [],
+            'requires_crm_update': has_crm_updates,
+            'crm_updates': crm_updates,
+            'crm_update_fields': list(crm_updates.keys()),
             'should_stop_workflow': False,
             'metadata': {
                 'input_tokens': 0,
