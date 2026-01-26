@@ -1173,6 +1173,17 @@ L'équipe Cab Formations"""
         """
         logger.info("Generating Uber PROSPECT response")
 
+        # ================================================================
+        # Vérifier les alertes temporaires (ex: double convocation CMA)
+        # ================================================================
+        from src.utils.alerts_helper import get_alerts_for_response
+        alerts_text = get_alerts_for_response(
+            customer_message=customer_message,
+            threads=threads
+        )
+        if alerts_text:
+            logger.info("📢 Alertes détectées en mode PROSPECT - injection dans le prompt")
+
         system_prompt = """Tu es un assistant de Cab Formations, centre de formation VTC.
 Tu dois générer une réponse email professionnelle, rassurante et commerciale.
 
@@ -1205,6 +1216,16 @@ RÈGLES DE RÉDACTION:
 DURÉES DE FORMATION - ABSOLUMENT CORRECT:
 - Cours du jour: 1 SEMAINE (pas 2!)
 - Cours du soir: 2 SEMAINES (pas 4!)"""
+
+        # Ajouter les alertes temporaires au prompt si présentes
+        if alerts_text:
+            system_prompt += f"""
+
+{alerts_text}
+
+IMPORTANT: Si l'alerte ci-dessus correspond à la situation du candidat (par exemple
+s'il mentionne avoir reçu deux convocations), TRAITE D'ABORD L'ALERTE avant de
+parler de l'offre commerciale. L'alerte est PRIORITAIRE."""
 
         user_prompt = f"""MESSAGE DU CANDIDAT:
 {customer_message}
@@ -1306,6 +1327,17 @@ L'équipe Cab Formations"""
         logger.info(f"Generating Uber CAS {uber_case} contextual response")
 
         # ================================================================
+        # Vérifier les alertes temporaires (ex: double convocation CMA)
+        # ================================================================
+        from src.utils.alerts_helper import get_alerts_for_response
+        alerts_text = get_alerts_for_response(
+            customer_message=customer_message,
+            threads=threads
+        )
+        if alerts_text:
+            logger.info(f"📢 Alertes détectées en mode CAS {uber_case} - injection dans le prompt")
+
+        # ================================================================
         # UTILISER CLAUDE POUR GÉNÉRER UNE RÉPONSE CONTEXTUELLE
         # ================================================================
         if uber_case == 'A':
@@ -1378,6 +1410,16 @@ RÈGLES:
 DURÉES DE FORMATION - ABSOLUMENT CORRECT:
 - Cours du jour: 1 SEMAINE (pas 2!)
 - Cours du soir: 2 SEMAINES (pas 4!)"""
+
+        # Ajouter les alertes temporaires au prompt si présentes
+        if alerts_text:
+            system_prompt += f"""
+
+{alerts_text}
+
+IMPORTANT: Si l'alerte ci-dessus correspond à la situation du candidat (par exemple
+s'il mentionne avoir reçu deux convocations), TRAITE D'ABORD L'ALERTE avant de
+parler de l'offre ou de demander les documents. L'alerte est PRIORITAIRE."""
 
         user_prompt = f"""MESSAGE DU CANDIDAT:
 {customer_message}
