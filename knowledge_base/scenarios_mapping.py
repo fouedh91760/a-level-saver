@@ -184,14 +184,14 @@ SCENARIOS = {
         "template_notes": "Apologize, explain, provide solution"
     },
 
-    # ========== ANCIEN DOSSIER (ALERTE) ==========
+    # ========== ANCIEN DOSSIER (INFO SEULEMENT) ==========
     "SC-ANCIEN_DOSSIER": {
         "name": "Ancien dossier CMA (avant 01/11/2025)",
         "triggers": [],  # Detected by date, not keywords
         "detection": "Date_de_depot_CMA < 01/11/2025",
-        "action": "create_internal_alert_draft",
-        "stop_workflow": True,
-        "template_notes": "STOP - Create internal alert, do not respond to customer"
+        "action": "process_normally",  # Ne plus bloquer, traiter normalement
+        "stop_workflow": False,  # MODIFIÉ: ne plus bloquer sur les anciens dossiers
+        "template_notes": "Ancien dossier - traitement normal"
     },
 
     # ========== HORS SCOPE ==========
