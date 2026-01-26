@@ -910,15 +910,39 @@ Deux comptes ExamenT3P fonctionnels ont été détectés pour ce candidat, et le
         # ================================================================
         # ANALYSE SESSIONS DE FORMATION
         # ================================================================
-        # Si des dates d'examen sont proposées, récupérer les sessions correspondantes
+        # Si des dates d'examen sont proposées OU si date examen assignée mais pas de session
         from src.utils.session_helper import analyze_session_situation
 
         next_dates = date_examen_vtc_result.get('next_dates', [])
-        if not skip_date_session_analysis and next_dates and date_examen_vtc_result.get('should_include_in_response'):
+
+        # Vérifier si session déjà assignée dans CRM
+        current_session = deal_data.get('Session')
+        session_is_empty = not current_session
+
+        # Dates à utiliser pour la proposition de sessions:
+        # - Si next_dates existe → utiliser next_dates (nouvelles dates proposées)
+        # - Si next_dates vide MAIS date_examen_info existe ET session vide → utiliser la date existante
+        exam_dates_for_session = next_dates
+
+        if not next_dates and session_is_empty:
+            # Pas de nouvelles dates, mais on a peut-être une date d'examen déjà assignée
+            date_examen_info = date_examen_vtc_result.get('date_examen_info')
+            if date_examen_info and isinstance(date_examen_info, dict):
+                # Utiliser la date d'examen existante pour proposer des sessions
+                exam_dates_for_session = [date_examen_info]
+                logger.info("  📚 Session vide mais date examen assignée - recherche sessions correspondantes...")
+
+        should_analyze_sessions = (
+            not skip_date_session_analysis
+            and exam_dates_for_session
+            and (date_examen_vtc_result.get('should_include_in_response') or session_is_empty)
+        )
+
+        if should_analyze_sessions:
             logger.info("  📚 Recherche des sessions de formation associées...")
             session_data = analyze_session_situation(
                 deal_data=deal_data,
-                exam_dates=next_dates,
+                exam_dates=exam_dates_for_session,
                 threads=threads_data,
                 crm_client=self.crm_client
             )
