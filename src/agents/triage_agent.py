@@ -182,6 +182,22 @@ Réponds UNIQUEMENT en JSON valide:
                 if response_text.startswith("json"):
                     response_text = response_text[4:]
 
+            # Extraire uniquement le JSON (ignorer le texte après)
+            # Chercher le premier { et le dernier } correspondant
+            start_idx = response_text.find('{')
+            if start_idx != -1:
+                brace_count = 0
+                end_idx = start_idx
+                for i, char in enumerate(response_text[start_idx:], start_idx):
+                    if char == '{':
+                        brace_count += 1
+                    elif char == '}':
+                        brace_count -= 1
+                        if brace_count == 0:
+                            end_idx = i + 1
+                            break
+                response_text = response_text[start_idx:end_idx]
+
             result = json.loads(response_text)
 
             # Valider et normaliser
