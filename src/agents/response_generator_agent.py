@@ -543,7 +543,7 @@ Génère uniquement le contenu de la réponse (pas de métadonnées)."""
                     for i, date_info in enumerate(next_dates[:2], 1):
                         date_examen = date_info.get('Date_Examen', 'N/A')
                         date_cloture = date_info.get('Date_Cloture_Inscription', '')
-                        libelle = date_info.get('Libelle_Affichage', '')
+                        departement = date_info.get('Departement', '')
                         # Formater la date pour affichage
                         try:
                             from datetime import datetime
@@ -551,7 +551,7 @@ Génère uniquement le contenu de la réponse (pas de métadonnées)."""
                             date_formatted = date_obj.strftime("%d/%m/%Y")
                         except:
                             date_formatted = str(date_examen)
-                        # Formater date clôture et vérifier si expirée
+                        # Formater date clôture avec délai pré-calculé
                         cloture_formatted = ""
                         is_expired = False
                         if date_cloture:
@@ -561,18 +561,33 @@ Génère uniquement le contenu de la réponse (pas de métadonnées)."""
                                     cloture_obj = cloture_obj.replace(tzinfo=None)
                                 else:
                                     cloture_obj = datetime.strptime(str(date_cloture), "%Y-%m-%d")
-                                # Vérifier si la clôture est passée
-                                is_expired = cloture_obj.date() < datetime.now().date()
-                                if is_expired:
-                                    cloture_formatted = f" (clôture: {cloture_obj.strftime('%d/%m/%Y')} ⛔ EXPIRÉE - NE PAS PROPOSER)"
+                                # Calculer le nombre de jours jusqu'à la clôture
+                                today_date = datetime.now().date()
+                                cloture_date = cloture_obj.date()
+                                days_until_cloture = (cloture_date - today_date).days
+                                # Créer un label explicite pour le délai
+                                if days_until_cloture < 0:
+                                    is_expired = True
+                                    delay_label = "⛔ EXPIRÉE"
+                                elif days_until_cloture == 0:
+                                    delay_label = "🔴 AUJOURD'HUI - trop serré"
+                                    is_expired = True  # Considérer comme expiré car trop serré
+                                elif days_until_cloture == 1:
+                                    delay_label = "🟠 DEMAIN - très serré"
+                                elif days_until_cloture <= 3:
+                                    delay_label = f"🟡 dans {days_until_cloture} jours - serré"
+                                elif days_until_cloture <= 7:
+                                    delay_label = f"🟢 dans {days_until_cloture} jours"
                                 else:
-                                    cloture_formatted = f" (clôture: {cloture_obj.strftime('%d/%m/%Y')})"
+                                    delay_label = f"✅ dans {days_until_cloture} jours"
+                                cloture_formatted = f" (clôture: {cloture_obj.strftime('%d/%m/%Y')} → {delay_label})"
                             except:
                                 pass
+                        dept_info = f" [Dept {departement}]" if departement else ""
                         if is_expired:
-                            lines.append(f"      {i}. ⛔ {date_formatted}{cloture_formatted}")
+                            lines.append(f"      {i}. ⛔ {date_formatted}{dept_info}{cloture_formatted} - NE PAS PROPOSER")
                         else:
-                            lines.append(f"      {i}. {date_formatted}{cloture_formatted}")
+                            lines.append(f"      {i}. {date_formatted}{dept_info}{cloture_formatted}")
 
                 # Dates alternatives dans d'autres départements (si candidat peut choisir)
                 alt_dates = date_examen_vtc_data.get('alternative_department_dates', [])
@@ -598,12 +613,26 @@ Génère uniquement le contenu de la réponse (pas de métadonnées)."""
                                     alt_cloture_obj = alt_cloture_obj.replace(tzinfo=None)
                                 else:
                                     alt_cloture_obj = datetime.strptime(str(alt_cloture), "%Y-%m-%d")
-                                # Vérifier si la clôture est passée
-                                alt_is_expired = alt_cloture_obj.date() < datetime.now().date()
-                                if alt_is_expired:
-                                    alt_cloture_formatted = f" (clôture: {alt_cloture_obj.strftime('%d/%m/%Y')} ⛔ EXPIRÉE)"
+                                # Calculer le nombre de jours jusqu'à la clôture
+                                today_date = datetime.now().date()
+                                alt_cloture_date = alt_cloture_obj.date()
+                                alt_days_until = (alt_cloture_date - today_date).days
+                                # Créer un label explicite pour le délai
+                                if alt_days_until < 0:
+                                    alt_is_expired = True
+                                    alt_delay_label = "⛔ EXPIRÉE"
+                                elif alt_days_until == 0:
+                                    alt_delay_label = "🔴 AUJOURD'HUI - trop serré"
+                                    alt_is_expired = True
+                                elif alt_days_until == 1:
+                                    alt_delay_label = "🟠 DEMAIN - très serré"
+                                elif alt_days_until <= 3:
+                                    alt_delay_label = f"🟡 dans {alt_days_until} jours - serré"
+                                elif alt_days_until <= 7:
+                                    alt_delay_label = f"🟢 dans {alt_days_until} jours"
                                 else:
-                                    alt_cloture_formatted = f" (clôture: {alt_cloture_obj.strftime('%d/%m/%Y')})"
+                                    alt_delay_label = f"✅ dans {alt_days_until} jours"
+                                alt_cloture_formatted = f" (clôture: {alt_cloture_obj.strftime('%d/%m/%Y')} → {alt_delay_label})"
                             except:
                                 pass
                         if alt_is_expired:

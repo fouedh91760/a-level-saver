@@ -94,9 +94,10 @@ def get_next_exam_dates(
 
         logger.info(f"  Total: {len(all_sessions)} session(s) récupérée(s) pour le département {departement}")
 
-        # Filtrer les sessions dont la date de clôture est dans le futur
+        # Filtrer les sessions avec clôture suffisamment dans le futur (min 2 jours)
         valid_sessions = []
-        today_date = datetime.now()
+        today_date = datetime.now().date()
+        min_days_before_cloture = 2  # Minimum 2 jours avant la clôture pour être pratique
 
         for session in all_sessions:
             date_cloture_str = session.get('Date_Cloture_Inscription')
@@ -105,12 +106,15 @@ def get_next_exam_dates(
                     # Parser la date (format ISO ou datetime)
                     if 'T' in str(date_cloture_str):
                         date_cloture = datetime.fromisoformat(date_cloture_str.replace('Z', '+00:00'))
-                        # Rendre la date naive pour comparaison (supprimer le timezone)
-                        date_cloture = date_cloture.replace(tzinfo=None)
+                        date_cloture = date_cloture.replace(tzinfo=None).date()
                     else:
-                        date_cloture = datetime.strptime(str(date_cloture_str), "%Y-%m-%d")
+                        date_cloture = datetime.strptime(str(date_cloture_str), "%Y-%m-%d").date()
 
-                    if date_cloture > today_date:
+                    # Calculer le nombre de jours jusqu'à la clôture
+                    days_until_cloture = (date_cloture - today_date).days
+
+                    # Inclure seulement si clôture dans au moins min_days_before_cloture jours
+                    if days_until_cloture >= min_days_before_cloture:
                         valid_sessions.append(session)
                 except Exception as e:
                     logger.warning(f"Erreur parsing date clôture {date_cloture_str}: {e}")
@@ -120,7 +124,7 @@ def get_next_exam_dates(
         valid_sessions.sort(key=lambda x: x.get('Date_Examen', '9999-99-99'))
 
         result = valid_sessions[:limit]
-        logger.info(f"✅ {len(result)} date(s) d'examen valide(s) pour le département {departement}")
+        logger.info(f"✅ {len(result)} date(s) d'examen valide(s) pour le département {departement} (clôture ≥ {min_days_before_cloture} jours)")
 
         return result
 
@@ -204,10 +208,11 @@ def get_earlier_dates_other_departments(
 
         # Filtrer les sessions:
         # 1. Département différent du département actuel
-        # 2. Date de clôture dans le futur
+        # 2. Date de clôture suffisamment dans le futur (min 2 jours)
         # 3. Date d'examen AVANT la date de référence
         valid_sessions = []
-        today_date = datetime.now()
+        today_date = datetime.now().date()
+        min_days_before_cloture = 2  # Minimum 2 jours avant la clôture
 
         for session in all_sessions:
             # Vérifier le département
@@ -215,18 +220,19 @@ def get_earlier_dates_other_departments(
             if session_dept == current_departement:
                 continue  # Exclure le département actuel
 
-            # Vérifier la date de clôture (doit être dans le futur)
+            # Vérifier la date de clôture (doit être dans au moins 2 jours)
             date_cloture_str = session.get('Date_Cloture_Inscription')
             if date_cloture_str:
                 try:
                     if 'T' in str(date_cloture_str):
                         date_cloture = datetime.fromisoformat(date_cloture_str.replace('Z', '+00:00'))
-                        date_cloture = date_cloture.replace(tzinfo=None)
+                        date_cloture = date_cloture.replace(tzinfo=None).date()
                     else:
-                        date_cloture = datetime.strptime(str(date_cloture_str), "%Y-%m-%d")
+                        date_cloture = datetime.strptime(str(date_cloture_str), "%Y-%m-%d").date()
 
-                    if date_cloture <= today_date:
-                        continue  # Clôture passée
+                    days_until_cloture = (date_cloture - today_date).days
+                    if days_until_cloture < min_days_before_cloture:
+                        continue  # Clôture trop proche ou passée
                 except:
                     continue
             else:
@@ -247,7 +253,7 @@ def get_earlier_dates_other_departments(
         valid_sessions.sort(key=lambda x: x.get('Date_Examen', '9999-99-99'))
 
         result = valid_sessions[:limit]
-        logger.info(f"✅ {len(result)} date(s) plus tôt trouvée(s) dans d'autres départements")
+        logger.info(f"✅ {len(result)} date(s) plus tôt trouvée(s) dans d'autres départements (clôture ≥ {min_days_before_cloture} jours)")
 
         return result
 
@@ -307,9 +313,11 @@ def get_next_exam_dates_any_department(
 
         logger.info(f"  Total: {len(all_sessions)} session(s) actives récupérée(s)")
 
-        # Filtrer les sessions avec clôture dans le futur
+        # Filtrer les sessions avec clôture suffisamment dans le futur (min 2 jours)
+        # Une clôture demain ou aujourd'hui n'est pas pratique
         valid_sessions = []
-        today_date = datetime.now()
+        today_date = datetime.now().date()
+        min_days_before_cloture = 2  # Minimum 2 jours avant la clôture pour être pratique
 
         for session in all_sessions:
             date_cloture_str = session.get('Date_Cloture_Inscription')
@@ -317,18 +325,23 @@ def get_next_exam_dates_any_department(
                 try:
                     if 'T' in str(date_cloture_str):
                         date_cloture = datetime.fromisoformat(date_cloture_str.replace('Z', '+00:00'))
-                        # Rendre la date naive pour comparaison (supprimer le timezone)
-                        date_cloture = date_cloture.replace(tzinfo=None)
+                        date_cloture = date_cloture.replace(tzinfo=None).date()
                     else:
-                        date_cloture = datetime.strptime(str(date_cloture_str), "%Y-%m-%d")
+                        date_cloture = datetime.strptime(str(date_cloture_str), "%Y-%m-%d").date()
 
-                    if date_cloture > today_date:
+                    # Calculer le nombre de jours jusqu'à la clôture
+                    days_until_cloture = (date_cloture - today_date).days
+
+                    # Inclure seulement si clôture dans au moins min_days_before_cloture jours
+                    if days_until_cloture >= min_days_before_cloture:
                         valid_sessions.append(session)
+                    else:
+                        logger.debug(f"  Session exclue: clôture {date_cloture} dans {days_until_cloture} jours (min: {min_days_before_cloture})")
                 except:
                     continue
 
         valid_sessions.sort(key=lambda x: x.get('Date_Examen', '9999-99-99'))
-        logger.info(f"✅ {len(valid_sessions[:limit])} date(s) d'examen valide(s) (tous départements)")
+        logger.info(f"✅ {len(valid_sessions[:limit])} date(s) d'examen valide(s) (tous départements, clôture ≥ {min_days_before_cloture} jours)")
         return valid_sessions[:limit]
 
     except Exception as e:
