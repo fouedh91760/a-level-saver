@@ -273,8 +273,8 @@ class ZohoDeskClient(ZohoAPIClient):
         """
         Move a ticket to a different department.
 
-        This handles the department change properly by also updating
-        the layoutId to match the target department.
+        Uses the dedicated /move endpoint which is the proper way
+        to transfer tickets between departments in Zoho Desk.
 
         Args:
             ticket_id: Ticket ID to move
@@ -290,19 +290,14 @@ class ZohoDeskClient(ZohoAPIClient):
 
         dept_id = dept_info.get("id")
 
-        # Build update data with departmentId
-        update_data = {
-            "departmentId": int(dept_id)
-        }
-
-        # If department has a specific layoutId, include it
-        # This is often required when moving between departments
-        if dept_info.get("layoutId"):
-            update_data["layoutId"] = int(dept_info["layoutId"])
-
         logger.info(f"Moving ticket {ticket_id} to department {department_name} (ID: {dept_id})")
 
-        return self.update_ticket(ticket_id, update_data)
+        # Use the dedicated /move endpoint (POST, not PATCH)
+        url = f"{settings.zoho_desk_api_url}/tickets/{ticket_id}/move"
+        params = {"orgId": settings.zoho_desk_org_id}
+        data = {"departmentId": str(dept_id)}
+
+        return self._make_request("POST", url, params=params, json=data)
 
     def update_ticket(
         self,
