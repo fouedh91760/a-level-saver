@@ -1362,3 +1362,276 @@ Nous allons procéder au règlement des frais d'inscription dans les **prochaine
 **Attention :** Si les corrections ne sont pas apportées avant la date de clôture, votre inscription sera automatiquement reportée sur la prochaine session d'examen.
 
 Votre examen est prévu pour le{date_examen_text}. Nous restons à votre disposition pour toute question."""
+
+
+# =============================================================================
+# FILTRAGE INTELLIGENT DES DATES PAR RÉGION
+# =============================================================================
+
+# Mapping département → région (pour toute la France métropolitaine)
+DEPT_TO_REGION = {
+    # Auvergne-Rhône-Alpes
+    '01': 'Auvergne-Rhône-Alpes', '03': 'Auvergne-Rhône-Alpes', '07': 'Auvergne-Rhône-Alpes',
+    '15': 'Auvergne-Rhône-Alpes', '26': 'Auvergne-Rhône-Alpes', '38': 'Auvergne-Rhône-Alpes',
+    '42': 'Auvergne-Rhône-Alpes', '43': 'Auvergne-Rhône-Alpes', '63': 'Auvergne-Rhône-Alpes',
+    '69': 'Auvergne-Rhône-Alpes', '73': 'Auvergne-Rhône-Alpes', '74': 'Auvergne-Rhône-Alpes',
+    # Bourgogne-Franche-Comté
+    '21': 'Bourgogne-Franche-Comté', '25': 'Bourgogne-Franche-Comté', '39': 'Bourgogne-Franche-Comté',
+    '58': 'Bourgogne-Franche-Comté', '70': 'Bourgogne-Franche-Comté', '71': 'Bourgogne-Franche-Comté',
+    '89': 'Bourgogne-Franche-Comté', '90': 'Bourgogne-Franche-Comté',
+    # Bretagne
+    '22': 'Bretagne', '29': 'Bretagne', '35': 'Bretagne', '56': 'Bretagne',
+    # Centre-Val de Loire
+    '18': 'Centre-Val de Loire', '28': 'Centre-Val de Loire', '36': 'Centre-Val de Loire',
+    '37': 'Centre-Val de Loire', '41': 'Centre-Val de Loire', '45': 'Centre-Val de Loire',
+    # Grand Est
+    '08': 'Grand Est', '10': 'Grand Est', '51': 'Grand Est', '52': 'Grand Est',
+    '54': 'Grand Est', '55': 'Grand Est', '57': 'Grand Est', '67': 'Grand Est',
+    '68': 'Grand Est', '88': 'Grand Est',
+    # Hauts-de-France
+    '02': 'Hauts-de-France', '59': 'Hauts-de-France', '60': 'Hauts-de-France',
+    '62': 'Hauts-de-France', '80': 'Hauts-de-France',
+    # Île-de-France
+    '75': 'Île-de-France', '77': 'Île-de-France', '78': 'Île-de-France',
+    '91': 'Île-de-France', '92': 'Île-de-France', '93': 'Île-de-France',
+    '94': 'Île-de-France', '95': 'Île-de-France',
+    # Normandie
+    '14': 'Normandie', '27': 'Normandie', '50': 'Normandie', '61': 'Normandie', '76': 'Normandie',
+    # Nouvelle-Aquitaine
+    '16': 'Nouvelle-Aquitaine', '17': 'Nouvelle-Aquitaine', '19': 'Nouvelle-Aquitaine',
+    '23': 'Nouvelle-Aquitaine', '24': 'Nouvelle-Aquitaine', '33': 'Nouvelle-Aquitaine',
+    '40': 'Nouvelle-Aquitaine', '47': 'Nouvelle-Aquitaine', '64': 'Nouvelle-Aquitaine',
+    '79': 'Nouvelle-Aquitaine', '86': 'Nouvelle-Aquitaine', '87': 'Nouvelle-Aquitaine',
+    # Occitanie
+    '09': 'Occitanie', '11': 'Occitanie', '12': 'Occitanie', '30': 'Occitanie',
+    '31': 'Occitanie', '32': 'Occitanie', '34': 'Occitanie', '46': 'Occitanie',
+    '48': 'Occitanie', '65': 'Occitanie', '66': 'Occitanie', '81': 'Occitanie', '82': 'Occitanie',
+    # Pays de la Loire
+    '44': 'Pays de la Loire', '49': 'Pays de la Loire', '53': 'Pays de la Loire',
+    '72': 'Pays de la Loire', '85': 'Pays de la Loire',
+    # PACA
+    '04': 'PACA', '05': 'PACA', '06': 'PACA', '13': 'PACA', '83': 'PACA', '84': 'PACA',
+}
+
+# Mapping inverse : région → liste de départements
+REGION_TO_DEPTS = {}
+for dept, region in DEPT_TO_REGION.items():
+    if region not in REGION_TO_DEPTS:
+        REGION_TO_DEPTS[region] = []
+    REGION_TO_DEPTS[region].append(dept)
+
+# Mapping villes principales → région (pour détection dans le texte)
+CITY_TO_REGION = {
+    # Pays de la Loire
+    'nantes': 'Pays de la Loire', 'angers': 'Pays de la Loire', 'le mans': 'Pays de la Loire',
+    'laval': 'Pays de la Loire', 'la roche-sur-yon': 'Pays de la Loire', 'saint-nazaire': 'Pays de la Loire',
+    # Île-de-France
+    'paris': 'Île-de-France', 'versailles': 'Île-de-France', 'boulogne': 'Île-de-France',
+    'montreuil': 'Île-de-France', 'saint-denis': 'Île-de-France', 'argenteuil': 'Île-de-France',
+    'creteil': 'Île-de-France', 'créteil': 'Île-de-France', 'bobigny': 'Île-de-France',
+    # PACA
+    'marseille': 'PACA', 'nice': 'PACA', 'toulon': 'PACA', 'aix-en-provence': 'PACA',
+    'avignon': 'PACA', 'cannes': 'PACA', 'antibes': 'PACA',
+    # Auvergne-Rhône-Alpes
+    'lyon': 'Auvergne-Rhône-Alpes', 'grenoble': 'Auvergne-Rhône-Alpes', 'saint-etienne': 'Auvergne-Rhône-Alpes',
+    'clermont-ferrand': 'Auvergne-Rhône-Alpes', 'annecy': 'Auvergne-Rhône-Alpes', 'valence': 'Auvergne-Rhône-Alpes',
+    # Occitanie
+    'toulouse': 'Occitanie', 'montpellier': 'Occitanie', 'nîmes': 'Occitanie', 'nimes': 'Occitanie',
+    'perpignan': 'Occitanie', 'béziers': 'Occitanie', 'beziers': 'Occitanie',
+    # Nouvelle-Aquitaine
+    'bordeaux': 'Nouvelle-Aquitaine', 'limoges': 'Nouvelle-Aquitaine', 'poitiers': 'Nouvelle-Aquitaine',
+    'pau': 'Nouvelle-Aquitaine', 'la rochelle': 'Nouvelle-Aquitaine', 'angoulême': 'Nouvelle-Aquitaine',
+    # Grand Est
+    'strasbourg': 'Grand Est', 'reims': 'Grand Est', 'metz': 'Grand Est', 'nancy': 'Grand Est',
+    'mulhouse': 'Grand Est', 'colmar': 'Grand Est', 'troyes': 'Grand Est',
+    # Hauts-de-France
+    'lille': 'Hauts-de-France', 'amiens': 'Hauts-de-France', 'roubaix': 'Hauts-de-France',
+    'tourcoing': 'Hauts-de-France', 'dunkerque': 'Hauts-de-France',
+    # Bretagne
+    'rennes': 'Bretagne', 'brest': 'Bretagne', 'quimper': 'Bretagne', 'lorient': 'Bretagne',
+    'vannes': 'Bretagne', 'saint-brieuc': 'Bretagne',
+    # Normandie
+    'rouen': 'Normandie', 'le havre': 'Normandie', 'caen': 'Normandie', 'cherbourg': 'Normandie',
+    # Centre-Val de Loire
+    'orléans': 'Centre-Val de Loire', 'orleans': 'Centre-Val de Loire', 'tours': 'Centre-Val de Loire',
+    'bourges': 'Centre-Val de Loire', 'chartres': 'Centre-Val de Loire',
+    # Bourgogne-Franche-Comté
+    'dijon': 'Bourgogne-Franche-Comté', 'besançon': 'Bourgogne-Franche-Comté', 'besancon': 'Bourgogne-Franche-Comté',
+    'belfort': 'Bourgogne-Franche-Comté', 'auxerre': 'Bourgogne-Franche-Comté',
+}
+
+# Alias de régions (pour détection dans le texte)
+REGION_ALIASES = {
+    'pays de la loire': 'Pays de la Loire',
+    'pays-de-la-loire': 'Pays de la Loire',
+    'pdl': 'Pays de la Loire',
+    'ile de france': 'Île-de-France',
+    'ile-de-france': 'Île-de-France',
+    'idf': 'Île-de-France',
+    'région parisienne': 'Île-de-France',
+    'region parisienne': 'Île-de-France',
+    'paca': 'PACA',
+    'provence': 'PACA',
+    'côte d\'azur': 'PACA',
+    'cote d\'azur': 'PACA',
+    'rhône-alpes': 'Auvergne-Rhône-Alpes',
+    'rhone-alpes': 'Auvergne-Rhône-Alpes',
+    'auvergne': 'Auvergne-Rhône-Alpes',
+    'grand est': 'Grand Est',
+    'alsace': 'Grand Est',
+    'lorraine': 'Grand Est',
+    'champagne': 'Grand Est',
+    'occitanie': 'Occitanie',
+    'languedoc': 'Occitanie',
+    'midi-pyrénées': 'Occitanie',
+    'midi-pyrenees': 'Occitanie',
+    'nouvelle-aquitaine': 'Nouvelle-Aquitaine',
+    'aquitaine': 'Nouvelle-Aquitaine',
+    'bretagne': 'Bretagne',
+    'normandie': 'Normandie',
+    'hauts-de-france': 'Hauts-de-France',
+    'nord': 'Hauts-de-France',
+    'picardie': 'Hauts-de-France',
+    'centre': 'Centre-Val de Loire',
+    'bourgogne': 'Bourgogne-Franche-Comté',
+    'franche-comté': 'Bourgogne-Franche-Comté',
+    'franche-comte': 'Bourgogne-Franche-Comté',
+}
+
+
+def detect_candidate_region(
+    text: Optional[str] = None,
+    department: Optional[str] = None
+) -> Optional[str]:
+    """
+    Détecte la région du candidat à partir du texte ou du département.
+
+    Ordre de priorité:
+    1. Département connu (CRM) → région directe
+    2. Mention de région dans le texte
+    3. Mention de ville dans le texte
+
+    Args:
+        text: Message du candidat (optionnel)
+        department: Département du candidat depuis le CRM (optionnel)
+
+    Returns:
+        Nom de la région ou None si non détectée
+    """
+    # 1. Si département connu, retourner directement la région
+    if department:
+        region = DEPT_TO_REGION.get(str(department))
+        if region:
+            logger.info(f"  🌍 Région détectée depuis département {department}: {region}")
+            return region
+
+    # 2. Chercher dans le texte
+    if text:
+        text_lower = text.lower()
+
+        # 2a. Chercher une mention directe de région
+        for alias, region in REGION_ALIASES.items():
+            if alias in text_lower:
+                logger.info(f"  🌍 Région détectée depuis texte ('{alias}'): {region}")
+                return region
+
+        # 2b. Chercher une mention de ville
+        for city, region in CITY_TO_REGION.items():
+            if city in text_lower:
+                logger.info(f"  🌍 Région détectée depuis ville ('{city}'): {region}")
+                return region
+
+    logger.info("  🌍 Aucune région détectée")
+    return None
+
+
+def filter_dates_by_region_relevance(
+    all_dates: List[Dict[str, Any]],
+    candidate_region: Optional[str] = None,
+    candidate_message: Optional[str] = None,
+    candidate_department: Optional[str] = None
+) -> List[Dict[str, Any]]:
+    """
+    Filtre intelligent des dates d'examen basé sur la région du candidat.
+
+    Règles:
+    1. Si région détectée:
+       - Garder TOUTES les dates de la région du candidat
+       - Pour les autres régions: ne garder QUE celles avec une date PLUS TÔT
+    2. Si pas de région détectée:
+       - Retourner toutes les dates (pas de filtrage)
+
+    Args:
+        all_dates: Liste complète des dates d'examen
+        candidate_region: Région du candidat (si déjà connue)
+        candidate_message: Message du candidat (pour détection automatique)
+        candidate_department: Département CRM du candidat
+
+    Returns:
+        Liste filtrée des dates pertinentes
+    """
+    if not all_dates:
+        return []
+
+    # Détecter la région si non fournie
+    region = candidate_region
+    if not region:
+        region = detect_candidate_region(
+            text=candidate_message,
+            department=candidate_department
+        )
+
+    # Si pas de région détectée, retourner toutes les dates
+    if not region:
+        logger.info("  📅 Pas de région détectée → retour de toutes les dates")
+        return all_dates
+
+    logger.info(f"  📅 Filtrage intelligent pour la région: {region}")
+
+    # Séparer les dates de la région du candidat vs autres régions
+    candidate_region_dates = []
+    other_region_dates = []
+
+    for date_info in all_dates:
+        dept = str(date_info.get('Departement', ''))
+        date_region = DEPT_TO_REGION.get(dept)
+
+        if date_region == region:
+            candidate_region_dates.append(date_info)
+        else:
+            other_region_dates.append(date_info)
+
+    logger.info(f"    → {len(candidate_region_dates)} date(s) dans la région du candidat")
+    logger.info(f"    → {len(other_region_dates)} date(s) dans d'autres régions")
+
+    # Trouver la première date d'examen dans la région du candidat
+    earliest_candidate_date = None
+    if candidate_region_dates:
+        candidate_region_dates.sort(key=lambda x: x.get('Date_Examen', '9999-99-99'))
+        earliest_candidate_date = candidate_region_dates[0].get('Date_Examen')
+        logger.info(f"    → Première date dans {region}: {earliest_candidate_date}")
+
+    # Filtrer les autres régions: ne garder que celles avec une date PLUS TÔT
+    filtered_other_dates = []
+    if earliest_candidate_date:
+        for date_info in other_region_dates:
+            exam_date = date_info.get('Date_Examen', '9999-99-99')
+            if exam_date < earliest_candidate_date:
+                filtered_other_dates.append(date_info)
+                dept = date_info.get('Departement', '')
+                other_region = DEPT_TO_REGION.get(str(dept), 'Inconnue')
+                logger.info(f"    → Date antérieure trouvée: {exam_date} ({other_region})")
+    else:
+        # Si pas de date dans la région du candidat, garder toutes les autres
+        filtered_other_dates = other_region_dates
+
+    # Combiner: dates de la région du candidat + dates antérieures d'autres régions
+    result = candidate_region_dates + filtered_other_dates
+
+    # Trier par date d'examen
+    result.sort(key=lambda x: x.get('Date_Examen', '9999-99-99'))
+
+    logger.info(f"  ✅ Résultat: {len(result)} date(s) après filtrage intelligent")
+    logger.info(f"     ({len(candidate_region_dates)} dans {region} + {len(filtered_other_dates)} antérieures d'autres régions)")
+
+    return result

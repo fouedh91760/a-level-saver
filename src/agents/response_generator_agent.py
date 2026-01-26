@@ -73,6 +73,11 @@ project_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(project_root))
 
 from src.utils.response_rag import ResponseRAG
+from src.utils.date_examen_vtc_helper import (
+    filter_dates_by_region_relevance,
+    detect_candidate_region,
+    DEPT_TO_REGION
+)
 from knowledge_base.scenarios_mapping import (
     detect_scenario_from_text,
     get_mandatory_blocks_for_scenario,
@@ -225,20 +230,12 @@ Tu réponds aux tickets clients concernant les formations VTC pour Uber avec un 
 
 ### 🌍 RÈGLES DÉPARTEMENT ET CHOIX DE CMA :
 
-**🎯 RÈGLE #1 ABSOLUE - PRIORISER LA RÉGION DU CANDIDAT :**
-⚠️ Si le candidat mentionne une région ou une ville, tu DOIS proposer EN PRIORITÉ les dates d'examen de cette région !
-- Exemple : "Pays de la Loire" ou "Nantes" → proposer départements 44, 49, 53, 72, 85 EN PRIORITÉ
-- Exemple : "Lyon" ou "Rhône" → proposer département 69 et région Auvergne-Rhône-Alpes EN PRIORITÉ
-- NE PAS proposer un département à 500km si des options existent dans la région du candidat
-- La proximité géographique PRIME sur l'ordre chronologique des dates
+**NOTE : Le filtrage géographique est fait automatiquement par le système.**
+- Les dates affichées ci-dessous sont DÉJÀ filtrées selon la région du candidat
+- Si "RÉGION DÉTECTÉE" apparaît → les dates sont pertinentes pour cette région
+- Tu dois proposer TOUTES les dates listées (elles sont déjà triées par pertinence)
 
-**🎯 RÈGLE #2 - NE PAS NOYER LE CANDIDAT AVEC DES OPTIONS INUTILES :**
-⚠️ Ne mentionner les autres régions QUE si elles ont des dates PLUS TÔT que la région du candidat !
-- Si Pays de la Loire a une date le 24/02 → NE PAS mentionner Grand Est qui a AUSSI le 24/02 (même date = inutile)
-- Seule exception : mentionner une autre région si sa date est ANTÉRIEURE à celle de la région du candidat
-- Objectif : réponse CONCISE et PERTINENTE, pas une liste exhaustive de tous les départements
-
-**RÈGLE #3 - NE JAMAIS INVENTER DE RESTRICTIONS RÉGIONALES :**
+**RÈGLE IMPORTANTE - NE JAMAIS INVENTER DE RESTRICTIONS RÉGIONALES :**
 - ⚠️ NE JAMAIS dire "vous devez passer l'examen dans votre région d'inscription"
 - ⚠️ Cette règle est FAUSSE - un candidat PEUT s'inscrire dans n'importe quel département
 
@@ -285,29 +282,13 @@ Tu réponds aux tickets clients concernant les formations VTC pour Uber avec un 
   * CAS B: Demander de passer le test de sélection
 - Utiliser le message pré-généré fourni dans les données
 
-### 🌍 CONTEXTE GÉOGRAPHIQUE DU CANDIDAT (PRIORITÉ ABSOLUE) :
+### 🌍 CONTEXTE GÉOGRAPHIQUE (FILTRAGE AUTOMATIQUE) :
 
-⚠️⚠️⚠️ RÈGLE CRITIQUE ⚠️⚠️⚠️
-**AVANT de proposer une date d'examen, tu DOIS analyser le message du candidat pour détecter :**
-1. Une région mentionnée (ex: "Pays de la Loire", "PACA", "Île-de-France"...)
-2. Une ville mentionnée (ex: "Nantes", "Lyon", "Marseille"...)
-3. Un département mentionné (ex: "Loire-Atlantique", "Rhône"...)
-
-**SI une indication géographique est détectée :**
-→ Tu DOIS proposer EN PREMIER les dates dans les départements de cette région
-→ INTERDIT de proposer un département éloigné (ex: 10-Aube ou 68-Haut-Rhin) si des dates existent dans la région du candidat
-→ Exemple CONCRET : Candidat dit "Pays de la Loire" → proposer le département 49 (Maine-et-Loire) car il est dans les Pays de la Loire, PAS le département 10 (Aube) qui est en Grand Est à 500km !
-
-**Mapping régions → départements (MÉMORISER) :**
-- Pays de la Loire : 44 (Loire-Atlantique), 49 (Maine-et-Loire), 53 (Mayenne), 72 (Sarthe), 85 (Vendée)
-- Île-de-France : 75, 77, 78, 91, 92, 93, 94, 95
-- PACA : 04, 05, 06, 13, 83, 84
-- Auvergne-Rhône-Alpes : 01, 38, 42, 63, 69, 73, 74
-- Bretagne : 22, 29, 35, 56
-- Grand Est : 08, 10, 51, 52, 54, 55, 57, 67, 68, 88
-- Occitanie : 09, 11, 12, 30, 31, 32, 34, 46, 48, 65, 66, 81, 82
-
-**Les données de dates indiquent la région entre crochets - UTILISE CETTE INFO !**
+✅ **Le système a DÉJÀ filtré les dates selon la région du candidat.**
+- Si "RÉGION DÉTECTÉE: [région]" apparaît dans les données → le filtrage est appliqué
+- Les dates affichées sont PERTINENTES pour le candidat
+- Tu n'as PAS besoin de faire le tri toi-même, propose simplement les dates listées
+- Les dates d'autres régions n'apparaissent QUE si elles sont PLUS TÔT que celles de la région du candidat
 
 ### 🔄 CORRECTION DIPLOMATIQUE DES ERREURS D'INFORMATION :
 **Si le candidat cite une information erronée (ex: "on m'a dit mai pour l'examen") :**
@@ -584,40 +565,52 @@ Génère uniquement le contenu de la réponse (pas de métadonnées)."""
                 # Inclure les prochaines dates disponibles explicitement
                 next_dates = date_examen_vtc_data.get('next_dates', [])
                 if next_dates:
-                    # Mapping département → région pour faciliter le choix géographique
-                    DEPT_TO_REGION = {
-                        # Pays de la Loire
-                        '44': 'Pays de la Loire', '49': 'Pays de la Loire', '53': 'Pays de la Loire',
-                        '72': 'Pays de la Loire', '85': 'Pays de la Loire',
-                        # Île-de-France
-                        '75': 'Île-de-France', '77': 'Île-de-France', '78': 'Île-de-France',
-                        '91': 'Île-de-France', '92': 'Île-de-France', '93': 'Île-de-France',
-                        '94': 'Île-de-France', '95': 'Île-de-France',
-                        # PACA
-                        '04': 'PACA', '05': 'PACA', '06': 'PACA', '13': 'PACA', '83': 'PACA', '84': 'PACA',
-                        # Auvergne-Rhône-Alpes
-                        '01': 'Auvergne-Rhône-Alpes', '38': 'Auvergne-Rhône-Alpes', '42': 'Auvergne-Rhône-Alpes',
-                        '63': 'Auvergne-Rhône-Alpes', '69': 'Auvergne-Rhône-Alpes', '73': 'Auvergne-Rhône-Alpes',
-                        '74': 'Auvergne-Rhône-Alpes',
-                        # Bretagne
-                        '22': 'Bretagne', '29': 'Bretagne', '35': 'Bretagne', '56': 'Bretagne',
-                        # Grand Est
-                        '08': 'Grand Est', '10': 'Grand Est', '51': 'Grand Est', '52': 'Grand Est',
-                        '54': 'Grand Est', '55': 'Grand Est', '57': 'Grand Est', '67': 'Grand Est', '68': 'Grand Est',
-                        '88': 'Grand Est',
-                        # Occitanie
-                        '09': 'Occitanie', '11': 'Occitanie', '12': 'Occitanie', '30': 'Occitanie', '31': 'Occitanie',
-                        '32': 'Occitanie', '34': 'Occitanie', '46': 'Occitanie', '48': 'Occitanie', '65': 'Occitanie',
-                        '66': 'Occitanie', '81': 'Occitanie', '82': 'Occitanie',
-                    }
+                    # ================================================================
+                    # FILTRAGE INTELLIGENT PAR RÉGION (Backend - pas d'hallucination)
+                    # ================================================================
+                    # Extraire le message du candidat depuis les threads
+                    candidate_message = ""
+                    if threads:
+                        for thread in threads:
+                            # Chercher le thread entrant (du candidat)
+                            direction = thread.get('direction', thread.get('type', ''))
+                            if direction in ['in', 'incoming', 'received']:
+                                candidate_message = thread.get('content', thread.get('summary', ''))
+                                break
+                        # Si pas de direction, prendre le premier thread
+                        if not candidate_message and threads:
+                            candidate_message = threads[0].get('content', threads[0].get('summary', ''))
 
-                    lines.append(f"  - 📆 PROCHAINES DATES D'EXAMEN DISPONIBLES ({len(next_dates)} options) :")
-                    lines.append(f"    🎯 RÈGLE PRIORITAIRE : Si le candidat mentionne une région, PRIORISER les départements de cette région !")
-                    lines.append(f"    ⚠️ NE MONTRER les autres régions QUE si elles ont des dates PLUS TÔT que la région du candidat !")
-                    lines.append(f"    Exemple : Si Pays de la Loire a le 24/02, ne PAS montrer Grand Est qui a aussi le 24/02 (même date = inutile)")
+                    # Extraire le département du CRM
+                    candidate_dept = None
+                    if crm_data:
+                        cma_depot = crm_data.get('CMA_de_depot')
+                        if cma_depot and isinstance(cma_depot, dict):
+                            candidate_dept = cma_depot.get('name', '').split('_')[0] if '_' in str(cma_depot.get('name', '')) else None
+
+                    # Appliquer le filtrage intelligent
+                    filtered_dates = filter_dates_by_region_relevance(
+                        all_dates=next_dates,
+                        candidate_message=candidate_message,
+                        candidate_department=candidate_dept
+                    )
+
+                    # Détecter la région pour l'affichage
+                    detected_region = detect_candidate_region(
+                        text=candidate_message,
+                        department=candidate_dept
+                    )
+
+                    if detected_region:
+                        lines.append(f"  - 🌍 RÉGION DÉTECTÉE : **{detected_region}** (filtrage appliqué)")
+                        lines.append(f"  - 📆 DATES PERTINENTES ({len(filtered_dates)} options après filtrage) :")
+                    else:
+                        lines.append(f"  - 📆 PROCHAINES DATES D'EXAMEN DISPONIBLES ({len(filtered_dates)} options) :")
+                        filtered_dates = next_dates  # Pas de filtrage si région inconnue
+
                     lines.append("")
-                    # Afficher TOUTES les dates (pas seulement 2) pour que l'IA puisse choisir géographiquement
-                    for i, date_info in enumerate(next_dates, 1):
+                    # Afficher les dates filtrées
+                    for i, date_info in enumerate(filtered_dates, 1):
                         date_examen = date_info.get('Date_Examen', 'N/A')
                         date_cloture = date_info.get('Date_Cloture_Inscription', '')
                         departement = date_info.get('Departement', '')
