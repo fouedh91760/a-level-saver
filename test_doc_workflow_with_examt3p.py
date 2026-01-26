@@ -56,7 +56,7 @@ def test_doc_workflow(ticket_id: str):
         # Exécuter le workflow complet
         result = workflow.process_ticket(
             ticket_id=ticket_id,
-            auto_create_draft=False,  # Ne pas créer le draft automatiquement
+            auto_create_draft=True,    # Créer le draft dans Zoho Desk
             auto_update_crm=False,     # Ne pas mettre à jour le CRM automatiquement
             auto_update_ticket=False   # Ne pas mettre à jour le ticket automatiquement
         )
