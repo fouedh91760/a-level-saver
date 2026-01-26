@@ -13,18 +13,35 @@ Avant de coder une nouvelle fonctionnalité, **TOUJOURS vérifier** si elle exis
 1. Les agents (`src/agents/`)
 2. Les helpers (`src/utils/`)
 3. Le client Zoho (`src/zoho_client.py`)
+4. Les alertes temporaires (`alerts/active_alerts.yaml`)
 
 ---
 
 ## Architecture des Agents
 
-### 1. CRMUpdateAgent (`src/agents/crm_update_agent.py`) - RECOMMANDÉ
+### 1. TriageAgent (`src/agents/triage_agent.py`) - PREMIER DANS LE WORKFLOW
+**Agent IA pour triage intelligent des tickets (GO/ROUTE/SPAM).**
+
+```python
+from src.agents.triage_agent import TriageAgent
+
+agent = TriageAgent()
+result = agent.triage_ticket(ticket_id)
+# Retourne: action (GO/ROUTE/SPAM), target_department, reason, confidence
+```
+
+**Actions possibles :**
+- `GO` : Ticket DOC valide, continuer le workflow
+- `ROUTE` : Transférer vers autre département (Contact, Partenariat, etc.)
+- `SPAM` : Spam/pub, clôturer sans réponse
+
+### 2. CRMUpdateAgent (`src/agents/crm_update_agent.py`) - RECOMMANDÉ
 **Agent spécialisé pour TOUTES les mises à jour CRM CAB Formations.**
 
 Centralise toute la logique de mise à jour CRM :
 - Mapping automatique string → ID pour les champs lookup
 - Respect des règles de blocage (VALIDE CMA + clôture passée)
-- Logging dans les notes CRM
+- Note CRM optionnelle (désactivée par défaut dans le workflow)
 
 ```python
 from src.agents.crm_update_agent import CRMUpdateAgent
@@ -37,19 +54,9 @@ result = agent.update_from_ticket_response(
     ai_updates={'Date_examen_VTC': '2026-03-31', 'Session_choisie': 'Cours du soir'},
     deal_data=deal_data,
     session_data=session_data,  # Sessions proposées par session_helper
-    ticket_id="789012"
+    ticket_id="789012",
+    auto_add_note=False  # Note consolidée gérée par le workflow
 )
-
-# Ou méthode générale
-result = agent.process({
-    'deal_id': '123456',
-    'ai_updates': {'Date_examen_VTC': '2026-03-31'},
-    'deal_data': deal_data,
-    'session_data': session_data,
-    'source': 'manual_update',
-    'auto_add_note': True,
-    'dry_run': False
-})
 ```
 
 **IMPORTANT :** Cet agent gère automatiquement :
@@ -57,26 +64,7 @@ result = agent.process({
 - `Session_choisie` : convertit nom → ID en cherchant dans les sessions proposées
 - Règles de blocage : refuse de modifier `Date_examen_VTC` si VALIDE CMA + clôture passée
 
-### 2. CRMOpportunityAgent (`src/agents/crm_agent.py`)
-**Agent générique pour l'analyse et mise à jour des deals (non spécialisé CAB Formations).**
-
-```python
-from src.agents.crm_agent import CRMOpportunityAgent
-
-agent = CRMOpportunityAgent()
-result = agent.process({
-    "deal_id": "123456",
-    "auto_update": True,      # Applique les mises à jour automatiquement
-    "auto_add_note": True     # Ajoute une note au deal
-})
-```
-
-**Méthodes disponibles :**
-- `process(data)` - Analyse et met à jour un deal
-- `process_with_ticket(deal_id, ticket_id, ticket_analysis)` - Met à jour un deal dans le contexte d'un ticket
-- `find_opportunities_needing_attention()` - Trouve les deals qui nécessitent une action
-
-### 2. DealLinkingAgent (`src/agents/deal_linking_agent.py`)
+### 3. DealLinkingAgent (`src/agents/deal_linking_agent.py`)
 **Lie les tickets Zoho Desk aux deals CRM.**
 
 ```python
@@ -87,7 +75,7 @@ result = agent.process({"ticket_id": "123456"})
 # Retourne: deal_id, deal_data, all_deals, routing info
 ```
 
-### 3. ResponseGeneratorAgent (`src/agents/response_generator_agent.py`)
+### 4. ResponseGeneratorAgent (`src/agents/response_generator_agent.py`)
 **Génère les réponses aux tickets avec Claude + RAG.**
 
 ```python
@@ -103,9 +91,11 @@ result = agent.generate_with_validation_loop(
 # Retourne: response_text, crm_updates, detected_scenarios, etc.
 ```
 
-**Important :** L'agent extrait automatiquement les mises à jour CRM via le bloc `[CRM_UPDATES]...[/CRM_UPDATES]`.
+**Important :**
+- L'agent extrait automatiquement les mises à jour CRM via le bloc `[CRM_UPDATES]...[/CRM_UPDATES]`
+- Les alertes temporaires sont automatiquement injectées dans le prompt
 
-### 4. ExamT3PAgent (`src/agents/examt3p_agent.py`)
+### 5. ExamT3PAgent (`src/agents/examt3p_agent.py`)
 **Extrait les données de la plateforme ExamT3P.**
 
 ```python
@@ -113,10 +103,10 @@ from src.agents.examt3p_agent import ExamT3PAgent
 
 agent = ExamT3PAgent()
 data = agent.extract_data(identifiant, mot_de_passe)
-# Retourne: documents, paiements, examens, statut_dossier, etc.
+# Retourne: documents, paiements, examens, statut_dossier, num_dossier, etc.
 ```
 
-### 5. TicketDispatcherAgent (`src/agents/dispatcher_agent.py`)
+### 6. TicketDispatcherAgent (`src/agents/dispatcher_agent.py`)
 **Route les tickets vers le bon département.**
 
 ---
@@ -135,6 +125,12 @@ from src.utils.examt3p_crm_sync import (
 )
 ```
 
+**Champs synchronisés :**
+- `Evalbox` : statut du dossier
+- `IDENTIFIANT_EVALBOX` / `MDP_EVALBOX` : identifiants ExamT3P
+- `NUM_DOSSIER_EVALBOX` : numéro de dossier CMA
+- `Date_examen_VTC` : date d'examen (si différente)
+
 **CRITIQUE :** Pour mapper une date string vers un ID de session CRM :
 ```python
 session = find_exam_session_by_date_and_dept(crm_client, "2026-03-31", "75")
@@ -142,6 +138,8 @@ session_id = session.get('id')  # Utiliser cet ID pour update_deal
 ```
 
 ### Gestion des identifiants ExamT3P (`src/utils/examt3p_credentials_helper.py`)
+
+**Utilise l'IA (Haiku) pour extraire les identifiants des emails.**
 
 ```python
 from src.utils.examt3p_credentials_helper import get_credentials_with_validation
@@ -151,7 +149,43 @@ result = get_credentials_with_validation(
     threads=threads_data,
     examt3p_agent=agent
 )
-# Retourne: identifiant, mot_de_passe, compte_existe, should_respond_to_candidate
+# Retourne: identifiant, mot_de_passe, compte_existe, connection_test_success,
+#           credentials_source, should_respond_to_candidate
+```
+
+**Fonctionnement :**
+1. Cherche d'abord dans le CRM
+2. Si pas trouvé, utilise l'IA pour extraire des threads (plus fiable que regex)
+3. Teste la connexion ExamT3P
+4. Gère les cas de double compte (alerte si deux comptes payés)
+
+### Alertes Temporaires (`src/utils/alerts_helper.py`) - NOUVEAU
+
+**Système pour informer l'agent rédacteur de bugs/situations temporaires.**
+
+```python
+from src.utils.alerts_helper import get_alerts_for_response, get_active_alerts
+
+# Récupérer les alertes formatées pour le prompt
+alerts_text = get_alerts_for_response(deal_data=deal_data, examt3p_data=examt3p_data)
+
+# Ou récupérer la liste des alertes actives
+alerts = get_active_alerts(evalbox_status="Convoc CMA reçue", department="75")
+```
+
+**Fichier de configuration :** `alerts/active_alerts.yaml`
+
+```yaml
+alerts:
+  - id: "double_convocation_jan2026"
+    active: true
+    start_date: "2026-01-25"
+    end_date: "2026-01-31"
+    title: "Double convocation CMA"
+    context: "La CMA a envoyé deux convocations par erreur"
+    instruction: "Dire au candidat de prendre la seconde (annule et remplace)"
+    applies_to:
+      evalbox: ["Convoc CMA reçue", "VALIDE CMA"]
 ```
 
 ### Analyse Date Examen VTC (`src/utils/date_examen_vtc_helper.py`)
@@ -165,8 +199,11 @@ result = analyze_exam_date_situation(
     crm_client=crm_client,
     examt3p_data=examt3p_data
 )
-# Retourne: case (1-5), next_dates, should_include_in_response, response_message
+# Retourne: case (1-10), next_dates, should_include_in_response, response_message
 ```
+
+**CAS gérés :** 1-Date vide, 2-Date passée, 3-Refusé CMA, 4-VALIDE CMA, 5-Dossier Synchronisé,
+6-Autre statut, 7-Examen passé, 8-Deadline ratée, 9-Convoc reçue, 10-Prêt à payer
 
 ### Sessions de Formation (`src/utils/session_helper.py`)
 
@@ -182,6 +219,8 @@ result = analyze_session_situation(
 # Retourne: session_preference (jour/soir), proposed_options avec sessions IDs
 ```
 
+**Note :** Les sessions sont proposées même si la date d'examen est déjà assignée mais que `Session` est vide.
+
 ### Éligibilité Uber 20€ (`src/utils/uber_eligibility_helper.py`)
 
 ```python
@@ -189,17 +228,6 @@ from src.utils.uber_eligibility_helper import analyze_uber_eligibility
 
 result = analyze_uber_eligibility(deal_data)
 # Retourne: is_uber_20_deal, case (A/B/C/PROSPECT), is_eligible
-```
-
-### Notes CRM (`src/utils/crm_note_logger.py`)
-
-```python
-from src.utils.crm_note_logger import (
-    log_examt3p_sync,
-    log_ticket_update,
-    log_uber_eligibility_check,
-    log_response_sent
-)
 ```
 
 ### Cohérence Formation/Examen (`src/utils/training_exam_consistency_helper.py`)
@@ -250,20 +278,43 @@ client.search_deals(criteria="(Email:equals:test@example.com)")
 ## Workflow Principal (`src/workflows/doc_ticket_workflow.py`)
 
 ```
-1. AGENT TRIEUR     → Triage (GO/ROUTE/SPAM)
-2. AGENT ANALYSTE   → Extraction données 6 sources
-3. AGENT RÉDACTEUR  → Génération réponse Claude + RAG
-4. CRM NOTE         → Note dans le deal
+1. AGENT TRIEUR     → Triage IA (GO/ROUTE/SPAM)
+2. AGENT ANALYSTE   → Extraction données 6 sources + sync ExamT3P
+3. AGENT RÉDACTEUR  → Génération réponse Claude + RAG + alertes temporaires
+4. CRM NOTE         → Note unique consolidée (next steps générés par IA)
 5. TICKET UPDATE    → Tags, statut
 6. DEAL UPDATE      → Via CRMUpdateAgent (mapping auto, règles de blocage)
-7. DRAFT CREATION   → Brouillon Zoho Desk
+7. DRAFT CREATION   → Brouillon HTML dans Zoho Desk
 8. FINAL VALIDATION
 ```
 
-**Note STEP 6 :** Le workflow utilise `CRMUpdateAgent.update_from_ticket_response()` qui :
-- Convertit automatiquement les dates/sessions en IDs
-- Applique les règles de blocage (VALIDE CMA + clôture passée)
-- Ajoute une note CRM avec le détail des mises à jour
+### Note CRM Consolidée (STEP 4)
+
+Le workflow crée **UNE SEULE note** avec :
+- Lien vers le ticket Desk
+- Mises à jour CRM effectuées
+- Next steps candidat (générés par IA Haiku)
+- Next steps CAB (générés par IA Haiku)
+- Alertes si nécessaire
+
+**Format :**
+```
+Ticket #198709000445735836
+https://desk.zoho.com/agent/cabformations/cab-formations/tickets/198709000445735836
+
+Mises à jour CRM:
+• NUM_DOSSIER_EVALBOX: — → 00038886
+• Date_examen_VTC: — → 31/03/2026
+
+Next steps candidat:
+• Surveiller emails paiement CMA
+• Choisir session de formation
+
+Next steps CAB:
+• Vérifier paiement CMA sous 48h
+
+✓ Aucune alerte
+```
 
 ---
 
@@ -308,9 +359,12 @@ client.search_deals(criteria="(Email:equals:test@example.com)")
 ```python
 {
     'compte_existe': True,
+    'connection_test_success': True,
     'identifiant': 'email@example.com',
     'mot_de_passe': '****',
+    'credentials_source': 'crm',  # ou 'threads'
     'statut_dossier': 'En cours de composition',
+    'num_dossier': '00038886',
     'documents': [...],
     'paiements': [...],
     'departement': '75'
@@ -334,9 +388,22 @@ python -c "from src.agents.response_generator_agent import ResponseGeneratorAgen
 
 ---
 
+## Coûts API (estimation par ticket)
+
+| Composant | Modèle | Coût |
+|-----------|--------|------|
+| Extraction identifiants | Haiku 3.5 | ~$0.001 |
+| Agent Trieur | Haiku 3.5 | ~$0.001 |
+| Agent Rédacteur | Sonnet 4.5 | ~$0.036 |
+| Next steps note CRM | Haiku 3.5 | ~$0.001 |
+| **Total** | | **~$0.04** |
+
+---
+
 ## À Faire Avant de Coder
 
 1. **Chercher dans les helpers** : `grep -r "fonction_recherchée" src/utils/`
 2. **Vérifier les agents** : `ls src/agents/`
-3. **Lire ce fichier** : Les fonctions sont documentées ici
-4. **Ne pas dupliquer** : Si une fonction existe, l'utiliser !
+3. **Vérifier les alertes** : `cat alerts/active_alerts.yaml`
+4. **Lire ce fichier** : Les fonctions sont documentées ici
+5. **Ne pas dupliquer** : Si une fonction existe, l'utiliser !
