@@ -19,6 +19,38 @@ Usage:
 """
 import logging
 import re
+
+
+def _candidate_requests_earlier_dates(message: str) -> bool:
+    """
+    Détecte si le candidat demande explicitement des dates plus tôt ou d'autres options.
+
+    Retourne True si le candidat mentionne vouloir:
+    - Une date plus proche/tôt
+    - Un autre département
+    - Toutes les options disponibles
+    - Une urgence particulière
+    """
+    if not message:
+        return False
+
+    message_lower = message.lower()
+
+    # Mots-clés indiquant une demande de dates plus tôt ou autres options
+    earlier_keywords = [
+        'plus tôt', 'plus tot', 'plus proche', 'au plus vite',
+        'le plus rapidement', 'urgent', 'urgence', 'pressé',
+        'autre département', 'autre departement', 'autres départements',
+        'ailleurs', 'd\'autres options', 'toutes les options',
+        'toutes les dates', 'autres dates', 'date plus rapide',
+        'avant', 'rapidement possible'
+    ]
+
+    for keyword in earlier_keywords:
+        if keyword in message_lower:
+            return True
+
+    return False
 from typing import Dict, List, Optional, Tuple
 from anthropic import Anthropic
 import os
@@ -279,17 +311,9 @@ Tu réponds aux tickets clients concernant les formations VTC pour Uber avec un 
 ### 🌍 CONTEXTE GÉOGRAPHIQUE (FILTRAGE AUTOMATIQUE) :
 
 ✅ **Le système a DÉJÀ filtré les dates selon la région du candidat.**
-- Si "RÉGION DÉTECTÉE: [région]" apparaît dans les données → le filtrage est appliqué
-- Les dates affichées sont PERTINENTES pour le candidat
-- Tu n'as PAS besoin de faire le tri toi-même
-
-⚠️ **RÈGLE IMPORTANTE - Dates d'autres régions :**
-- NE JAMAIS proposer spontanément des dates d'autres régions/départements
-- Proposer les autres régions UNIQUEMENT si le candidat demande EXPLICITEMENT :
-  - "une date plus proche" / "plus tôt" / "au plus vite"
-  - "dans un autre département" / "ailleurs"
-  - "toutes les options possibles"
-- Par défaut → proposer SEULEMENT les dates de la région du candidat
+- Les dates affichées sont PERTINENTES pour le candidat - propose-les toutes
+- Les dates d'autres régions ne sont PAS incluses (sauf si le candidat les a demandées explicitement)
+- Tu n'as PAS besoin de faire le tri toi-même, le backend s'en charge
 
 ### 🔄 CORRECTION DIPLOMATIQUE DES ERREURS D'INFORMATION :
 **Si le candidat cite une information erronée (ex: "on m'a dit mai pour l'examen") :**
@@ -663,10 +687,12 @@ Génère uniquement le contenu de la réponse (pas de métadonnées)."""
                         else:
                             lines.append(f"      {i}. {date_formatted}{dept_info}{cloture_formatted}")
 
-                # Dates alternatives dans d'autres départements (si candidat peut choisir)
+                # Dates alternatives dans d'autres départements
+                # SEULEMENT si le candidat demande explicitement des dates plus tôt ou autres options
                 alt_dates = date_examen_vtc_data.get('alternative_department_dates', [])
-                if alt_dates and date_examen_vtc_data.get('can_choose_other_department'):
-                    lines.append(f"\n  - 🌍 DATES PLUS TÔT DANS D'AUTRES DÉPARTEMENTS (optionnel) :")
+                candidate_wants_earlier = _candidate_requests_earlier_dates(candidate_message)
+                if alt_dates and date_examen_vtc_data.get('can_choose_other_department') and candidate_wants_earlier:
+                    lines.append(f"\n  - 🌍 DATES PLUS TÔT DANS D'AUTRES DÉPARTEMENTS (candidat a demandé) :")
                     lines.append(f"    ⚠️ IMPORTANT : Ces dates sont disponibles car le candidat n'a PAS encore de compte ExamT3P.")
                     lines.append(f"    Le candidat peut s'inscrire dans N'IMPORTE QUEL département.")
                     for j, alt_date in enumerate(alt_dates[:3], 1):
