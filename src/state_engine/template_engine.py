@@ -67,6 +67,7 @@ class TemplateEngine:
         self.matrix = self._load_matrix()
         self.blocks_registry = self.matrix.get('blocks_registry', {})
         self.base_templates = self.matrix.get('base_templates', {})
+        self.state_intention_matrix = self.matrix.get('matrix', {})
 
         logger.info(f"TemplateEngine initialisé: {len(self.blocks_registry)} blocs, {len(self.base_templates)} templates")
 
@@ -175,6 +176,7 @@ class TemplateEngine:
         Sélectionne le template de base approprié selon l'état et le contexte.
 
         Ordre de priorité:
+        0. Matrice STATE:INTENTION (ex: "DATE_EXAMEN_VIDE:CONFIRMATION_SESSION")
         1. Intention + condition (ex: DEMANDE_IDENTIFIANTS + compte_existe)
         2. Condition seule (ex: has_duplicate_uber_offer)
         3. Cas Uber (A, B, D, E)
@@ -186,6 +188,23 @@ class TemplateEngine:
         uber_case = self._determine_uber_case(context)
         resultat = context.get('deal_data', {}).get('Resultat', '')
         intention = context.get('detected_intent', '')
+
+        # PASS 0: Chercher dans la matrice STATE:INTENTION (priorité maximale)
+        # Format: "STATE_NAME:INTENTION" -> configuration spécifique
+        if intention:
+            matrix_key = f"{state.name}:{intention}"
+            if matrix_key in self.state_intention_matrix:
+                config = self.state_intention_matrix[matrix_key]
+                template_file = config.get('template', '')
+                # Extraire le nom du template sans extension
+                template_key = template_file.replace('.html', '').replace('.md', '')
+                logger.info(f"✅ Template sélectionné via matrice: {matrix_key} -> {template_file}")
+                # Construire la config au format attendu
+                return template_key, {
+                    'file': f'templates/base/{template_file}',
+                    'blocks': config.get('blocks', []),
+                    'crm_update': config.get('crm_update', []),
+                }
 
         # PASS 1: Templates avec intention (priorité haute)
         for template_key, config in self.base_templates.items():
