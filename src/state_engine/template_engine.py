@@ -358,15 +358,30 @@ L'équipe CAB Formations""",
 
     def _extract_prenom(self, deal_data: Dict[str, Any]) -> str:
         """Extrait le prénom du candidat."""
-        # Essayer Deal_Name qui contient souvent "PRÉNOM NOM"
+        # Priorité 1: First_Name explicite
+        first_name = deal_data.get('First_Name', '')
+        if first_name and first_name.strip():
+            return first_name.strip().capitalize()
+
+        # Priorité 2: Parser Deal_Name (format: "CODE [CODE] Prénom Nom")
         deal_name = deal_data.get('Deal_Name', '')
         if deal_name:
-            parts = deal_name.split()
-            if parts:
-                return parts[0].capitalize()
+            # Codes à ignorer dans Deal_Name (préfixes internes)
+            internal_codes = {'BFS', 'NP', 'CPF', 'UBER', 'VISIO', 'PRES', 'TEST', 'VIP'}
 
-        # Fallback sur First_Name
-        return deal_data.get('First_Name', '')
+            parts = deal_name.split()
+            # Trouver le premier mot qui n'est pas un code
+            for part in parts:
+                # Ignorer si c'est un code connu (tout en majuscules courtes)
+                if part.upper() in internal_codes:
+                    continue
+                # Ignorer si c'est un code générique (2-3 lettres majuscules)
+                if len(part) <= 3 and part.isupper():
+                    continue
+                # C'est probablement le prénom
+                return part.capitalize()
+
+        return ''
 
     def _format_date(self, date_str: str) -> str:
         """Formate une date en DD/MM/YYYY."""
