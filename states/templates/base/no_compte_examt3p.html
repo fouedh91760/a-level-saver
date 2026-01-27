@@ -1,0 +1,15 @@
+<!-- TEMPLATE BASE: no_compte_examt3p -->
+<!-- État: Pas de compte ExamT3P (compte_existe = false) -->
+<!-- Blocs utilisés: salutation, no_compte_examt3p, prochaines_dates_examen, changement_departement (si pertinent), signature -->
+
+{{> salutation_personnalisee}}
+
+{{> no_compte_examt3p}}
+
+{{> prochaines_dates_examen}}
+
+{{#if can_choose_other_department}}
+{{> changement_departement}}
+{{/if}}
+
+{{> signature}}

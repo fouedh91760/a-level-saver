@@ -1,0 +1,19 @@
+<!-- TEMPLATE BASE: pret_a_payer -->
+<!-- État: Evalbox = "Pret a payer" (dossier validé, en attente paiement) -->
+<!-- Blocs utilisés: salutation, statut_pret_a_payer, paiement selon offre, identifiants_examt3p, signature -->
+
+{{> salutation_personnalisee}}
+
+{{> statut_pret_a_payer}}
+
+{{#if uber_20}}
+{{> paiement_uber_offert}}
+{{else}}
+{{> paiement_cma_241}}
+{{/if}}
+
+{{> identifiants_examt3p}}
+
+{{> verifier_spams}}
+
+{{> signature}}

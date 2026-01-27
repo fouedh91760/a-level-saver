@@ -1,0 +1,1663 @@
+# =============================================================================
+# MATRICE ÉTAT × INTENTION - CAB Formations VTC
+# =============================================================================
+#
+# Architecture State-Driven pour le traitement des tickets DOC
+#
+# PRINCIPE:
+# - ÉTAT = situation factuelle du candidat (déterministe depuis CRM/ExamT3P)
+# - INTENTION = ce que le candidat demande (détecté par IA via Triage Agent)
+# - TEMPLATE = réponse adaptée à la combinaison ÉTAT × INTENTION
+#
+# LOGIQUE DE SÉLECTION:
+# 1. Détecter l'ÉTAT (déterministe, basé sur données CRM/ExamT3P)
+# 2. Détecter l'INTENTION (IA via Triage Agent)
+# 3. Chercher dans la matrice: ÉTAT × INTENTION → TEMPLATE
+# 4. Si pas de combinaison spécifique → utiliser template par défaut de l'ÉTAT
+# 5. Personnaliser avec IA (section {{personnalisation}})
+#
+# =============================================================================
+
+version: "2.0"
+last_updated: "2026-01-27"
+
+# =============================================================================
+# SECTION 1: DÉFINITION DES INTENTIONS
+# =============================================================================
+
+intentions:
+  # --- Demandes d'information ---
+  DEMANDE_IDENTIFIANTS:
+    id: "I01"
+    description: "Demande identifiants ExamT3P"
+    triggers:
+      - "identifiant"
+      - "mot de passe"
+      - "connexion examt3p"
+      - "login"
+      - "se connecter"
+
+  DEMANDE_ELEARNING_ACCESS:
+    id: "I02"
+    description: "Demande identifiants e-learning"
+    triggers:
+      - "e-learning"
+      - "elearning"
+      - "formation en ligne"
+      - "cours en ligne"
+      - "accès cours"
+
+  DEMANDE_DATE_VISIO:
+    id: "I03"
+    description: "Quand est ma prochaine visio/formation ?"
+    triggers:
+      - "date visio"
+      - "quand visio"
+      - "prochaine formation"
+      - "quand commence"
+      - "date de la formation"
+
+  DEMANDE_LIEN_VISIO:
+    id: "I04"
+    description: "Demande le lien Zoom/Teams de la formation"
+    triggers:
+      - "lien zoom"
+      - "lien visio"
+      - "lien teams"
+      - "rejoindre la formation"
+      - "lien de connexion"
+
+  DEMANDE_DATE_EXAMEN:
+    id: "I05"
+    description: "Quelle est ma date d'examen ?"
+    triggers:
+      - "date examen"
+      - "quand examen"
+      - "date de l'examen"
+      - "quelle date"
+
+  DEMANDE_CONVOCATION:
+    id: "I06"
+    description: "Où est ma convocation ?"
+    triggers:
+      - "convocation"
+      - "convoqué"
+      - "reçu convocation"
+      - "pas reçu convocation"
+
+  STATUT_DOSSIER:
+    id: "I07"
+    description: "Question sur l'avancement du dossier"
+    triggers:
+      - "où en est"
+      - "statut dossier"
+      - "avancement"
+      - "suivi"
+      - "état de mon dossier"
+
+  DEMANDE_INFOS_OFFRE:
+    id: "I08"
+    description: "Questions sur l'offre Uber 20€"
+    triggers:
+      - "comment ça marche"
+      - "c'est quoi l'offre"
+      - "que comprend"
+      - "inclus dans"
+
+  DEMANDE_AUTRES_DATES:
+    id: "I09"
+    description: "Veut d'autres dates / autre département"
+    triggers:
+      - "autres dates"
+      - "autre département"
+      - "plus tôt"
+      - "plus proche"
+      - "toutes les dates"
+      - "au plus vite"
+
+  # --- Actions / Confirmations ---
+  REPORT_DATE:
+    id: "I10"
+    description: "Demande de changement/report de date d'examen"
+    triggers:
+      - "reporter"
+      - "décaler"
+      - "changer date"
+      - "repousser"
+      - "nouvelle date"
+    context_fields:
+      - is_urgent
+      - mentions_force_majeure
+      - force_majeure_type
+
+  FORCE_MAJEURE_REPORT:
+    id: "I11"
+    description: "Report avec motif de force majeure explicite"
+    triggers:
+      - "certificat médical"
+      - "hospitalisation"
+      - "décès"
+      - "accident"
+      - "force majeure"
+
+  CONFIRMATION_DATE_EXAMEN:
+    id: "I12"
+    description: "Je confirme la date du XX/XX"
+    triggers:
+      - "je confirme"
+      - "je choisis"
+      - "option 1"
+      - "option 2"
+      - "la première"
+      - "la deuxième"
+    crm_update: true
+    update_fields:
+      - Date_examen_VTC
+
+  CONFIRMATION_SESSION:
+    id: "I13"
+    description: "Choix/confirmation de session de formation"
+    triggers:
+      - "cours du jour"
+      - "cours du soir"
+      - "je préfère jour"
+      - "je préfère soir"
+      - "session du"
+    crm_update: true
+    update_fields:
+      - Session_choisie
+      - Preference_horaire
+
+  ENVOIE_DOCUMENTS:
+    id: "I14"
+    description: "J'ai envoyé/téléchargé mes documents"
+    triggers:
+      - "j'ai envoyé"
+      - "j'ai téléchargé"
+      - "documents envoyés"
+      - "pièces jointes"
+      - "uploadé"
+
+  ENVOIE_IDENTIFIANTS:
+    id: "I15"
+    description: "Voici mes identifiants ExamT3P"
+    triggers:
+      - "voici mes identifiants"
+      - "mon mot de passe est"
+      - "mes codes"
+
+  REFUS_PARTAGE_CREDENTIALS:
+    id: "I16"
+    description: "Refuse de partager ses identifiants (sécurité)"
+    triggers:
+      - "ne souhaite pas partager"
+      - "refuse de donner"
+      - "sécurité"
+      - "données personnelles"
+      - "confidentialité"
+      - "RGPD"
+    priority: 95
+
+  # --- Questions documents ---
+  DOCUMENT_QUESTION:
+    id: "I17"
+    description: "Question sur les documents"
+    triggers:
+      - "document manquant"
+      - "pièce à fournir"
+      - "justificatif"
+      - "quel document"
+
+  SIGNALE_PROBLEME_DOCS:
+    id: "I18"
+    description: "Problème avec l'upload de documents"
+    triggers:
+      - "impossible d'uploader"
+      - "erreur upload"
+      - "ne fonctionne pas"
+      - "problème document"
+
+  CONFIRMATION_PAIEMENT:
+    id: "I19"
+    description: "Question sur le paiement"
+    triggers:
+      - "payé"
+      - "paiement effectué"
+      - "réglé"
+      - "facture"
+
+  # --- Résultats examen ---
+  RESULTAT_EXAMEN:
+    id: "I20"
+    description: "Question sur résultat d'examen"
+    triggers:
+      - "résultat"
+      - "reçu mes résultats"
+      - "admis"
+      - "réussi"
+      - "échoué"
+
+  ANNONCE_RESULTAT_POSITIF:
+    id: "I21"
+    description: "J'ai réussi mon examen !"
+    triggers:
+      - "j'ai réussi"
+      - "j'ai eu"
+      - "admis"
+      - "validé"
+
+  ANNONCE_RESULTAT_NEGATIF:
+    id: "I22"
+    description: "J'ai raté mon examen"
+    triggers:
+      - "j'ai raté"
+      - "j'ai échoué"
+      - "pas eu"
+      - "refusé"
+
+  DEMANDE_REINSCRIPTION:
+    id: "I23"
+    description: "Je veux me réinscrire"
+    triggers:
+      - "me réinscrire"
+      - "repasser"
+      - "nouvelle inscription"
+      - "deuxième chance"
+
+  # --- Communication ---
+  DEMANDE_APPEL_TEL:
+    id: "I24"
+    description: "Je veux qu'on m'appelle"
+    triggers:
+      - "m'appeler"
+      - "appel téléphonique"
+      - "par téléphone"
+      - "joignable au"
+
+  RECLAMATION:
+    id: "I25"
+    description: "Plainte / insatisfaction"
+    triggers:
+      - "réclamation"
+      - "inadmissible"
+      - "inacceptable"
+      - "pas de réponse"
+      - "insatisfait"
+    tone: apologetic_reassuring
+    escalation: true
+
+  DEMANDE_REMBOURSEMENT:
+    id: "I26"
+    description: "Demande de remboursement"
+    triggers:
+      - "remboursement"
+      - "rembourser"
+      - "annuler inscription"
+    routing: Comptabilité
+
+  # --- Problèmes techniques ---
+  SIGNALE_PAS_RECU_EMAIL:
+    id: "I27"
+    description: "N'a pas reçu un email attendu"
+    triggers:
+      - "pas reçu"
+      - "n'ai pas reçu"
+      - "jamais reçu"
+      - "pas de mail"
+
+  PROBLEME_CONNEXION_EXAMT3P:
+    id: "I28"
+    description: "Ne peut pas se connecter à ExamT3P"
+    triggers:
+      - "impossible de me connecter"
+      - "connexion refusée"
+      - "mot de passe incorrect"
+      - "accès refusé"
+
+  PROBLEME_CONNEXION_ELEARNING:
+    id: "I29"
+    description: "Ne peut pas se connecter au e-learning"
+    triggers:
+      - "e-learning ne marche pas"
+      - "accès e-learning"
+      - "connexion cours"
+
+  # --- Autres ---
+  QUESTION_CARTE_VTC:
+    id: "I30"
+    description: "Comment obtenir ma carte VTC ?"
+    triggers:
+      - "carte VTC"
+      - "carte professionnelle"
+      - "après l'examen"
+
+  QUESTION_EXAMEN_PRATIQUE:
+    id: "I31"
+    description: "Question sur l'épreuve pratique"
+    triggers:
+      - "examen pratique"
+      - "épreuve pratique"
+      - "conduite"
+
+  DEMANDE_CERTIFICAT_FORMATION:
+    id: "I32"
+    description: "Demande attestation/certificat"
+    triggers:
+      - "attestation"
+      - "certificat"
+      - "preuve de formation"
+
+  REMERCIEMENT:
+    id: "I33"
+    description: "Simple remerciement"
+    triggers:
+      - "merci"
+      - "je vous remercie"
+      - "c'est parfait"
+    response_type: simple_ack
+
+  SALUTATION:
+    id: "I34"
+    description: "Bonjour sans question"
+    triggers:
+      - "bonjour"
+      - "bonsoir"
+    response_type: ask_clarification
+
+  MESSAGE_CONFUS:
+    id: "I35"
+    description: "Message incompréhensible"
+    triggers: []
+    response_type: ask_clarification
+
+  QUESTION_GENERALE:
+    id: "I36"
+    description: "Autre question générale"
+    triggers: []
+    fallback: true
+
+# =============================================================================
+# SECTION 2: DÉFINITION DES ÉTATS
+# =============================================================================
+
+states:
+  # ---------------------------------------------------------------------------
+  # PHASE 0: PRÉ-FILTRAGE (priorité maximale)
+  # ---------------------------------------------------------------------------
+
+  SPAM:
+    id: "P01"
+    priority: 999
+    description: "Message spam/publicitaire"
+    detection:
+      method: "triage"
+      condition: "triage_action == 'SPAM'"
+    action: "close_ticket"
+    no_response: true
+
+  HORS_SCOPE:
+    id: "P02"
+    priority: 998
+    description: "Formation hors scope (taxi, ambulance)"
+    detection:
+      method: "crm"
+      condition: "type_formation in ['taxi', 'ambulance']"
+    action: "route"
+    target_department: "Contact"
+
+  ROUTE_AUTRE_DEPT:
+    id: "P03"
+    priority: 997
+    description: "À router vers autre département"
+    detection:
+      method: "triage"
+      condition: "triage_action == 'ROUTE'"
+    action: "route"
+    target_department: "{{triage_target}}"
+
+  DOUBLON_UBER_20:
+    id: "P04"
+    priority: 996
+    description: "Doublon offre Uber 20€ (2+ deals gagnés)"
+    detection:
+      method: "crm"
+      condition: "count(deals where Amount=20 and Stage=GAGNÉ) > 1"
+    response:
+      template: "doublon_uber.md"
+      blocks:
+        - inscription_autonome
+        - formation_payante
+
+  # ---------------------------------------------------------------------------
+  # PHASE 1: TYPE D'OFFRE
+  # ---------------------------------------------------------------------------
+
+  PROSPECT_UBER_20:
+    id: "T01"
+    priority: 100
+    description: "Prospect Uber - Paiement non effectué"
+    detection:
+      method: "crm"
+      conditions:
+        - "Stage contains 'ATTENTE'"
+        - "Amount == 20"
+    response:
+      template: "prospect_uber.md"
+      blocks:
+        - explication_offre
+        - etapes_inscription
+        - sessions_disponibles
+      ai_section: "personnalisation"
+    crm_updates: []
+
+  CLIENT_NON_UBER:
+    id: "T02"
+    priority: 90
+    description: "Client VTC classique (hors partenariat Uber)"
+    detection:
+      method: "crm"
+      condition: "Amount != 20"
+    response:
+      use_legacy_workflow: true
+    post_action:
+      route_to: "DOCS CAB"
+
+  CLIENT_PERDU:
+    id: "T03"
+    priority: 85
+    description: "Deal perdu"
+    detection:
+      method: "crm"
+      condition: "Stage == 'PERDU'"
+    response:
+      template: "deal_perdu.md"
+
+  # ---------------------------------------------------------------------------
+  # PHASE 2: ÉLIGIBILITÉ UBER (si CLIENT_UBER_20)
+  # ---------------------------------------------------------------------------
+
+  UBER_CAS_A_DOCS_MANQUANTS:
+    id: "U01"
+    priority: 95
+    description: "Uber 20€ - Documents non envoyés"
+    detection:
+      method: "crm"
+      conditions:
+        - "Amount == 20"
+        - "Stage contains 'GAGN'"
+        - "Date_Dossier_re_u is null"
+    response:
+      template: "uber_cas_a.md"
+      blocks:
+        - explication_offre
+        - etapes_finalisation
+        - test_selection_info
+      ai_section: "personnalisation"
+    blocking: true
+    blocked_topics:
+      - dates_examen
+      - sessions_formation
+      - departements
+
+  UBER_VERIF_EN_COURS:
+    id: "U02"
+    priority: 94
+    description: "Uber 20€ - Vérification en cours (J+1 non atteint)"
+    detection:
+      method: "crm"
+      conditions:
+        - "Amount == 20"
+        - "Stage contains 'GAGN'"
+        - "Date_Dossier_re_u is not null"
+        - "today < Date_Dossier_re_u + 1 day"
+    response:
+      template: "uber_verif_en_cours.md"
+
+  UBER_CAS_D_COMPTE_UBER_FALSE:
+    id: "U03"
+    priority: 93
+    description: "Uber 20€ - Email non lié à compte Uber Driver"
+    detection:
+      method: "crm"
+      conditions:
+        - "Amount == 20"
+        - "Stage contains 'GAGN'"
+        - "Date_Dossier_re_u is not null"
+        - "today >= Date_Dossier_re_u + 1 day"
+        - "Compte_Uber == false"
+    response:
+      template: "uber_cas_d.md"
+      blocks:
+        - verification_email
+        - contact_uber_support
+      ai_section: "personnalisation"
+    blocking: true
+
+  UBER_CAS_E_NON_ELIGIBLE:
+    id: "U04"
+    priority: 92
+    description: "Uber 20€ - Non éligible selon Uber"
+    detection:
+      method: "crm"
+      conditions:
+        - "Amount == 20"
+        - "Stage contains 'GAGN'"
+        - "Date_Dossier_re_u is not null"
+        - "today >= Date_Dossier_re_u + 1 day"
+        - "Compte_Uber == true"
+        - "ELIGIBLE == false"
+    response:
+      template: "uber_cas_e.md"
+      blocks:
+        - explication_non_eligible
+        - contact_uber_support
+        - alternatives
+      ai_section: "personnalisation"
+    blocking: true
+
+  UBER_CAS_B_TEST_NON_PASSE:
+    id: "U05"
+    priority: 91
+    description: "Uber 20€ - Test de sélection non passé"
+    detection:
+      method: "crm"
+      conditions:
+        - "Amount == 20"
+        - "Stage contains 'GAGN'"
+        - "Date_Dossier_re_u is not null"
+        - "Date_Dossier_re_u > 2025-05-19"
+        - "Date_test_selection is null"
+    response:
+      template: "uber_cas_b.md"
+      blocks:
+        - rappel_test_selection
+        - lien_test
+        - consequence_non_passage
+      ai_section: "personnalisation"
+    blocking: true
+    blocked_topics:
+      - dates_examen
+      - sessions_formation
+
+  UBER_ELIGIBLE:
+    id: "U06"
+    priority: 90
+    description: "Uber 20€ - Éligible (toutes vérifications OK)"
+    detection:
+      method: "crm"
+      conditions:
+        - "Amount == 20"
+        - "Stage contains 'GAGN'"
+        - "uber_eligibility_check == 'ELIGIBLE'"
+    response:
+      # Continue vers PHASE 3 (ExamT3P)
+      continue_detection: true
+
+  # ---------------------------------------------------------------------------
+  # PHASE 3: COMPTE EXAMT3P
+  # ---------------------------------------------------------------------------
+
+  EXAMT3P_PAS_DE_COMPTE:
+    id: "C01"
+    priority: 85
+    description: "Pas de compte ExamT3P créé"
+    detection:
+      method: "examt3p"
+      condition: "compte_existe == false"
+    response:
+      template: "examt3p_pas_de_compte.md"
+      blocks:
+        - explication_creation_compte
+        - prochaines_dates
+        - choix_departement
+      ai_section: "personnalisation"
+    flags:
+      can_choose_any_department: true
+
+  EXAMT3P_CREDENTIALS_INCONNUS:
+    id: "C02"
+    priority: 84
+    description: "Compte existe mais identifiants inconnus"
+    detection:
+      method: "combined"
+      conditions:
+        - "examt3p.compte_existe == true"
+        - "crm.IDENTIFIANT_EVALBOX is null"
+        - "credentials_not_in_threads"
+    response:
+      template: "credentials_inconnus.md"
+      blocks:
+        - demande_identifiants
+        - explication_besoin
+      ai_section: "personnalisation"
+
+  EXAMT3P_CREDENTIALS_INVALIDES:
+    id: "C03"
+    priority: 83
+    description: "Identifiants ne fonctionnent pas"
+    detection:
+      method: "examt3p"
+      conditions:
+        - "compte_existe == true"
+        - "connection_test_success == false"
+    response:
+      template: "credentials_invalid.md"
+      blocks:
+        - erreur_connexion
+        - verification_identifiants
+        - mot_de_passe_oublie
+      ai_section: "personnalisation"
+
+  EXAMT3P_CONNEXION_OK:
+    id: "C04"
+    priority: 80
+    description: "Connexion ExamT3P réussie"
+    detection:
+      method: "examt3p"
+      condition: "connection_test_success == true"
+    response:
+      # Continue vers PHASE 4 (Evalbox)
+      continue_detection: true
+
+  # ---------------------------------------------------------------------------
+  # PHASE 4: STATUT DOSSIER EVALBOX (10 CAS)
+  # ---------------------------------------------------------------------------
+
+  DATE_EXAMEN_VIDE:
+    id: "E01"
+    priority: 75
+    description: "CAS 1 - Pas de date d'examen assignée"
+    detection:
+      method: "crm"
+      condition: "Date_examen_VTC is null"
+    response:
+      template: "date_examen_vide.md"
+      dynamic_blocks:
+        - prochaines_dates:
+            source: "date_examen_vtc_helper.get_next_exam_dates()"
+            filter: "region_relevance"
+        - sessions_formation:
+            source: "session_helper.analyze_session_situation()"
+            condition: "session_non_assignee"
+      ai_section: "personnalisation"
+    crm_updates:
+      - field: Date_examen_VTC
+        on_intention: CONFIRMATION_DATE_EXAMEN
+      - field: Session_choisie
+        on_intention: CONFIRMATION_SESSION
+
+  DATE_PASSEE_NON_VALIDE:
+    id: "E02"
+    priority: 74
+    description: "CAS 2 - Date passée + dossier non validé"
+    detection:
+      method: "combined"
+      conditions:
+        - "Date_examen_VTC.Date_Examen < today"
+        - "Evalbox not in ['VALIDE CMA', 'Dossier Synchronisé']"
+    response:
+      template: "date_passee_non_valide.md"
+      dynamic_blocks:
+        - prochaines_dates:
+            source: "date_examen_vtc_helper.get_next_exam_dates()"
+      ai_section: "personnalisation"
+
+  EVALBOX_REFUSE_CMA:
+    id: "E03"
+    priority: 80
+    description: "CAS 3 - Pièces refusées par CMA (Incomplet)"
+    detection:
+      method: "crm"
+      condition: "Evalbox == 'Refusé CMA'"
+    response:
+      template: "refus_cma.md"
+      dynamic_blocks:
+        - pieces_refusees:
+            source: "examt3p_data.documents_refuses"
+            format: "detailed"
+        - prochaine_date:
+            source: "date_examen_vtc_helper.get_next_exam_dates(limit=1)"
+        - date_limite:
+            source: "prochaine_session.Date_Cloture_Inscription"
+      ai_section: "personnalisation"
+
+  DATE_FUTURE_VALIDE_CMA:
+    id: "E04"
+    priority: 70
+    description: "CAS 4 - Date future + VALIDE CMA (convocation ~10j)"
+    detection:
+      method: "combined"
+      conditions:
+        - "Date_examen_VTC.Date_Examen > today"
+        - "Evalbox == 'VALIDE CMA'"
+    response:
+      template: "valide_cma.md"
+      conditional_blocks:
+        - examen_imminent_sans_convoc:
+            condition: "days_until_exam <= 7"
+            template: "valide_cma_report_auto.md"
+        - convoc_devrait_etre_arrivee:
+            condition: "7 < days_until_exam <= 10"
+            content: "verifier_spams"
+        - convoc_a_venir:
+            condition: "days_until_exam > 10"
+            content: "attente_convocation"
+      ai_section: "personnalisation"
+
+  DATE_FUTURE_DOSSIER_SYNC:
+    id: "E05"
+    priority: 69
+    description: "CAS 5 - Date future + Dossier Synchronisé (instruction)"
+    detection:
+      method: "combined"
+      conditions:
+        - "Date_examen_VTC.Date_Examen > today"
+        - "Evalbox == 'Dossier Synchronisé'"
+    response:
+      template: "dossier_synchronise.md"
+      blocks:
+        - instruction_en_cours
+        - surveiller_emails
+        - date_limite_correction
+      ai_section: "personnalisation"
+
+  DATE_FUTURE_AUTRE_STATUT:
+    id: "E06"
+    priority: 65
+    description: "CAS 6 - Date future + autre statut (en attente)"
+    detection:
+      method: "combined"
+      conditions:
+        - "Date_examen_VTC.Date_Examen > today"
+        - "Evalbox not in ['VALIDE CMA', 'Dossier Synchronisé', 'Refusé CMA', 'Convoc CMA reçue', 'Pret a payer']"
+    response:
+      template: "date_future_en_attente.md"
+      ai_section: "personnalisation"
+
+  DATE_PASSEE_EXAMEN_PASSE:
+    id: "E07"
+    priority: 60
+    description: "CAS 7 - Date passée + validé = examen probablement passé"
+    detection:
+      method: "combined"
+      conditions:
+        - "Date_examen_VTC.Date_Examen < today"
+        - "Evalbox in ['VALIDE CMA', 'Dossier Synchronisé']"
+    response:
+      template: "examen_passe.md"
+      conditional_blocks:
+        - indices_non_passe:
+            condition: "threads_contain_not_passed_indicators"
+            template: "clarification_examen.md"
+      ai_section: "personnalisation"
+
+  DEADLINE_RATEE:
+    id: "E08"
+    priority: 72
+    description: "CAS 8 - Date future + clôture passée + non validé"
+    detection:
+      method: "combined"
+      conditions:
+        - "Date_examen_VTC.Date_Examen > today"
+        - "Date_examen_VTC.Date_Cloture_Inscription < today"
+        - "Evalbox not in ['VALIDE CMA', 'Dossier Synchronisé']"
+    response:
+      template: "deadline_ratee.md"
+      dynamic_blocks:
+        - prochaines_dates:
+            source: "date_examen_vtc_helper.get_next_exam_dates()"
+      ai_section: "personnalisation"
+
+  CONVOC_CMA_RECUE:
+    id: "E09"
+    priority: 85
+    description: "CAS 9 - Convocation CMA reçue"
+    detection:
+      method: "crm"
+      condition: "Evalbox == 'Convoc CMA reçue'"
+    response:
+      template: "convocation_recue.md"
+      blocks:
+        - identifiants_examt3p
+        - lien_plateforme
+        - instructions_jour_j
+        - bonne_chance
+      ai_section: "personnalisation"
+
+  PRET_A_PAYER:
+    id: "E10"
+    priority: 68
+    description: "CAS 10 - Prêt à payer (paiement en cours)"
+    detection:
+      method: "crm"
+      condition: "Evalbox in ['Pret a payer', 'Pret a payer par cheque']"
+    response:
+      template: "pret_a_payer.md"
+      blocks:
+        - paiement_en_cours
+        - surveiller_emails
+        - date_limite_correction
+      ai_section: "personnalisation"
+
+  EVALBOX_DOSSIER_CREE:
+    id: "E11"
+    priority: 66
+    description: "Dossier créé (en cours de composition)"
+    detection:
+      method: "crm"
+      condition: "Evalbox == 'Dossier crée'"
+    response:
+      template: "dossier_cree.md"
+      blocks:
+        - documents_a_completer
+        - statut_actuel
+      ai_section: "personnalisation"
+
+  EVALBOX_DOCS_MANQUANTS:
+    id: "E12"
+    priority: 78
+    description: "Documents manquants (interne CAB)"
+    detection:
+      method: "crm"
+      condition: "Evalbox == 'Documents manquants'"
+    response:
+      template: "docs_manquants.md"
+    routing:
+      department: "Refus CMA"
+
+  EVALBOX_DOCS_REFUSES:
+    id: "E13"
+    priority: 78
+    description: "Documents refusés (interne CAB)"
+    detection:
+      method: "crm"
+      condition: "Evalbox == 'Documents refusés'"
+    response:
+      template: "docs_refuses.md"
+    routing:
+      department: "Refus CMA"
+
+  # ---------------------------------------------------------------------------
+  # PHASE 5: SESSION DE FORMATION
+  # ---------------------------------------------------------------------------
+
+  SESSION_NON_ASSIGNEE:
+    id: "S01"
+    priority: 50
+    description: "Pas de session de formation assignée"
+    detection:
+      method: "crm"
+      condition: "Session is null"
+    response:
+      # Combiné avec l'état Evalbox
+      add_block: "proposition_sessions"
+
+  SESSION_ASSIGNEE_FUTURE:
+    id: "S02"
+    priority: 45
+    description: "Session assignée - formation à venir"
+    detection:
+      method: "crm"
+      conditions:
+        - "Session is not null"
+        - "Session.Date_fin > today"
+    response:
+      add_block: "info_session_planifiee"
+
+  SESSION_ASSIGNEE_PASSEE:
+    id: "S03"
+    priority: 55
+    description: "Session terminée - rafraîchissement possible"
+    detection:
+      method: "crm"
+      conditions:
+        - "Session is not null"
+        - "Session.Date_fin < today"
+        - "Date_examen_VTC.Date_Examen > today"
+    response:
+      template: "rafraichissement_session.md"
+      blocks:
+        - proposition_rafraichissement_gratuit
+        - prochaines_sessions
+      ai_section: "personnalisation"
+
+  # ---------------------------------------------------------------------------
+  # PHASE 6: RÉSULTAT EXAMEN
+  # ---------------------------------------------------------------------------
+
+  RESULTAT_ADMIS:
+    id: "R01"
+    priority: 95
+    description: "Résultat: ADMIS"
+    detection:
+      method: "crm"
+      condition: "Resultat == 'ADMIS'"
+    response:
+      template: "resultat_admis.md"
+      blocks:
+        - felicitations
+        - prochaines_etapes_carte_vtc
+      ai_section: "personnalisation"
+
+  RESULTAT_NON_ADMIS:
+    id: "R02"
+    priority: 95
+    description: "Résultat: NON ADMIS"
+    detection:
+      method: "crm"
+      condition: "Resultat == 'NON ADMIS'"
+    response:
+      template: "resultat_non_admis.md"
+      blocks:
+        - empathie
+        - proposition_reinscription
+        - rafraichissement_formation
+      ai_section: "personnalisation"
+
+  RESULTAT_ADMISSIBLE:
+    id: "R03"
+    priority: 90
+    description: "Résultat: ADMISSIBLE (théorique validé)"
+    detection:
+      method: "crm"
+      condition: "Resultat == 'ADMISSIBLE'"
+    response:
+      template: "resultat_admissible.md"
+      blocks:
+        - felicitations_theorique
+        - info_pratique
+      ai_section: "personnalisation"
+
+  RESULTAT_NON_ADMISSIBLE:
+    id: "R04"
+    priority: 90
+    description: "Résultat: NON ADMISSIBLE (théorique raté)"
+    detection:
+      method: "crm"
+      condition: "Resultat == 'NON ADMISSIBLE'"
+    response:
+      template: "resultat_non_admissible.md"
+      blocks:
+        - empathie
+        - proposition_reinscription
+      ai_section: "personnalisation"
+
+  RESULTAT_ABSENT:
+    id: "R05"
+    priority: 88
+    description: "Résultat: ABSENT"
+    detection:
+      method: "crm"
+      condition: "Resultat in ['ABSENT TH', 'ABSENT PR']"
+    response:
+      template: "resultat_absent.md"
+      blocks:
+        - constatation_absence
+        - options_reinscription
+      ai_section: "personnalisation"
+
+  # ---------------------------------------------------------------------------
+  # PHASE 7: BLOCAGES MÉTIER
+  # ---------------------------------------------------------------------------
+
+  BLOCAGE_MODIFICATION_DATE:
+    id: "B01"
+    priority: 88
+    description: "Impossible de modifier date (VALIDE + clôture passée)"
+    detection:
+      method: "combined"
+      conditions:
+        - "Evalbox in ['VALIDE CMA', 'Convoc CMA reçue']"
+        - "Date_examen_VTC.Date_Cloture_Inscription < today"
+    applies_to_intention:
+      - REPORT_DATE
+    response:
+      template: "report_bloque_force_majeure.md"
+      blocks:
+        - explication_blocage
+        - procedure_force_majeure
+        - documents_requis
+      ai_section: "personnalisation"
+
+# =============================================================================
+# SECTION 3: MATRICE ÉTAT × INTENTION → TEMPLATE SPÉCIFIQUE
+# =============================================================================
+
+matrix:
+  # Format: "ÉTAT:INTENTION" -> configuration spécifique
+
+  # --- REFUS_PARTAGE_CREDENTIALS (priorité maximale, s'applique à tout état) ---
+  "*:REFUS_PARTAGE_CREDENTIALS":
+    priority: 95
+    template: "credentials_refused_security.md"
+    blocks:
+      - comprendre_besoin_identifiants
+      - alternative_autonomie
+      - recommandation_securite
+    ai_section: "personnalisation"
+
+  # --- PROSPECT_UBER_20 × Intentions ---
+  "PROSPECT_UBER_20:DEMANDE_INFOS_OFFRE":
+    template: "prospect_uber.md"
+    blocks:
+      - explication_offre_complete
+      - etapes_inscription
+      - sessions_disponibles
+
+  "PROSPECT_UBER_20:DEMANDE_DATE_EXAMEN":
+    template: "prospect_demande_dates.md"
+    blocks:
+      - explication_apres_paiement
+      - regions_disponibles
+
+  "PROSPECT_UBER_20:CONFIRMATION_PAIEMENT":
+    template: "prospect_confirmation_paiement.md"
+    blocks:
+      - verification_paiement
+      - prochaines_etapes
+
+  # --- UBER_CAS_A × Intentions ---
+  "UBER_CAS_A_DOCS_MANQUANTS:STATUT_DOSSIER":
+    template: "uber_cas_a.md"
+    override_blocks:
+      - statut_en_attente_docs
+      - etapes_finalisation
+
+  "UBER_CAS_A_DOCS_MANQUANTS:DEMANDE_DATE_EXAMEN":
+    template: "uber_cas_a_bloque.md"
+    blocks:
+      - blocage_dates
+      - etapes_finalisation
+
+  # --- UBER_CAS_B × Intentions ---
+  "UBER_CAS_B_TEST_NON_PASSE:STATUT_DOSSIER":
+    template: "uber_cas_b.md"
+    override_blocks:
+      - statut_en_attente_test
+      - lien_test
+
+  # --- EXAMT3P_CREDENTIALS_INVALIDES × Intentions ---
+  "EXAMT3P_CREDENTIALS_INVALIDES:DEMANDE_IDENTIFIANTS":
+    template: "credentials_invalid.md"
+    blocks:
+      - erreur_detectee
+      - verification_identifiants
+      - demande_nouveaux_identifiants
+
+  "EXAMT3P_CREDENTIALS_INVALIDES:PROBLEME_CONNEXION_EXAMT3P":
+    template: "credentials_invalid.md"
+    blocks:
+      - erreur_detectee
+      - mot_de_passe_oublie
+      - contact_support
+
+  # --- DATE_EXAMEN_VIDE × Intentions ---
+  "DATE_EXAMEN_VIDE:DEMANDE_DATE_EXAMEN":
+    template: "propose_dates.md"
+    dynamic_blocks:
+      - prochaines_dates
+      - sessions_formation
+
+  "DATE_EXAMEN_VIDE:CONFIRMATION_DATE_EXAMEN":
+    template: "confirmation_date.md"
+    crm_update:
+      - field: Date_examen_VTC
+        value: "{{confirmed_date}}"
+    blocks:
+      - confirmation_enregistrement
+      - prochaines_etapes
+
+  "DATE_EXAMEN_VIDE:DEMANDE_AUTRES_DATES":
+    template: "propose_dates_elargies.md"
+    dynamic_blocks:
+      - toutes_dates_disponibles:
+          filter: "none"
+          include_other_departments: true
+
+  # --- DATE_FUTURE_VALIDE_CMA × Intentions ---
+  "DATE_FUTURE_VALIDE_CMA:DEMANDE_CONVOCATION":
+    template: "attente_convocation.md"
+    conditional_blocks:
+      - convoc_imminente:
+          condition: "days_until_exam <= 10"
+      - convoc_a_venir:
+          condition: "days_until_exam > 10"
+
+  "DATE_FUTURE_VALIDE_CMA:REPORT_DATE":
+    template: "report_valide_cma.md"
+    conditional_blocks:
+      - report_possible:
+          condition: "Date_Cloture_Inscription >= today"
+          blocks:
+            - procedure_report
+            - avertissement_frais
+      - report_bloque:
+          condition: "Date_Cloture_Inscription < today"
+          template: "report_bloque_force_majeure.md"
+
+  # --- CONVOC_CMA_RECUE × Intentions ---
+  "CONVOC_CMA_RECUE:DEMANDE_IDENTIFIANTS":
+    template: "convocation_identifiants.md"
+    blocks:
+      - identifiants_examt3p
+      - lien_telechargement_convoc
+      - instructions_jour_j
+
+  "CONVOC_CMA_RECUE:DEMANDE_CONVOCATION":
+    template: "convocation_recue.md"
+    blocks:
+      - ou_trouver_convoc
+      - identifiants_examt3p
+      - instructions_impression
+
+  "CONVOC_CMA_RECUE:REPORT_DATE":
+    template: "report_bloque_force_majeure.md"
+    # Convocation reçue = clôture passée = blocage
+
+  # --- EVALBOX_REFUSE_CMA × Intentions ---
+  "EVALBOX_REFUSE_CMA:STATUT_DOSSIER":
+    template: "refus_cma.md"
+    dynamic_blocks:
+      - pieces_refusees_details
+      - procedure_correction
+      - prochaine_date_report
+
+  "EVALBOX_REFUSE_CMA:DOCUMENT_QUESTION":
+    template: "refus_cma_docs.md"
+    dynamic_blocks:
+      - pieces_refusees_details
+      - comment_corriger
+      - date_limite
+
+  # --- DEADLINE_RATEE × Intentions ---
+  "DEADLINE_RATEE:STATUT_DOSSIER":
+    template: "deadline_ratee.md"
+    blocks:
+      - explication_deadline
+      - report_automatique
+      - prochaines_dates
+
+  "DEADLINE_RATEE:REPORT_DATE":
+    template: "deadline_ratee_report.md"
+    blocks:
+      - report_deja_effectue
+      - prochaines_dates
+
+  # --- BLOCAGE_MODIFICATION_DATE × Intentions ---
+  "BLOCAGE_MODIFICATION_DATE:REPORT_DATE":
+    template: "report_bloque_force_majeure.md"
+    blocks:
+      - explication_blocage
+      - procedure_force_majeure
+      - documents_requis
+
+  "BLOCAGE_MODIFICATION_DATE:FORCE_MAJEURE_REPORT":
+    template: "report_force_majeure_procedure.md"
+    blocks:
+      - accuse_reception
+      - documents_attendus
+      - delai_traitement
+
+  # --- SESSION × Intentions ---
+  "SESSION_ASSIGNEE_PASSEE:DEMANDE_DATE_VISIO":
+    template: "rafraichissement_session.md"
+    blocks:
+      - formation_terminee
+      - proposition_rafraichissement
+
+  "SESSION_NON_ASSIGNEE:CONFIRMATION_SESSION":
+    template: "confirmation_session.md"
+    crm_update:
+      - field: Session_choisie
+        value: "{{confirmed_session}}"
+    blocks:
+      - confirmation_session
+      - prochaines_etapes
+
+  # --- RESULTAT × Intentions ---
+  "RESULTAT_ADMIS:RESULTAT_EXAMEN":
+    template: "resultat_admis.md"
+    blocks:
+      - felicitations
+      - prochaines_etapes_carte_vtc
+
+  "RESULTAT_ADMIS:QUESTION_CARTE_VTC":
+    template: "resultat_admis_carte.md"
+    blocks:
+      - procedure_carte_vtc
+      - delais
+
+  "RESULTAT_NON_ADMIS:RESULTAT_EXAMEN":
+    template: "resultat_non_admis.md"
+    blocks:
+      - empathie
+      - options_reinscription
+
+  "RESULTAT_NON_ADMIS:DEMANDE_REINSCRIPTION":
+    template: "reinscription.md"
+    blocks:
+      - procedure_reinscription
+      - tarifs
+      - rafraichissement_gratuit
+
+  # --- Intentions génériques (fallback par intention) ---
+  "*:DEMANDE_APPEL_TEL":
+    template: "demande_appel.md"
+    blocks:
+      - communication_email_uniquement
+      - proposition_aide_email
+
+  "*:RECLAMATION":
+    template: "reclamation.md"
+    tone: "apologetic_reassuring"
+    blocks:
+      - accusé_reception
+      - empathie
+      - engagement_resolution
+    escalation: true
+
+  "*:DEMANDE_REMBOURSEMENT":
+    template: "demande_remboursement.md"
+    routing:
+      department: "Comptabilité"
+    blocks:
+      - accuse_reception
+      - transfert_comptabilite
+
+  "*:REMERCIEMENT":
+    template: "remerciement.md"
+    response_type: "simple"
+    blocks:
+      - de_rien
+      - a_disposition
+
+  "*:SALUTATION":
+    template: "salutation.md"
+    response_type: "ask_clarification"
+    blocks:
+      - salutation
+      - demande_precision
+
+  "*:MESSAGE_CONFUS":
+    template: "message_confus.md"
+    response_type: "ask_clarification"
+    blocks:
+      - demande_reformulation
+      - exemples_questions
+
+  "*:DEMANDE_ELEARNING_ACCESS":
+    template: "elearning_access.md"
+    blocks:
+      - identifiant_email_inscription
+      - mot_de_passe_oublie
+      - lien_elearning
+
+  "*:DEMANDE_LIEN_VISIO":
+    template: "lien_visio.md"
+    conditional_blocks:
+      - session_confirmee:
+          condition: "Session is not null"
+          blocks:
+            - lien_sera_envoye_avant_session
+      - session_non_confirmee:
+          condition: "Session is null"
+          blocks:
+            - confirmation_session_requise
+
+  "*:SIGNALE_PAS_RECU_EMAIL":
+    template: "pas_recu_email.md"
+    blocks:
+      - verifier_spams
+      - renvoi_information
+      - communication_diplomatique
+
+# =============================================================================
+# SECTION 4: CONFIGURATION GLOBALE
+# =============================================================================
+
+config:
+  # Modèle IA pour la personnalisation
+  personalization_model: "claude-sonnet-4-5-20250929"
+
+  # Modèle IA pour le triage
+  triage_model: "claude-3-5-haiku-20241022"
+
+  # Priorité de détection (ordre de vérification des phases)
+  detection_order:
+    - "pre_filter"      # SPAM, HORS_SCOPE, ROUTE, DOUBLON
+    - "offer_type"      # PROSPECT, CLIENT_NON_UBER, CLIENT_UBER
+    - "uber_eligibility"  # CAS A, B, D, E, ELIGIBLE
+    - "examt3p_account"   # PAS_COMPTE, CREDS_INVALIDES, CONNEXION_OK
+    - "evalbox_status"    # 10 cas de date_examen_vtc
+    - "session_status"    # SESSION_NON_ASSIGNEE, etc.
+    - "exam_result"       # ADMIS, NON_ADMIS, etc.
+    - "business_blocks"   # BLOCAGE_MODIFICATION_DATE
+
+  # Blocs obligatoires selon contexte
+  mandatory_blocks:
+    when_credentials_exist:
+      - identifiants_examt3p
+      - password_warning
+    when_dates_proposed:
+      - dates_avec_cloture
+      - demande_confirmation
+    when_email_sent:
+      - verifier_spams
+
+  # Termes interdits
+  forbidden_terms:
+    - "BFS"
+    - "Evalbox"
+    - "CDJ"
+    - "CDS"
+    - "20€"  # Dire "frais de dossier"
+    - "Montreuil"
+
+  # Liens officiels
+  official_links:
+    examt3p: "https://www.exament3p.fr"
+    elearning: "https://cab-formations.fr/user"
+    test_selection: "https://cab-formations.fr/user/login?destination=/course/test-de-s%C3%A9lection"
+    inscription_uber: "https://cab-formations.fr/uberxcab_welcome"
+
+# =============================================================================
+# SECTION 5: MAPPING DES BLOCS VERS FICHIERS
+# =============================================================================
+# Chaque bloc référencé dans les templates correspond à un fichier .md dans blocks/
+
+blocks_registry:
+  # --- Salutation et Signature ---
+  salutation_personnalisee:
+    file: "blocks/salutation_personnalisee.md"
+    description: "Salutation avec prénom"
+  signature:
+    file: "blocks/signature.md"
+    description: "Signature CAB Formations"
+
+  # --- Identifiants et Accès ---
+  identifiants_examt3p:
+    file: "blocks/identifiants_examt3p.md"
+    description: "Identifiants ExamT3P du candidat"
+    condition: "identifiant_examt3p exists"
+  identifiants_elearning:
+    file: "blocks/identifiants_elearning.md"
+    description: "Accès e-learning"
+  acces_elearning_rappel:
+    file: "blocks/acces_elearning_rappel.md"
+    description: "Rappel accès e-learning"
+
+  # --- Statuts Dossier CMA ---
+  statut_dossier_cree:
+    file: "blocks/statut_dossier_cree.md"
+    description: "Dossier en cours de constitution"
+  statut_dossier_synchronise:
+    file: "blocks/statut_dossier_synchronise.md"
+    description: "Dossier en cours d'instruction"
+  statut_pret_a_payer:
+    file: "blocks/statut_pret_a_payer.md"
+    description: "Dossier validé, attente paiement"
+  statut_en_attente_paiement:
+    file: "blocks/statut_en_attente_paiement.md"
+    description: "En attente de paiement"
+  statut_valide_cma:
+    file: "blocks/statut_valide_cma.md"
+    description: "Paiement effectué, validé"
+  statut_refus_cma:
+    file: "blocks/statut_refus_cma.md"
+    description: "Documents refusés par CMA"
+    variables: ["documents_refuses", "date_cloture", "date_examen"]
+
+  # --- Convocation ---
+  convocation_disponible:
+    file: "blocks/convocation_disponible.md"
+    description: "Convocation reçue"
+  convocation_a_venir:
+    file: "blocks/convocation_a_venir.md"
+    description: "Convocation attendue"
+
+  # --- Dates et Sessions ---
+  prochaines_dates_examen:
+    file: "blocks/prochaines_dates_examen.md"
+    description: "Liste des prochaines dates d'examen"
+    variables: ["prochaines_dates"]
+  sessions_formation:
+    file: "blocks/sessions_formation.md"
+    description: "Sessions de formation disponibles"
+    variables: ["sessions_proposees"]
+  choix_session_formation:
+    file: "blocks/choix_session_formation.md"
+    description: "Choix de session"
+  session_formation_choisie:
+    file: "blocks/session_formation_choisie.md"
+    description: "Session confirmée"
+    condition: "session_choisie exists"
+  date_cloture_info:
+    file: "blocks/date_cloture_info.md"
+    description: "Information date limite"
+
+  # --- Documents ---
+  documents_requis_examt3p:
+    file: "blocks/documents_requis_examt3p.md"
+    description: "Liste documents requis"
+  comment_telecharger_documents:
+    file: "blocks/comment_telecharger_documents.md"
+    description: "Tutoriel upload documents"
+  probleme_document_specifique:
+    file: "blocks/probleme_document_specifique.md"
+    description: "Conseils pour document refusé"
+
+  # --- Paiement ---
+  paiement_cma_241:
+    file: "blocks/paiement_cma_241.md"
+    description: "Paiement CMA standard"
+  paiement_uber_offert:
+    file: "blocks/paiement_uber_offert.md"
+    description: "Paiement offert Uber"
+    condition: "uber_20 == true"
+
+  # --- Cas Uber ---
+  uber_cas_a_finaliser_inscription:
+    file: "blocks/uber_cas_a_finaliser_inscription.md"
+    description: "Uber CAS A - Documents manquants"
+  uber_cas_b_test_selection:
+    file: "blocks/uber_cas_b_test_selection.md"
+    description: "Uber CAS B - Test non passé"
+  uber_cas_d_compte_non_verifie:
+    file: "blocks/uber_cas_d_compte_non_verifie.md"
+    description: "Uber CAS D - Vérification compte"
+  uber_cas_e_non_eligible:
+    file: "blocks/uber_cas_e_non_eligible.md"
+    description: "Uber CAS E - Non éligible"
+  doublon_uber_offre:
+    file: "blocks/doublon_uber_offre.md"
+    description: "Offre Uber déjà utilisée"
+
+  # --- Examen ---
+  jour_examen_info:
+    file: "blocks/jour_examen_info.md"
+    description: "Infos jour J examen"
+  bonne_chance_examen:
+    file: "blocks/bonne_chance_examen.md"
+    description: "Message bonne chance"
+  rappel_examen_imminent:
+    file: "blocks/rappel_examen_imminent.md"
+    description: "Rappel examen proche"
+
+  # --- Résultats ---
+  resultat_admis:
+    file: "blocks/resultat_admis.md"
+    description: "Félicitations réussite"
+  resultat_non_admis:
+    file: "blocks/resultat_non_admis.md"
+    description: "Encouragement échec"
+  reinscription_examen:
+    file: "blocks/reinscription_examen.md"
+    description: "Procédure réinscription"
+  formation_rafraichissement:
+    file: "blocks/formation_rafraichissement.md"
+    description: "Rafraîchissement gratuit"
+
+  # --- Report ---
+  report_possible:
+    file: "blocks/report_possible.md"
+    description: "Report encore possible"
+  report_bloque_force_majeure:
+    file: "blocks/report_bloque_force_majeure.md"
+    description: "Report bloqué"
+
+  # --- Compte ExamT3P ---
+  no_compte_examt3p:
+    file: "blocks/no_compte_examt3p.md"
+    description: "Pas de compte, création nécessaire"
+  compte_examt3p_existe_deja:
+    file: "blocks/compte_examt3p_existe_deja.md"
+    description: "Compte déjà existant"
+  changement_departement:
+    file: "blocks/changement_departement.md"
+    description: "Options autres départements"
+    condition: "compte_existe == false"
+  credentials_refused_security:
+    file: "blocks/credentials_refused_security.md"
+    description: "Candidat refuse identifiants"
+
+  # --- Divers ---
+  verifier_spams:
+    file: "blocks/verifier_spams.md"
+    description: "Rappel vérifier spams"
+  delai_reponse_cma:
+    file: "blocks/delai_reponse_cma.md"
+    description: "Délais traitement CMA"
+  contact_assistance:
+    file: "blocks/contact_assistance.md"
+    description: "Coordonnées assistance"
+  explication_processus_inscription:
+    file: "blocks/explication_processus_inscription.md"
+    description: "Explication étapes inscription"
+
+  # --- Rappels ---
+  rappel_formation_imminente:
+    file: "blocks/rappel_formation_imminente.md"
+    description: "Rappel formation proche"
+  attente_documents_candidat:
+    file: "blocks/attente_documents_candidat.md"
+    description: "En attente documents"
+
+  # --- Cas Spéciaux ---
+  prospect_info:
+    file: "blocks/prospect_info.md"
+    description: "Info pour prospects"
+  annulation_inscription:
+    file: "blocks/annulation_inscription.md"
+    description: "Gestion annulation"
+  reclamation_generale:
+    file: "blocks/reclamation_generale.md"
+    description: "Accusé réclamation"
+  reponse_hors_sujet:
+    file: "blocks/reponse_hors_sujet.md"
+    description: "Message hors sujet"
+
+# =============================================================================
+# SECTION 6: TEMPLATES DE BASE PAR ÉTAT
+# =============================================================================
+# Templates pré-assemblés combinant les blocs selon l'état principal
+
+base_templates:
+  dossier_cree:
+    file: "templates/base/dossier_cree.html"
+    for_evalbox: "Dossier crée"
+    blocks: [salutation_personnalisee, statut_dossier_cree, identifiants_examt3p, documents_requis_examt3p, comment_telecharger_documents, verifier_spams, signature]
+
+  dossier_synchronise:
+    file: "templates/base/dossier_synchronise.html"
+    for_evalbox: "Dossier Synchronisé"
+    blocks: [salutation_personnalisee, statut_dossier_synchronise, identifiants_examt3p, delai_reponse_cma, verifier_spams, signature]
+
+  pret_a_payer:
+    file: "templates/base/pret_a_payer.html"
+    for_evalbox: "Pret a payer"
+    blocks: [salutation_personnalisee, statut_pret_a_payer, "paiement_uber_offert|paiement_cma_241", identifiants_examt3p, verifier_spams, signature]
+
+  valide_cma:
+    file: "templates/base/valide_cma.html"
+    for_evalbox: "VALIDE CMA"
+    blocks: [salutation_personnalisee, statut_valide_cma, convocation_a_venir, "session_formation_choisie|choix_session_formation", jour_examen_info, acces_elearning_rappel, signature]
+
+  convoc_cma_recue:
+    file: "templates/base/convoc_cma_recue.html"
+    for_evalbox: "Convoc CMA reçue"
+    blocks: [salutation_personnalisee, convocation_disponible, jour_examen_info, "session_formation_choisie|choix_session_formation", acces_elearning_rappel, bonne_chance_examen, signature]
+
+  refus_cma:
+    file: "templates/base/refus_cma.html"
+    for_evalbox: "Refusé CMA"
+    blocks: [salutation_personnalisee, statut_refus_cma, comment_telecharger_documents, identifiants_examt3p, date_cloture_info, signature]
+
+  resultat_admis:
+    file: "templates/base/resultat_admis.html"
+    for_resultat: "Admis"
+    blocks: [salutation_personnalisee, resultat_admis, signature]
+
+  resultat_non_admis:
+    file: "templates/base/resultat_non_admis.html"
+    for_resultat: "Non admis"
+    blocks: [salutation_personnalisee, resultat_non_admis, formation_rafraichissement, prochaines_dates_examen, sessions_formation, signature]
+
+  prospect:
+    file: "templates/base/prospect.html"
+    for_stage: "PROSPECT"
+    blocks: [salutation_personnalisee, prospect_info, signature]
+
+  uber_cas_a:
+    file: "templates/base/uber_cas_a.html"
+    for_uber_case: "A"
+    blocks: [salutation_personnalisee, uber_cas_a_finaliser_inscription, documents_requis_examt3p, signature]
+
+  uber_cas_b:
+    file: "templates/base/uber_cas_b.html"
+    for_uber_case: "B"
+    blocks: [salutation_personnalisee, uber_cas_b_test_selection, signature]
+
+  uber_cas_d:
+    file: "templates/base/uber_cas_d.html"
+    for_uber_case: "D"
+    blocks: [salutation_personnalisee, uber_cas_d_compte_non_verifie, signature]
+
+  uber_cas_e:
+    file: "templates/base/uber_cas_e.html"
+    for_uber_case: "E"
+    blocks: [salutation_personnalisee, uber_cas_e_non_eligible, signature]
+
+  doublon_uber:
+    file: "templates/base/doublon_uber.html"
+    for_condition: "has_duplicate_uber_offer == true"
+    blocks: [salutation_personnalisee, doublon_uber_offre, signature]
+
+  no_compte_examt3p:
+    file: "templates/base/no_compte_examt3p.html"
+    for_condition: "compte_existe == false"
+    blocks: [salutation_personnalisee, no_compte_examt3p, prochaines_dates_examen, changement_departement, signature]
+
+  report_bloque:
+    file: "templates/base/report_bloque.html"
+    for_condition: "can_modify_exam_date == false"
+    blocks: [salutation_personnalisee, report_bloque_force_majeure, jour_examen_info, signature]
+
+  report_possible:
+    file: "templates/base/report_possible.html"
+    for_condition: "can_modify_exam_date == true"
+    blocks: [salutation_personnalisee, report_possible, prochaines_dates_examen, signature]
+
+  credentials_refused:
+    file: "templates/base/credentials_refused.html"
+    for_intention: "REFUS_IDENTIFIANTS"
+    blocks: [salutation_personnalisee, credentials_refused_security, signature]
+
+  annulation:
+    file: "templates/base/annulation.html"
+    for_intention: "ANNULATION"
+    blocks: [salutation_personnalisee, annulation_inscription, signature]
+
+  reclamation:
+    file: "templates/base/reclamation.html"
+    for_intention: "RECLAMATION"
+    blocks: [salutation_personnalisee, reclamation_generale, signature]
