@@ -1,0 +1,64 @@
+<!-- TEMPLATE HYBRIDE: UBER_TEST_MISSING -->
+<!-- Objectif: Répondre à la question du candidat ET le pousser à passer le test -->
+<!-- Utilisé pour toutes les intentions quand le candidat n'a pas passé le test de sélection -->
+
+{{> salutation_personnalisee}}
+
+{{#if intention_statut_dossier}}
+<b>Concernant l'avancement de votre dossier</b><br>
+<br>
+Votre dossier est <b>en attente de la validation du test de sélection</b>.<br>
+<br>
+{{/if}}
+
+{{#if intention_demande_date}}
+<b>Concernant les dates d'examen</b><br>
+<br>
+{{#if has_next_dates}}
+Voici les prochaines dates d'examen disponibles :<br>
+<br>
+{{#each next_dates}}
+{{#if this.is_first_of_dept}}
+<b>CMA {{this.Departement}}</b><br>
+{{/if}}
+&nbsp;&nbsp;→ <b>{{this.date_examen_formatted}}</b> (clôture : {{this.date_cloture_formatted}})<br>
+{{/each}}
+<br>
+{{/if}}
+{{/if}}
+
+{{#if intention_confirmation_session}}
+<b>Concernant votre choix de session</b><br>
+<br>
+Nous avons bien noté votre préférence pour les <b>{{preference_horaire_text}}</b>.<br>
+<br>
+{{/if}}
+
+{{#if intention_demande_identifiants}}
+<b>Vos identifiants ExamT3P</b><br>
+<br>
+{{#if identifiant_examt3p}}
+→ Identifiant : <b>{{identifiant_examt3p}}</b><br>
+→ Mot de passe : <b>{{mot_de_passe_examt3p}}</b><br>
+<br>
+{{else}}
+Nous n'avons pas encore vos identifiants ExamT3P. Ils seront créés après validation du test de sélection.<br>
+<br>
+{{/if}}
+{{/if}}
+
+<!-- SECTION CRITIQUE: Pousser vers le test -->
+<b style="color: #d35400;">Action requise pour avancer</b><br>
+<br>
+Pour que nous puissions finaliser votre inscription à l'examen, vous devez <b>passer le test de sélection</b>.<br>
+<br>
+<b>→ Passez le test maintenant :</b> <a href="https://cab-formations.fr/user/login?destination=/course/test-de-s%C3%A9lection">Accéder au test de sélection</a><br>
+<br>
+<i>Ce test est rapide (environ 10 minutes) et vous permet de valider votre éligibilité à l'offre.</i><br>
+<br>
+Dès que vous l'aurez passé, nous procéderons à votre inscription sur la date d'examen de votre choix.<br>
+
+<br>
+{{> acces_elearning_rappel}}
+{{> verifier_spams}}
+{{> signature}}

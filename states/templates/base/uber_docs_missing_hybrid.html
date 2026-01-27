@@ -1,0 +1,55 @@
+<!-- TEMPLATE HYBRIDE: UBER_DOCS_MISSING (CAS A) -->
+<!-- Objectif: Répondre à la question du candidat ET le pousser à envoyer ses documents -->
+<!-- Utilisé pour toutes les intentions quand le candidat n'a pas envoyé ses documents -->
+
+{{> salutation_personnalisee}}
+
+{{#if intention_statut_dossier}}
+<b>Concernant l'avancement de votre dossier</b><br>
+<br>
+Votre paiement de 20€ a bien été reçu. Votre dossier est <b>en attente de vos documents</b> pour pouvoir procéder à l'inscription.<br>
+<br>
+{{/if}}
+
+{{#if intention_demande_date}}
+<b>Concernant les dates d'examen</b><br>
+<br>
+{{#if has_next_dates}}
+Voici les prochaines dates d'examen disponibles :<br>
+<br>
+{{#each next_dates}}
+{{#if this.is_first_of_dept}}
+<b>CMA {{this.Departement}}</b><br>
+{{/if}}
+&nbsp;&nbsp;→ <b>{{this.Date_Examen_Formatted}}</b> (clôture : {{this.Date_Cloture_Formatted}})<br>
+{{/each}}
+<br>
+{{/if}}
+{{/if}}
+
+{{#if intention_confirmation_session}}
+<b>Concernant votre choix de session</b><br>
+<br>
+Nous avons bien noté votre préférence. Nous pourrons confirmer votre session dès réception de vos documents.<br>
+<br>
+{{/if}}
+
+<!-- SECTION CRITIQUE: Pousser vers l'envoi des documents -->
+<b style="color: #d35400;">Action requise pour avancer</b><br>
+<br>
+Pour finaliser votre inscription, merci de nous envoyer les documents suivants :<br>
+<br>
+<b>Documents requis :</b><br>
+&nbsp;&nbsp;1. Pièce d'identité (recto/verso)<br>
+&nbsp;&nbsp;2. Justificatif de domicile de moins de 3 mois<br>
+&nbsp;&nbsp;3. Photo d'identité (format numérique)<br>
+&nbsp;&nbsp;4. Permis de conduire (recto/verso)<br>
+<br>
+<b>→ Envoyez vos documents par email</b> en réponse à ce message ou via votre espace candidat.<br>
+<br>
+Dès réception, nous créerons votre compte ExamT3P et procéderons à votre inscription à l'examen.<br>
+
+<br>
+{{> acces_elearning_rappel}}
+{{> verifier_spams}}
+{{> signature}}

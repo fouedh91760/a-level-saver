@@ -42,6 +42,9 @@ from src.utils.date_examen_vtc_helper import analyze_exam_date_situation
 from src.utils.session_helper import analyze_session_situation
 from src.utils.uber_eligibility_helper import analyze_uber_eligibility
 from src.utils.examt3p_crm_sync import can_modify_exam_date
+from src.utils.training_exam_consistency_helper import analyze_training_exam_consistency
+from src.utils.alerts_helper import get_active_alerts
+from src.utils.examt3p_credentials_helper import get_credentials_with_validation
 
 
 class CoherenceIssueType(Enum):
@@ -57,6 +60,11 @@ class CoherenceIssueType(Enum):
     FORCE_MAJEURE_NOT_HANDLED = "force_majeure_not_handled"
     DATE_PAST_NOT_HANDLED = "date_past_not_handled"
     CRM_EVALBOX_MISMATCH = "crm_evalbox_mismatch"
+    # Nouveaux types - ExamT3P comme source de vérité
+    CRM_DATE_EXAMEN_MISMATCH = "crm_date_examen_mismatch"
+    CRM_DEPARTEMENT_MISMATCH = "crm_departement_mismatch"
+    TRAINING_EXAM_INCONSISTENT = "training_exam_inconsistent"
+    ACTIVE_ALERT_NOT_MENTIONED = "active_alert_not_mentioned"
 
 
 @dataclass
@@ -79,7 +87,8 @@ class TicketAnalysis:
     status: str = ""
 
     # Données extraites
-    customer_message: str = ""
+    customer_message: str = ""  # Historique complet des messages entrants
+    last_customer_message: str = ""  # Dernier message entrant uniquement
     deal_id: Optional[str] = None
     deal_data: Dict[str, Any] = field(default_factory=dict)
     examt3p_data: Dict[str, Any] = field(default_factory=dict)
@@ -100,6 +109,12 @@ class TicketAnalysis:
     legacy_can_modify_date: bool = True
     legacy_cloture_passed: bool = False
     legacy_next_dates: List[Dict] = field(default_factory=list)
+    legacy_training_exam_consistency: Dict[str, Any] = field(default_factory=dict)
+    legacy_active_alerts: List[Dict] = field(default_factory=list)
+
+    # ExamT3P comme source de vérité - comparaisons CRM vs ExamT3P
+    examt3p_is_source_of_truth: bool = False  # True si données ExamT3P disponibles
+    crm_vs_examt3p: Dict[str, Any] = field(default_factory=dict)  # Comparaisons détaillées
 
     # State Engine
     detected_state: str = ""
@@ -149,15 +164,24 @@ class LotAnalyzer:
             result.subject = ticket.get("subject", "")[:100]
             result.status = ticket.get("status", "")
 
-            # 2. EXTRACTION THREADS
+            # 2. EXTRACTION THREADS - HISTORIQUE COMPLET
             threads = self.desk.get_all_threads_with_full_content(ticket_id)
             result.threads_count = len(threads)
 
-            # Message client (dernier thread incoming)
+            # Extraire TOUS les messages entrants du candidat (historique complet)
+            incoming_messages = []
             for thread in threads:
                 if thread.get("direction") == "in":
-                    result.customer_message = thread.get("content", "")[:2000]
-                    break
+                    content = thread.get("content", "")
+                    if content:
+                        incoming_messages.append(content)
+
+            # customer_message = historique complet concaténé (du plus récent au plus ancien)
+            # Limité à 8000 caractères pour éviter tokens excessifs
+            result.customer_message = "\n\n---\n\n".join(incoming_messages)[:8000]
+
+            # Aussi stocker le dernier message seul (pour certaines analyses)
+            result.last_customer_message = incoming_messages[0] if incoming_messages else ""
 
             # 3. LIAISON DEAL CRM
             deal_result = self.deal_agent.process({"ticket_id": ticket_id})
@@ -296,6 +320,36 @@ class LotAnalyzer:
             result.legacy_uber_case = uber_analysis.get("case", "")
         except Exception as e:
             result.errors.append(f"LEGACY_UBER_ERROR: {str(e)[:50]}")
+
+        # 7d. Analyse cohérence formation/examen (LEGACY)
+        try:
+            consistency_analysis = analyze_training_exam_consistency(
+                deal_data=deal_data,
+                threads=threads,
+                session_data=result.legacy_session_data,
+                crm_client=self.crm
+            )
+            result.legacy_training_exam_consistency = consistency_analysis
+        except Exception as e:
+            result.errors.append(f"LEGACY_CONSISTENCY_ERROR: {str(e)[:50]}")
+
+        # 7e. Alertes actives (LEGACY)
+        try:
+            evalbox = deal_data.get("Evalbox", "")
+            dept = deal_data.get("CMA_de_depot", "")
+            alerts = get_active_alerts(
+                evalbox_status=evalbox,
+                department=dept,
+                customer_message=result.customer_message
+            )
+            result.legacy_active_alerts = alerts
+        except Exception as e:
+            result.errors.append(f"LEGACY_ALERTS_ERROR: {str(e)[:50]}")
+
+        # 7f. Comparaison CRM vs ExamT3P (SOURCE DE VÉRITÉ)
+        if result.examt3p_data.get("compte_existe"):
+            result.examt3p_is_source_of_truth = True
+            result.crm_vs_examt3p = self._compare_crm_vs_examt3p(deal_data, result.examt3p_data)
 
     def _apply_state_engine(self, result: TicketAnalysis, triage_result: Dict,
                             deal_result: Dict, threads: List[Dict]):
@@ -439,6 +493,67 @@ class LotAnalyzer:
                     fix_suggestion="Aligner StateDetector avec les cas du legacy"
                 ))
 
+        # 7. Vérifier écarts CRM vs ExamT3P (SOURCE DE VÉRITÉ)
+        if result.examt3p_is_source_of_truth and result.crm_vs_examt3p.get("has_mismatches"):
+            for mismatch in result.crm_vs_examt3p.get("mismatches", []):
+                field = mismatch.get("field", "")
+                if field == "Date_examen_VTC":
+                    issues.append(CoherenceIssue(
+                        issue_type=CoherenceIssueType.CRM_DATE_EXAMEN_MISMATCH,
+                        severity="critical",
+                        description=f"Date examen CRM ({mismatch['crm_value']}) ≠ ExamT3P ({mismatch['examt3p_value']})",
+                        expected=mismatch["examt3p_value"],
+                        actual=mismatch["crm_value"],
+                        fix_suggestion="Synchroniser Date_examen_VTC depuis ExamT3P"
+                    ))
+                elif field == "CMA_de_depot":
+                    issues.append(CoherenceIssue(
+                        issue_type=CoherenceIssueType.CRM_DEPARTEMENT_MISMATCH,
+                        severity="major",
+                        description=f"Département CRM ({mismatch['crm_value']}) ≠ ExamT3P ({mismatch['examt3p_value']})",
+                        expected=mismatch["examt3p_value"],
+                        actual=mismatch["crm_value"],
+                        fix_suggestion="Synchroniser CMA_de_depot depuis ExamT3P"
+                    ))
+
+        # 8. Vérifier cohérence formation/examen
+        if result.legacy_training_exam_consistency.get("has_consistency_issue"):
+            issue_type = result.legacy_training_exam_consistency.get("issue_type", "")
+            issues.append(CoherenceIssue(
+                issue_type=CoherenceIssueType.TRAINING_EXAM_INCONSISTENT,
+                severity="major",
+                description=f"Problème formation/examen: {issue_type}",
+                expected="Formation terminée avant l'examen",
+                actual=result.legacy_training_exam_consistency.get("response_message", "")[:100],
+                fix_suggestion="Présenter les options au candidat (report ou e-learning)"
+            ))
+
+        # 9. Vérifier si alertes actives sont mentionnées
+        if result.legacy_active_alerts:
+            for alert in result.legacy_active_alerts:
+                # Vérifier si la réponse contient des éléments de l'instruction de l'alerte
+                response_lower = result.response_generated.lower()
+                instruction = alert.get("instruction", "").lower()
+                title = alert.get("title", "").lower()
+
+                # Extraire quelques mots-clés de l'instruction pour vérifier
+                # Par exemple pour "double convocation" on cherche "annule" ou "seconde"
+                has_alert_content = False
+                if "annule" in instruction and ("annule" in response_lower or "remplace" in response_lower):
+                    has_alert_content = True
+                elif "double" in title.lower() and "deux" in response_lower:
+                    has_alert_content = True
+
+                if not has_alert_content and result.response_generated:
+                    issues.append(CoherenceIssue(
+                        issue_type=CoherenceIssueType.ACTIVE_ALERT_NOT_MENTIONED,
+                        severity="minor",
+                        description=f"Alerte active '{alert.get('id')}' non mentionnée",
+                        expected=f"Mention de: {alert.get('title', '')}",
+                        actual="Non mentionné dans la réponse",
+                        fix_suggestion="Vérifier que l'alerte est injectée dans le template"
+                    ))
+
         result.coherence_issues = issues
         if issues:
             critical_count = sum(1 for i in issues if i.severity == "critical")
@@ -480,6 +595,78 @@ class LotAnalyzer:
             10: "READY_TO_PAY"
         }
         return mapping.get(legacy_case)
+
+    def _compare_crm_vs_examt3p(self, deal_data: Dict, examt3p_data: Dict) -> Dict[str, Any]:
+        """Compare CRM vs ExamT3P (source de vérité) et retourne les écarts."""
+        comparison = {
+            "has_mismatches": False,
+            "mismatches": []
+        }
+
+        # 1. Comparer statut dossier (Evalbox)
+        examt3p_status = examt3p_data.get("statut_dossier", "")
+        expected_evalbox = self._get_expected_evalbox(examt3p_status)
+        actual_evalbox = deal_data.get("Evalbox", "")
+        if expected_evalbox and actual_evalbox != expected_evalbox:
+            comparison["has_mismatches"] = True
+            comparison["mismatches"].append({
+                "field": "Evalbox",
+                "crm_value": actual_evalbox,
+                "examt3p_value": examt3p_status,
+                "expected_crm": expected_evalbox,
+                "severity": "major"
+            })
+
+        # 2. Comparer date d'examen
+        examt3p_date = examt3p_data.get("date_examen", "")
+        crm_date_vtc = deal_data.get("Date_examen_VTC")
+        crm_date_str = ""
+        if crm_date_vtc:
+            if isinstance(crm_date_vtc, dict):
+                # Format "94_2026-03-31"
+                name = crm_date_vtc.get("name", "")
+                if "_" in name:
+                    crm_date_str = name.split("_")[1]
+            else:
+                crm_date_str = str(crm_date_vtc)
+
+        if examt3p_date and crm_date_str and examt3p_date != crm_date_str:
+            comparison["has_mismatches"] = True
+            comparison["mismatches"].append({
+                "field": "Date_examen_VTC",
+                "crm_value": crm_date_str,
+                "examt3p_value": examt3p_date,
+                "expected_crm": examt3p_date,
+                "severity": "critical"
+            })
+
+        # 3. Comparer département
+        examt3p_dept = examt3p_data.get("departement", "")
+        crm_dept = deal_data.get("CMA_de_depot", "")
+        if examt3p_dept and crm_dept and examt3p_dept != crm_dept:
+            comparison["has_mismatches"] = True
+            comparison["mismatches"].append({
+                "field": "CMA_de_depot",
+                "crm_value": crm_dept,
+                "examt3p_value": examt3p_dept,
+                "expected_crm": examt3p_dept,
+                "severity": "major"
+            })
+
+        # 4. Comparer numéro de dossier
+        examt3p_num = examt3p_data.get("num_dossier", "")
+        crm_num = deal_data.get("NUM_DOSSIER_EVALBOX", "")
+        if examt3p_num and crm_num and examt3p_num != crm_num:
+            comparison["has_mismatches"] = True
+            comparison["mismatches"].append({
+                "field": "NUM_DOSSIER_EVALBOX",
+                "crm_value": crm_num,
+                "examt3p_value": examt3p_num,
+                "expected_crm": examt3p_num,
+                "severity": "minor"
+            })
+
+        return comparison
 
     def analyze_lot(self, start: int, end: int) -> Dict[str, Any]:
         """Analyse un lot complet de tickets."""
@@ -527,6 +714,7 @@ class LotAnalyzer:
         issues_by_type = {}
         critical_issues = []
         major_issues = []
+        crm_examt3p_mismatches = []
 
         for r in results:
             # Compter états
@@ -556,6 +744,14 @@ class LotAnalyzer:
                         "description": issue.description
                     })
 
+            # Collecter écarts CRM vs ExamT3P
+            if r.examt3p_is_source_of_truth and r.crm_vs_examt3p.get("has_mismatches"):
+                crm_examt3p_mismatches.append({
+                    "ticket": r.ticket_number,
+                    "deal_id": r.deal_id,
+                    "mismatches": r.crm_vs_examt3p.get("mismatches", [])
+                })
+
         return {
             "metadata": {
                 "timestamp": datetime.now().isoformat(),
@@ -570,10 +766,14 @@ class LotAnalyzer:
                 "total_critical": len(critical_issues),
                 "total_major": len(major_issues),
                 "spam_count": sum(1 for r in results if r.status == "SPAM_TO_CLOSE"),
-                "route_count": sum(1 for r in results if r.triage_action == "ROUTE")
+                "route_count": sum(1 for r in results if r.triage_action == "ROUTE"),
+                # ExamT3P comme source de vérité
+                "tickets_with_examt3p": sum(1 for r in results if r.examt3p_is_source_of_truth),
+                "crm_examt3p_mismatch_count": len(crm_examt3p_mismatches)
             },
             "critical_issues": critical_issues,
             "major_issues": major_issues[:20],  # Top 20
+            "crm_examt3p_mismatches": crm_examt3p_mismatches,  # Écarts CRM vs ExamT3P
             "tickets": [asdict(r) for r in results]
         }
 

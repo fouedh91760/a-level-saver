@@ -199,11 +199,22 @@ class TemplateEngine:
                 # Extraire le nom du template sans extension
                 template_key = template_file.replace('.html', '').replace('.md', '')
                 logger.info(f"✅ Template sélectionné via matrice: {matrix_key} -> {template_file}")
+
+                # Injecter les context_flags dans le contexte global ET dans state.context_data
+                # Ces flags permettent aux templates hybrides de savoir quelle intention traiter
+                context_flags = config.get('context_flags', {})
+                if context_flags:
+                    context.update(context_flags)
+                    # IMPORTANT: Aussi mettre à jour state.context_data pour _prepare_placeholder_data
+                    state.context_data.update(context_flags)
+                    logger.info(f"📌 Context flags injectés: {list(context_flags.keys())}")
+
                 # Construire la config au format attendu
                 return template_key, {
                     'file': f'templates/base/{template_file}',
                     'blocks': config.get('blocks', []),
                     'crm_update': config.get('crm_update', []),
+                    'context_flags': context_flags,
                 }
 
         # PASS 1: Templates avec intention (priorité haute)
@@ -752,7 +763,46 @@ class TemplateEngine:
             'is_force_majeure_accident': context.get('is_force_majeure_accident', False),
             'is_force_majeure_childcare': context.get('is_force_majeure_childcare', False),
             'is_force_majeure_other': context.get('is_force_majeure_other', False),
+
+            # Context flags pour templates hybrides (injectés par la matrice État×Intention)
+            # Ces flags permettent aux templates de savoir quelle section afficher
+            'intention_statut_dossier': context.get('intention_statut_dossier', False),
+            'intention_demande_date': context.get('intention_demande_date', False),
+            'intention_confirmation_session': context.get('intention_confirmation_session', False),
+            'intention_demande_identifiants': context.get('intention_demande_identifiants', False),
+            'intention_demande_convocation': context.get('intention_demande_convocation', False),
+
+            # Données supplémentaires pour templates hybrides
+            'has_next_dates': bool(context.get('next_dates', [])),
+            'next_dates': self._format_next_dates_for_template(context.get('next_dates', [])),
+            'preference_horaire_text': 'cours du soir' if self._get_session_preference(context) == 'soir' else 'cours du jour',
         }
+
+    def _format_next_dates_for_template(self, dates: List[Dict]) -> List[Dict]:
+        """Formate les next_dates pour utilisation dans les templates {{#each}}."""
+        if not dates:
+            return []
+
+        formatted = []
+        seen_depts = set()
+
+        for d in dates[:5]:  # Limiter à 5 dates
+            date_str = d.get('Date_Examen', '')
+            cloture_str = d.get('Date_Cloture_Inscription', '')
+            dept = d.get('Departement', '')
+
+            formatted.append({
+                'date_examen_formatted': self._format_date(date_str) if date_str else '',
+                'date_cloture_formatted': self._format_date(cloture_str) if cloture_str else '',
+                'Departement': dept,
+                'is_first_of_dept': dept not in seen_depts,
+                # Conserver les champs originaux aussi
+                'Date_Examen': date_str,
+                'Date_Cloture_Inscription': cloture_str,
+            })
+            seen_depts.add(dept)
+
+        return formatted
 
     def _extract_prenom(self, deal_data: Dict[str, Any]) -> str:
         """Extrait le prénom du candidat."""

@@ -1068,25 +1068,79 @@ matrix:
       - verification_paiement
       - prochaines_etapes
 
-  # --- UBER_CAS_A × Intentions ---
-  "UBER_CAS_A_DOCS_MANQUANTS:STATUT_DOSSIER":
-    template: "uber_cas_a.html"
-    override_blocks:
-      - statut_en_attente_docs
-      - etapes_finalisation
+  # ===========================================================================
+  # UBER_DOCS_MISSING (CAS A) × Intentions
+  # Principe: Répondre à la question ET pousser vers l'envoi des documents
+  # ===========================================================================
+  "UBER_DOCS_MISSING:STATUT_DOSSIER":
+    template: "uber_docs_missing_hybrid.html"
+    description: "Statut + rappel envoi documents"
+    context_flags:
+      intention_statut_dossier: true
 
-  "UBER_CAS_A_DOCS_MANQUANTS:DEMANDE_DATE_EXAMEN":
-    template: "uber_cas_a_bloque.html"
-    blocks:
-      - blocage_dates
-      - etapes_finalisation
+  "UBER_DOCS_MISSING:DEMANDE_DATE_EXAMEN":
+    template: "uber_docs_missing_hybrid.html"
+    description: "Dates + rappel envoi documents"
+    context_flags:
+      intention_demande_date: true
 
-  # --- UBER_CAS_B × Intentions ---
-  "UBER_CAS_B_TEST_NON_PASSE:STATUT_DOSSIER":
-    template: "uber_cas_b.html"
-    override_blocks:
-      - statut_en_attente_test
-      - lien_test
+  "UBER_DOCS_MISSING:DEMANDE_AUTRES_DATES":
+    template: "uber_docs_missing_hybrid.html"
+    description: "Dates élargies + rappel envoi documents"
+    context_flags:
+      intention_demande_date: true
+
+  "UBER_DOCS_MISSING:CONFIRMATION_SESSION":
+    template: "uber_docs_missing_hybrid.html"
+    description: "Confirmation session + rappel envoi documents"
+    context_flags:
+      intention_confirmation_session: true
+
+  "UBER_DOCS_MISSING:DEMANDE_IDENTIFIANTS":
+    template: "uber_docs_missing_hybrid.html"
+    description: "Pas d'identifiants encore + rappel envoi documents"
+    context_flags:
+      intention_demande_identifiants: true
+
+  # ===========================================================================
+  # UBER_TEST_MISSING (CAS B) × Intentions
+  # Principe: Répondre à la question ET pousser vers le test de sélection
+  # ===========================================================================
+  "UBER_TEST_MISSING:STATUT_DOSSIER":
+    template: "uber_test_missing_hybrid.html"
+    description: "Statut + rappel passer le test"
+    context_flags:
+      intention_statut_dossier: true
+
+  "UBER_TEST_MISSING:DEMANDE_DATE_EXAMEN":
+    template: "uber_test_missing_hybrid.html"
+    description: "Dates + rappel passer le test"
+    context_flags:
+      intention_demande_date: true
+
+  "UBER_TEST_MISSING:DEMANDE_AUTRES_DATES":
+    template: "uber_test_missing_hybrid.html"
+    description: "Dates élargies + rappel passer le test"
+    context_flags:
+      intention_demande_date: true
+
+  "UBER_TEST_MISSING:CONFIRMATION_SESSION":
+    template: "uber_test_missing_hybrid.html"
+    description: "Confirmation session + rappel passer le test"
+    context_flags:
+      intention_confirmation_session: true
+
+  "UBER_TEST_MISSING:DEMANDE_IDENTIFIANTS":
+    template: "uber_test_missing_hybrid.html"
+    description: "Identifiants + rappel passer le test"
+    context_flags:
+      intention_demande_identifiants: true
+
+  "UBER_TEST_MISSING:DEMANDE_CONVOCATION":
+    template: "uber_test_missing_hybrid.html"
+    description: "Pas de convocation sans test + rappel passer le test"
+    context_flags:
+      intention_statut_dossier: true
 
   # --- EXAMT3P_CREDENTIALS_INVALIDES × Intentions ---
   "EXAMT3P_CREDENTIALS_INVALIDES:DEMANDE_IDENTIFIANTS":
@@ -1714,6 +1768,19 @@ base_templates:
     file: "templates/base/uber_cas_b.html"
     for_uber_case: "B"
     blocks: [salutation_personnalisee, uber_cas_b_test_selection, signature]
+
+  # Templates hybrides - répondent à l'intention ET poussent vers l'action suivante
+  uber_test_missing_hybrid:
+    file: "templates/base/uber_test_missing_hybrid.html"
+    for_state: "UBER_TEST_MISSING"
+    description: "Template hybride pour UBER_TEST_MISSING - répond à la question + rappelle de passer le test"
+    blocks: [salutation_personnalisee, section_intention, action_test_selection, acces_elearning_rappel, signature]
+
+  uber_docs_missing_hybrid:
+    file: "templates/base/uber_docs_missing_hybrid.html"
+    for_state: "UBER_DOCS_MISSING"
+    description: "Template hybride pour UBER_DOCS_MISSING - répond à la question + rappelle d'envoyer les docs"
+    blocks: [salutation_personnalisee, section_intention, action_envoi_documents, acces_elearning_rappel, signature]
 
   uber_cas_d:
     file: "templates/base/uber_cas_d.html"
