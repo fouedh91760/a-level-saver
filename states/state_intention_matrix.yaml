@@ -1359,3 +1359,305 @@ config:
     elearning: "https://cab-formations.fr/user"
     test_selection: "https://cab-formations.fr/user/login?destination=/course/test-de-s%C3%A9lection"
     inscription_uber: "https://cab-formations.fr/uberxcab_welcome"
+
+# =============================================================================
+# SECTION 5: MAPPING DES BLOCS VERS FICHIERS
+# =============================================================================
+# Chaque bloc référencé dans les templates correspond à un fichier .md dans blocks/
+
+blocks_registry:
+  # --- Salutation et Signature ---
+  salutation_personnalisee:
+    file: "blocks/salutation_personnalisee.md"
+    description: "Salutation avec prénom"
+  signature:
+    file: "blocks/signature.md"
+    description: "Signature CAB Formations"
+
+  # --- Identifiants et Accès ---
+  identifiants_examt3p:
+    file: "blocks/identifiants_examt3p.md"
+    description: "Identifiants ExamT3P du candidat"
+    condition: "identifiant_examt3p exists"
+  identifiants_elearning:
+    file: "blocks/identifiants_elearning.md"
+    description: "Accès e-learning"
+  acces_elearning_rappel:
+    file: "blocks/acces_elearning_rappel.md"
+    description: "Rappel accès e-learning"
+
+  # --- Statuts Dossier CMA ---
+  statut_dossier_cree:
+    file: "blocks/statut_dossier_cree.md"
+    description: "Dossier en cours de constitution"
+  statut_dossier_synchronise:
+    file: "blocks/statut_dossier_synchronise.md"
+    description: "Dossier en cours d'instruction"
+  statut_pret_a_payer:
+    file: "blocks/statut_pret_a_payer.md"
+    description: "Dossier validé, attente paiement"
+  statut_en_attente_paiement:
+    file: "blocks/statut_en_attente_paiement.md"
+    description: "En attente de paiement"
+  statut_valide_cma:
+    file: "blocks/statut_valide_cma.md"
+    description: "Paiement effectué, validé"
+  statut_refus_cma:
+    file: "blocks/statut_refus_cma.md"
+    description: "Documents refusés par CMA"
+    variables: ["documents_refuses", "date_cloture", "date_examen"]
+
+  # --- Convocation ---
+  convocation_disponible:
+    file: "blocks/convocation_disponible.md"
+    description: "Convocation reçue"
+  convocation_a_venir:
+    file: "blocks/convocation_a_venir.md"
+    description: "Convocation attendue"
+
+  # --- Dates et Sessions ---
+  prochaines_dates_examen:
+    file: "blocks/prochaines_dates_examen.md"
+    description: "Liste des prochaines dates d'examen"
+    variables: ["prochaines_dates"]
+  sessions_formation:
+    file: "blocks/sessions_formation.md"
+    description: "Sessions de formation disponibles"
+    variables: ["sessions_proposees"]
+  choix_session_formation:
+    file: "blocks/choix_session_formation.md"
+    description: "Choix de session"
+  session_formation_choisie:
+    file: "blocks/session_formation_choisie.md"
+    description: "Session confirmée"
+    condition: "session_choisie exists"
+  date_cloture_info:
+    file: "blocks/date_cloture_info.md"
+    description: "Information date limite"
+
+  # --- Documents ---
+  documents_requis_examt3p:
+    file: "blocks/documents_requis_examt3p.md"
+    description: "Liste documents requis"
+  comment_telecharger_documents:
+    file: "blocks/comment_telecharger_documents.md"
+    description: "Tutoriel upload documents"
+  probleme_document_specifique:
+    file: "blocks/probleme_document_specifique.md"
+    description: "Conseils pour document refusé"
+
+  # --- Paiement ---
+  paiement_cma_241:
+    file: "blocks/paiement_cma_241.md"
+    description: "Paiement CMA standard"
+  paiement_uber_offert:
+    file: "blocks/paiement_uber_offert.md"
+    description: "Paiement offert Uber"
+    condition: "uber_20 == true"
+
+  # --- Cas Uber ---
+  uber_cas_a_finaliser_inscription:
+    file: "blocks/uber_cas_a_finaliser_inscription.md"
+    description: "Uber CAS A - Documents manquants"
+  uber_cas_b_test_selection:
+    file: "blocks/uber_cas_b_test_selection.md"
+    description: "Uber CAS B - Test non passé"
+  uber_cas_d_compte_non_verifie:
+    file: "blocks/uber_cas_d_compte_non_verifie.md"
+    description: "Uber CAS D - Vérification compte"
+  uber_cas_e_non_eligible:
+    file: "blocks/uber_cas_e_non_eligible.md"
+    description: "Uber CAS E - Non éligible"
+  doublon_uber_offre:
+    file: "blocks/doublon_uber_offre.md"
+    description: "Offre Uber déjà utilisée"
+
+  # --- Examen ---
+  jour_examen_info:
+    file: "blocks/jour_examen_info.md"
+    description: "Infos jour J examen"
+  bonne_chance_examen:
+    file: "blocks/bonne_chance_examen.md"
+    description: "Message bonne chance"
+  rappel_examen_imminent:
+    file: "blocks/rappel_examen_imminent.md"
+    description: "Rappel examen proche"
+
+  # --- Résultats ---
+  resultat_admis:
+    file: "blocks/resultat_admis.md"
+    description: "Félicitations réussite"
+  resultat_non_admis:
+    file: "blocks/resultat_non_admis.md"
+    description: "Encouragement échec"
+  reinscription_examen:
+    file: "blocks/reinscription_examen.md"
+    description: "Procédure réinscription"
+  formation_rafraichissement:
+    file: "blocks/formation_rafraichissement.md"
+    description: "Rafraîchissement gratuit"
+
+  # --- Report ---
+  report_possible:
+    file: "blocks/report_possible.md"
+    description: "Report encore possible"
+  report_bloque_force_majeure:
+    file: "blocks/report_bloque_force_majeure.md"
+    description: "Report bloqué"
+
+  # --- Compte ExamT3P ---
+  no_compte_examt3p:
+    file: "blocks/no_compte_examt3p.md"
+    description: "Pas de compte, création nécessaire"
+  compte_examt3p_existe_deja:
+    file: "blocks/compte_examt3p_existe_deja.md"
+    description: "Compte déjà existant"
+  changement_departement:
+    file: "blocks/changement_departement.md"
+    description: "Options autres départements"
+    condition: "compte_existe == false"
+  credentials_refused_security:
+    file: "blocks/credentials_refused_security.md"
+    description: "Candidat refuse identifiants"
+
+  # --- Divers ---
+  verifier_spams:
+    file: "blocks/verifier_spams.md"
+    description: "Rappel vérifier spams"
+  delai_reponse_cma:
+    file: "blocks/delai_reponse_cma.md"
+    description: "Délais traitement CMA"
+  contact_assistance:
+    file: "blocks/contact_assistance.md"
+    description: "Coordonnées assistance"
+  explication_processus_inscription:
+    file: "blocks/explication_processus_inscription.md"
+    description: "Explication étapes inscription"
+
+  # --- Rappels ---
+  rappel_formation_imminente:
+    file: "blocks/rappel_formation_imminente.md"
+    description: "Rappel formation proche"
+  attente_documents_candidat:
+    file: "blocks/attente_documents_candidat.md"
+    description: "En attente documents"
+
+  # --- Cas Spéciaux ---
+  prospect_info:
+    file: "blocks/prospect_info.md"
+    description: "Info pour prospects"
+  annulation_inscription:
+    file: "blocks/annulation_inscription.md"
+    description: "Gestion annulation"
+  reclamation_generale:
+    file: "blocks/reclamation_generale.md"
+    description: "Accusé réclamation"
+  reponse_hors_sujet:
+    file: "blocks/reponse_hors_sujet.md"
+    description: "Message hors sujet"
+
+# =============================================================================
+# SECTION 6: TEMPLATES DE BASE PAR ÉTAT
+# =============================================================================
+# Templates pré-assemblés combinant les blocs selon l'état principal
+
+base_templates:
+  dossier_cree:
+    file: "templates/base/dossier_cree.html"
+    for_evalbox: "Dossier crée"
+    blocks: [salutation_personnalisee, statut_dossier_cree, identifiants_examt3p, documents_requis_examt3p, comment_telecharger_documents, verifier_spams, signature]
+
+  dossier_synchronise:
+    file: "templates/base/dossier_synchronise.html"
+    for_evalbox: "Dossier Synchronisé"
+    blocks: [salutation_personnalisee, statut_dossier_synchronise, identifiants_examt3p, delai_reponse_cma, verifier_spams, signature]
+
+  pret_a_payer:
+    file: "templates/base/pret_a_payer.html"
+    for_evalbox: "Pret a payer"
+    blocks: [salutation_personnalisee, statut_pret_a_payer, "paiement_uber_offert|paiement_cma_241", identifiants_examt3p, verifier_spams, signature]
+
+  valide_cma:
+    file: "templates/base/valide_cma.html"
+    for_evalbox: "VALIDE CMA"
+    blocks: [salutation_personnalisee, statut_valide_cma, convocation_a_venir, "session_formation_choisie|choix_session_formation", jour_examen_info, acces_elearning_rappel, signature]
+
+  convoc_cma_recue:
+    file: "templates/base/convoc_cma_recue.html"
+    for_evalbox: "Convoc CMA reçue"
+    blocks: [salutation_personnalisee, convocation_disponible, jour_examen_info, "session_formation_choisie|choix_session_formation", acces_elearning_rappel, bonne_chance_examen, signature]
+
+  refus_cma:
+    file: "templates/base/refus_cma.html"
+    for_evalbox: "Refusé CMA"
+    blocks: [salutation_personnalisee, statut_refus_cma, comment_telecharger_documents, identifiants_examt3p, date_cloture_info, signature]
+
+  resultat_admis:
+    file: "templates/base/resultat_admis.html"
+    for_resultat: "Admis"
+    blocks: [salutation_personnalisee, resultat_admis, signature]
+
+  resultat_non_admis:
+    file: "templates/base/resultat_non_admis.html"
+    for_resultat: "Non admis"
+    blocks: [salutation_personnalisee, resultat_non_admis, formation_rafraichissement, prochaines_dates_examen, sessions_formation, signature]
+
+  prospect:
+    file: "templates/base/prospect.html"
+    for_stage: "PROSPECT"
+    blocks: [salutation_personnalisee, prospect_info, signature]
+
+  uber_cas_a:
+    file: "templates/base/uber_cas_a.html"
+    for_uber_case: "A"
+    blocks: [salutation_personnalisee, uber_cas_a_finaliser_inscription, documents_requis_examt3p, signature]
+
+  uber_cas_b:
+    file: "templates/base/uber_cas_b.html"
+    for_uber_case: "B"
+    blocks: [salutation_personnalisee, uber_cas_b_test_selection, signature]
+
+  uber_cas_d:
+    file: "templates/base/uber_cas_d.html"
+    for_uber_case: "D"
+    blocks: [salutation_personnalisee, uber_cas_d_compte_non_verifie, signature]
+
+  uber_cas_e:
+    file: "templates/base/uber_cas_e.html"
+    for_uber_case: "E"
+    blocks: [salutation_personnalisee, uber_cas_e_non_eligible, signature]
+
+  doublon_uber:
+    file: "templates/base/doublon_uber.html"
+    for_condition: "has_duplicate_uber_offer == true"
+    blocks: [salutation_personnalisee, doublon_uber_offre, signature]
+
+  no_compte_examt3p:
+    file: "templates/base/no_compte_examt3p.html"
+    for_condition: "compte_existe == false"
+    blocks: [salutation_personnalisee, no_compte_examt3p, prochaines_dates_examen, changement_departement, signature]
+
+  report_bloque:
+    file: "templates/base/report_bloque.html"
+    for_condition: "can_modify_exam_date == false"
+    blocks: [salutation_personnalisee, report_bloque_force_majeure, jour_examen_info, signature]
+
+  report_possible:
+    file: "templates/base/report_possible.html"
+    for_condition: "can_modify_exam_date == true"
+    blocks: [salutation_personnalisee, report_possible, prochaines_dates_examen, signature]
+
+  credentials_refused:
+    file: "templates/base/credentials_refused.html"
+    for_intention: "REFUS_IDENTIFIANTS"
+    blocks: [salutation_personnalisee, credentials_refused_security, signature]
+
+  annulation:
+    file: "templates/base/annulation.html"
+    for_intention: "ANNULATION"
+    blocks: [salutation_personnalisee, annulation_inscription, signature]
+
+  reclamation:
+    file: "templates/base/reclamation.html"
+    for_intention: "RECLAMATION"
+    blocks: [salutation_personnalisee, reclamation_generale, signature]
