@@ -43,22 +43,40 @@ grep -E "^  [A-Z_]+:" states/candidate_states.yaml | head -30
 from src.agents.triage_agent import TriageAgent
 
 agent = TriageAgent()
-result = agent.triage_ticket(ticket_id)
+
+# SIGNATURE CORRECTE (NE PAS passer ticket_id seul!)
+result = agent.triage_ticket(
+    ticket_subject="Re: Test de sélection réussi",
+    thread_content="Je souhaiterais la session du matin...",
+    deal_data=deal_data,  # Optionnel, dict CRM
+    current_department="DOC"
+)
+
 # Retourne:
 #   action (GO/ROUTE/SPAM)
 #   target_department
 #   reason, confidence
-#   detected_intent (ex: "CONFIRMATION_SESSION", "REPORT_DATE")
+#   detected_intent (IMPORTANT: extraire avec result.get("detected_intent"))
 #   intent_context: {
 #       is_urgent, mentions_force_majeure, force_majeure_type,
 #       wants_earlier_date, session_preference ("jour"|"soir"|null)
 #   }
 ```
 
+**ATTENTION - Extraction de l'intention :**
+```python
+# CORRECT
+intention = result.get("detected_intent")  # "CONFIRMATION_SESSION", "REPORT_DATE", etc.
+session_pref = result.get("intent_context", {}).get("session_preference")  # "jour" ou "soir"
+
+# FAUX (ne pas utiliser)
+# intention = result.get("intent_context", {}).get("intention")  # N'EXISTE PAS!
+```
+
 **Actions possibles :**
 - `GO` : Ticket DOC valide, continuer le workflow
 - `ROUTE` : Transférer vers autre département (Contact, Partenariat, etc.)
-- `SPAM` : Spam/pub, clôturer sans réponse
+- `SPAM` : Spam/pub, clôturer automatiquement
 
 **Extraction automatique de contexte :**
 - `session_preference` : Extrait "jour" ou "soir" si le candidat mentionne sa préférence
@@ -510,11 +528,19 @@ session_data = analyze_session_situation(
   {{this.debut}}                <!-- Date début formatée -->
   {{this.fin}}                  <!-- Date fin formatée -->
   {{this.date_examen}}          <!-- Date examen associée -->
+  {{this.date_examen_formatted}} <!-- Alias -->
+  {{this.date_cloture_formatted}} <!-- Date clôture formatée -->
   {{this.departement}}          <!-- Département -->
   {{this.type}}                 <!-- "jour" ou "soir" -->
   {{this.is_jour}}              <!-- true/false -->
   {{this.is_soir}}              <!-- true/false -->
+  {{this.is_first_of_exam}}     <!-- true si première session de cette date (pour grouper) -->
 {{/each}}
+
+<!-- Booléens pour proposer dates/sessions automatiquement -->
+{{date_examen_vide}}            <!-- true si Date_examen_VTC est vide -->
+{{session_vide}}                <!-- true si Session est vide -->
+{{has_sessions_proposees}}      <!-- true si sessions_proposees non vide -->
 ```
 
 ### Logique de Sélection Template (TemplateEngine)
@@ -530,11 +556,18 @@ L'ordre de priorité dans `_select_base_template()` :
    ```
 
 2. **PASS 1** : Templates avec intention (`for_intention` + `for_condition`)
-3. **PASS 2** : Templates avec condition seule
-4. **PASS 3** : Cas Uber (A, B, D, E)
-5. **PASS 4** : Résultat examen
-6. **PASS 5** : Evalbox (statut dossier)
-7. **Fallback** : Par nom d'état normalisé
+3. **PASS 1.5** : Templates avec `for_state` (état spécifique, indépendant de l'intention)
+   ```yaml
+   # Dans state_intention_matrix.yaml
+   examen_passe:
+     file: "templates/base/examen_passe.html"
+     for_state: "EXAM_DATE_PAST_VALIDATED"  # Priorité sur for_condition
+   ```
+4. **PASS 2** : Templates avec condition seule
+5. **PASS 3** : Cas Uber (A, B, D, E)
+6. **PASS 4** : Résultat examen
+7. **PASS 5** : Evalbox (statut dossier)
+8. **Fallback** : Par nom d'état normalisé
 
 ### Transformation des Données Legacy → Template
 
@@ -566,6 +599,70 @@ Le `TemplateEngine` utilise `_flatten_session_options()` pour transformer les do
     }
 ]
 ```
+
+### Template STATUT_DOSSIER avec Next Steps Automatiques
+
+Le template `statut_dossier_reponse.html` gère automatiquement la proposition de dates et sessions :
+
+```html
+<!-- Si date_examen_vide ET sessions disponibles → proposer dates + sessions -->
+{{#if date_examen_vide}}
+{{#if has_sessions_proposees}}
+<b>Prochaines étapes : choisir votre date d'examen</b>
+{{#each sessions_proposees}}
+{{#if this.is_first_of_exam}}
+<b>Examen du {{this.date_examen_formatted}}</b>
+{{/if}}
+{{#if this.is_jour}}→ Cours du jour : {{this.date_debut}} - {{this.date_fin}}{{/if}}
+{{#if this.is_soir}}→ Cours du soir : {{this.date_debut}} - {{this.date_fin}}{{/if}}
+{{/each}}
+{{/if}}
+{{/if}}
+
+<!-- Si date assignée MAIS session vide → proposer sessions uniquement -->
+{{#if date_examen}}
+{{#if session_vide}}
+{{#if has_sessions_proposees}}
+<b>Prochaine étape : choisir votre session de formation</b>
+...
+{{/if}}
+{{/if}}
+{{/if}}
+```
+
+**Important** : Les patterns `{{#if this.*}}` à l'intérieur des `{{#each}}` sont préservés par `_resolve_if_blocks` et traités ensuite par `_resolve_if_blocks_in_each_item`.
+
+### Empathie Force Majeure
+
+Dans les templates de report (ex: `report_possible.html`), ajouter l'empathie automatique :
+
+```html
+{{#if mentions_force_majeure}}
+{{> empathie_force_majeure}}
+{{/if}}
+```
+
+Le bloc `empathie_force_majeure.md` adapte le message selon `force_majeure_type` :
+- `death` → Condoléances sincères
+- `medical` → Prompt rétablissement
+- `accident` → Soutien et compréhension
+- `childcare` → Compréhension de la situation familiale
+
+### Test de Sélection Uber (CAS B → ELIGIBLE)
+
+**`Date_test_selection` est un champ interdit de modification** : mis à jour par webhook e-learning, pas par le workflow.
+
+**Flow automatique :**
+```
+1. Candidat passe le test sur e-learning CAB Formations
+2. Webhook externe → Date_test_selection rempli dans Zoho CRM
+3. Candidat contacte "j'ai passé le test"
+4. Workflow vérifie CRM → Date_test_selection non vide
+5. État: CAS B → ELIGIBLE (plus de blocage)
+6. Si Date_examen_VTC vide → template propose dates + sessions automatiquement
+```
+
+**Pas besoin d'intention spéciale** : L'état est basé sur les données CRM, pas sur ce que le candidat dit. Une fois `Date_test_selection` rempli, le candidat sort automatiquement de CAS B.
 
 ### Ajout d'un Nouvel Intent ou État
 
@@ -715,7 +812,21 @@ python test_doc_workflow_with_examt3p.py <ticket_id>
 
 # Tester la génération de réponse seule
 python -c "from src.agents.response_generator_agent import ResponseGeneratorAgent; ..."
+
+# Analyser un lot de tickets (utilise data/open_doc_tickets.txt)
+python analyze_lot.py 11 20  # Lot 2: tickets 11-20
+python analyze_lot.py 21 30  # Lot 3: tickets 21-30
+
+# Clôturer les tickets SPAM identifiés
+python close_spam_tickets.py data/lot2_analysis_11_20.json --dry-run  # Prévisualisation
+python close_spam_tickets.py data/lot2_analysis_11_20.json            # Clôture réelle
 ```
+
+### Liste des 356 tickets DOC ouverts
+
+Fichier de référence : `data/open_doc_tickets.txt` (1 ID par ligne)
+
+Les lots sont analysés par tranches de 10 tickets.
 
 ---
 

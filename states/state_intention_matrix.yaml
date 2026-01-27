@@ -1126,6 +1126,32 @@ matrix:
           filter: "none"
           include_other_departments: true
 
+  # --- STATUT_DOSSIER (intention générique) ---
+  # Quand le candidat demande où en est son dossier, répondre avec le statut actuel
+  # Priorité sur le template no_compte_examt3p qui est trop générique
+
+  "EXAM_DATE_EMPTY:STATUT_DOSSIER":
+    template: "statut_dossier_reponse.html"
+    description: "Date vide + demande statut -> donner le statut actuel"
+    blocks:
+      - statut_actuel
+      - prochaines_etapes
+
+  "EXAM_DATE_ASSIGNED_WAITING:STATUT_DOSSIER":
+    template: "statut_dossier_reponse.html"
+    description: "Date assignée + demande statut -> confirmer date et statut"
+    blocks:
+      - statut_actuel
+      - date_examen_confirmee
+      - prochaines_etapes
+
+  "EXAMT3P_PAS_DE_COMPTE:STATUT_DOSSIER":
+    template: "statut_dossier_reponse.html"
+    description: "Pas de compte + demande statut -> expliquer où en est le processus"
+    blocks:
+      - statut_en_attente
+      - prochaines_etapes
+
   # --- DATE_FUTURE_VALIDE_CMA × Intentions ---
   "DATE_FUTURE_VALIDE_CMA:DEMANDE_CONVOCATION":
     template: "attente_convocation.html"
@@ -1704,9 +1730,17 @@ base_templates:
     for_condition: "has_duplicate_uber_offer == true"
     blocks: [salutation_personnalisee, doublon_uber_offre, signature]
 
+  examen_passe:
+    file: "templates/base/examen_passe.html"
+    for_state: "EXAM_DATE_PAST_VALIDATED"
+    blocks: [salutation_personnalisee, examen_passe, signature]
+    description: "CAS 7 - Date passée + dossier validé = examen probablement passé"
+
   no_compte_examt3p:
     file: "templates/base/no_compte_examt3p.html"
     for_condition: "compte_existe == false"
+    # Note: This is a fallback condition that should NOT match if a more specific
+    # state-based template exists (like examen_passe for EXAM_DATE_PAST_VALIDATED)
     blocks: [salutation_personnalisee, no_compte_examt3p, prochaines_dates_examen, changement_departement, signature]
 
   report_bloque:

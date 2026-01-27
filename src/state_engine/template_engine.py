@@ -216,9 +216,18 @@ class TemplateEngine:
                             continue  # Condition non satisfaite, passer au suivant
                     return template_key, config
 
-        # PASS 2: Templates avec condition seule (sans intention)
+        # PASS 1.5: Templates avec for_state (état spécifique)
+        # Priorité sur les conditions génériques pour éviter que no_compte_examt3p
+        # ne match pour des états comme EXAM_DATE_PAST_VALIDATED
         for template_key, config in self.base_templates.items():
-            if 'for_condition' in config and 'for_intention' not in config:
+            if 'for_state' in config:
+                if state.name == config['for_state']:
+                    logger.info(f"✅ Template sélectionné via for_state: {state.name} -> {template_key}")
+                    return template_key, config
+
+        # PASS 2: Templates avec condition seule (sans intention et sans for_state)
+        for template_key, config in self.base_templates.items():
+            if 'for_condition' in config and 'for_intention' not in config and 'for_state' not in config:
                 if self._evaluate_condition(config['for_condition'], context):
                     return template_key, config
 
@@ -407,10 +416,15 @@ class TemplateEngine:
         # en cherchant les blocs {{#if}} qui ne contiennent pas d'autres {{#if}}
         max_iterations = 100  # Sécurité contre les boucles infinies
 
+        # Stocker les blocs "this.*" pour les restaurer après
+        this_blocks = {}
+        this_counter = 0
+
         for _ in range(max_iterations):
             # Chercher un {{#if}} dont le contenu ne contient pas d'autres {{#if}}
             # Pattern: {{#if var}} (contenu sans {{#if}}) {{/if}} ou avec {{else}}
-            pattern = r'\{\{#if\s+(\w+)\s*\}\}((?:(?!\{\{#if)(?!\{\{#unless).)*?)(?:\{\{else\}\}((?:(?!\{\{#if)(?!\{\{#unless).)*?))?\{\{/if\}\}'
+            # Support des chemins pointés: sessions_proposees, this.is_soir, etc.
+            pattern = r'\{\{#if\s+([\w.]+)\s*\}\}((?:(?!\{\{#if)(?!\{\{#unless).)*?)(?:\{\{else\}\}((?:(?!\{\{#if)(?!\{\{#unless).)*?))?\{\{/if\}\}'
 
             match = re.search(pattern, result, re.DOTALL)
             if not match:
@@ -420,8 +434,18 @@ class TemplateEngine:
             if_content = match.group(2) or ''
             else_content = match.group(3) or ''
 
-            # Évaluer la condition
-            condition_value = self._get_context_value(condition_var, context)
+            # SKIP: Les conditions "this.*" sont réservées pour le traitement {{#each}}
+            # Elles seront résolues par _resolve_if_blocks_in_each_item
+            if condition_var.startswith('this.'):
+                # Remplacer par un placeholder unique
+                placeholder = f"__THIS_IF_{this_counter}__"
+                this_blocks[placeholder] = match.group(0)
+                this_counter += 1
+                result = result[:match.start()] + placeholder + result[match.end():]
+                continue
+
+            # Évaluer la condition - support des chemins pointés (a.b.c)
+            condition_value = self._get_context_value_with_path(condition_var, context)
 
             if condition_value:
                 replacement = if_content
@@ -430,7 +454,31 @@ class TemplateEngine:
 
             result = result[:match.start()] + replacement + result[match.end():]
 
+        # Restaurer les blocs "this.*"
+        for placeholder, original in this_blocks.items():
+            result = result.replace(placeholder, original)
+
         return result
+
+    def _get_context_value_with_path(self, path: str, context: Dict[str, Any]) -> Any:
+        """Récupère une valeur du contexte avec support des chemins pointés (a.b.c)."""
+        # D'abord essayer comme variable simple via _get_context_value
+        simple_value = self._get_context_value(path, context)
+        if simple_value is not None:
+            return simple_value
+
+        # Ensuite traiter comme chemin pointé
+        if '.' in path:
+            parts = path.split('.')
+            value = context
+            for part in parts:
+                if isinstance(value, dict):
+                    value = value.get(part)
+                else:
+                    return None
+            return value
+
+        return context.get(path)
 
     def _resolve_unless_blocks(self, template: str, context: Dict[str, Any]) -> str:
         """Résout les {{#unless condition}}...{{else}}...{{/unless}}."""
@@ -483,12 +531,43 @@ class TemplateEngine:
                     if isinstance(item, dict):
                         for key, value in item.items():
                             rendered_item = rendered_item.replace(f"{{{{this.{key}}}}}", str(value))
+                        # Résoudre les {{#if this.property}} conditionnels DANS chaque item
+                        rendered_item = self._resolve_if_blocks_in_each_item(rendered_item, item)
                     else:
                         rendered_item = rendered_item.replace("{{this}}", str(item))
                     rendered_items.append(rendered_item)
                 replacement = ''.join(rendered_items)
             else:
                 replacement = ''
+
+            result = result[:match.start()] + replacement + result[match.end():]
+
+        return result
+
+    def _resolve_if_blocks_in_each_item(self, template: str, item: Dict[str, Any]) -> str:
+        """Résout les {{#if this.property}} conditionnels à l'intérieur d'un item {{#each}}."""
+        result = template
+
+        # Pattern pour {{#if this.property}} avec contenu qui ne contient pas d'autres {{#if}}
+        pattern = r'\{\{#if\s+this\.(\w+)\s*\}\}((?:(?!\{\{#if).)*?)(?:\{\{else\}\}((?:(?!\{\{#if).)*?))?\{\{/if\}\}'
+
+        max_iterations = 50
+        for _ in range(max_iterations):
+            match = re.search(pattern, result, re.DOTALL)
+            if not match:
+                break
+
+            property_name = match.group(1)
+            if_content = match.group(2) or ''
+            else_content = match.group(3) or ''
+
+            # Évaluer la condition sur l'item
+            condition_value = item.get(property_name)
+
+            if condition_value:
+                replacement = if_content
+            else:
+                replacement = else_content
 
             result = result[:match.start()] + replacement + result[match.end():]
 
@@ -582,7 +661,8 @@ class TemplateEngine:
         dates_proposees = self._format_dates_list(context.get('next_dates', []))
 
         # Préparer le statut actuel
-        statut_actuel = self._format_statut(context.get('evalbox', ''))
+        evalbox = context.get('evalbox', '')
+        statut_actuel = self._format_statut(evalbox)
 
         # Calculer la date de convocation (environ 10 jours avant l'examen)
         date_convocation = ''
@@ -620,18 +700,29 @@ class TemplateEngine:
             # Le legacy fournit la logique (quelles sessions proposer), le State Engine formate l'affichage
             'session_choisie': self._format_session(deal_data.get('Session')),
             'session_message': context.get('session_data', {}).get('message', ''),
-            'session_preference': context.get('session_data', {}).get('session_preference', ''),
-            'session_preference_soir': context.get('session_data', {}).get('session_preference') == 'soir',
-            'session_preference_jour': context.get('session_data', {}).get('session_preference') == 'jour',
+            # session_preference: priorité à intent_context (détecté par triage) puis session_data (legacy)
+            'session_preference': self._get_session_preference(context),
+            'session_preference_soir': self._get_session_preference(context) == 'soir',
+            'session_preference_jour': self._get_session_preference(context) == 'jour',
             # Données aplaties pour itération facile dans les templates
-            'sessions_proposees': self._flatten_session_options(context.get('session_data', {})),
+            # FILTRER selon la préférence si l'intention est CONFIRMATION_SESSION
+            'sessions_proposees': self._flatten_session_options_filtered(context),
             'date_debut_formation': '',
             'date_fin_formation': '',
 
             # Statut
             'statut_actuel': statut_actuel,
-            'evalbox_status': context.get('evalbox', ''),
+            'evalbox_status': evalbox,
             'num_dossier_cma': examt3p_data.get('num_dossier', ''),
+
+            # Booléens pour les statuts Evalbox (pour templates conditionnels)
+            'evalbox_dossier_cree': evalbox == 'Dossier crée',
+            'evalbox_dossier_synchronise': evalbox == 'Dossier Synchronisé',
+            'evalbox_pret_a_payer': evalbox in ['Pret a payer', 'Pret a payer par cheque'],
+            'evalbox_valide_cma': evalbox == 'VALIDE CMA',
+            'evalbox_refus_cma': evalbox == 'Refusé CMA',
+            'evalbox_convoc_recue': evalbox == 'Convoc CMA reçue',
+            'no_evalbox_status': not evalbox or evalbox in ['None', '', 'N/A'],
 
             # Numéro de dossier
             'num_dossier': examt3p_data.get('num_dossier', '') or context.get('num_dossier', ''),
@@ -646,6 +737,11 @@ class TemplateEngine:
             'compte_existe': context.get('compte_existe', False),
             'can_modify_exam_date': context.get('can_modify_exam_date', True),
             'cloture_passed': context.get('cloture_passed', False),
+
+            # Booléens pour proposer dates/sessions
+            'date_examen_vide': not date_examen,
+            'session_vide': not deal_data.get('Session'),
+            'has_sessions_proposees': bool(self._flatten_session_options_filtered(context)),
 
             # Force majeure (pour les templates empathiques)
             'mentions_force_majeure': context.get('mentions_force_majeure', False),
@@ -774,23 +870,76 @@ class TemplateEngine:
                 if isinstance(horaires, dict):
                     horaires = horaires.get('name', '')
 
+                # Déterminer si c'est la première session de cette date d'examen
+                is_first_of_exam = not any(
+                    s.get('date_examen_raw') == date_examen for s in flattened
+                )
+
                 flattened.append({
                     'date_examen': date_examen_formatted,
+                    'date_examen_formatted': date_examen_formatted,
                     'date_examen_raw': date_examen,
                     'departement': departement,
                     'cloture': cloture_formatted,
+                    'date_cloture_formatted': cloture_formatted,
                     'nom': session_type_label or session.get('Name', ''),
                     'session_name': session.get('Name', ''),
                     'session_id': session.get('id', ''),
                     'debut': date_debut_formatted,
+                    'date_debut': date_debut_formatted,
                     'fin': date_fin_formatted,
+                    'date_fin': date_fin_formatted,
                     'type': session_type,
                     'horaires': horaires,
                     'is_jour': session_type == 'jour',
                     'is_soir': session_type == 'soir',
+                    'is_first_of_exam': is_first_of_exam,
                 })
 
         return flattened
+
+    def _get_session_preference(self, context: Dict[str, Any]) -> str:
+        """
+        Récupère la préférence de session (jour/soir).
+        Priorité: intent_context (triage) > session_data (legacy)
+        """
+        # 1. Priorité: intent_context (détecté par le triage depuis le message client)
+        intent_context = context.get('intent_context', {})
+        if intent_context.get('session_preference'):
+            return intent_context['session_preference']
+
+        # 2. Fallback: session_data (legacy helper)
+        session_data = context.get('session_data', {})
+        if session_data.get('session_preference'):
+            return session_data['session_preference']
+
+        return ''
+
+    def _flatten_session_options_filtered(self, context: Dict[str, Any]) -> list:
+        """
+        Retourne les sessions aplaties, FILTRÉES selon la préférence si:
+        - L'intention est CONFIRMATION_SESSION
+        - ET une préférence (jour/soir) a été détectée
+
+        Si le client dit "je veux le matin", on ne lui montre QUE les sessions du jour.
+        """
+        session_data = context.get('session_data', {})
+        all_sessions = self._flatten_session_options(session_data)
+
+        # Vérifier si on doit filtrer
+        detected_intent = context.get('detected_intent', '')
+        session_preference = self._get_session_preference(context)
+
+        # Si CONFIRMATION_SESSION et préférence claire, filtrer
+        if detected_intent == 'CONFIRMATION_SESSION' and session_preference:
+            filtered = [s for s in all_sessions if s.get('type') == session_preference]
+            if filtered:
+                logger.info(f"✅ Sessions filtrées selon préférence '{session_preference}': {len(filtered)}/{len(all_sessions)}")
+                return filtered
+            # Si aucune session ne correspond, retourner toutes (fallback)
+            logger.warning(f"⚠️ Aucune session '{session_preference}' trouvée, affichage de toutes les sessions")
+
+        return all_sessions
 
     def _format_statut(self, evalbox: str) -> str:
         """Formate le statut Evalbox pour affichage."""

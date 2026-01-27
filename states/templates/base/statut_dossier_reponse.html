@@ -1,0 +1,98 @@
+<!-- TEMPLATE BASE: statut_dossier_reponse -->
+<!-- Intention: STATUT_DOSSIER - Le candidat demande où en est son dossier -->
+<!-- Répond avec le statut actuel et les prochaines étapes (dates/sessions) -->
+
+{{> salutation_personnalisee}}
+
+<b>Concernant l'avancement de votre dossier</b><br>
+<br>
+
+{{#if evalbox_dossier_cree}}
+{{> statut_dossier_cree}}
+{{/if}}
+
+{{#if evalbox_dossier_synchronise}}
+{{> statut_dossier_synchronise}}
+{{/if}}
+
+{{#if evalbox_pret_a_payer}}
+{{> statut_pret_a_payer}}
+{{/if}}
+
+{{#if evalbox_valide_cma}}
+{{> statut_valide_cma}}
+{{/if}}
+
+{{#if evalbox_refus_cma}}
+{{> statut_refus_cma}}
+{{/if}}
+
+{{#if evalbox_convoc_recue}}
+{{> convocation_disponible}}
+{{/if}}
+
+{{#if no_evalbox_status}}
+<b>Statut : En attente de traitement</b><br>
+Votre dossier est en cours de traitement.<br>
+<br>
+{{/if}}
+
+{{#if date_examen}}
+<b>Votre date d'examen :</b> {{date_examen}}<br>
+{{/if}}
+
+{{#if session_choisie}}
+<b>Votre session de formation :</b> {{session_choisie}}<br>
+{{/if}}
+
+<!-- Si date d'examen vide ET sessions disponibles -> proposer dates + sessions -->
+{{#if date_examen_vide}}
+{{#if has_sessions_proposees}}
+<br>
+<b>Prochaines étapes : choisir votre date d'examen et votre session de formation</b><br>
+<br>
+Voici les prochaines dates d'examen disponibles avec les sessions de formation associées :<br>
+<br>
+{{#each sessions_proposees}}
+{{#if this.is_first_of_exam}}
+<b>Examen du {{this.date_examen_formatted}}</b> (clôture inscriptions : {{this.date_cloture_formatted}})<br>
+{{/if}}
+{{#if this.is_jour}}
+&nbsp;&nbsp;→ <b>Cours du jour</b> : du {{this.date_debut}} au {{this.date_fin}} ({{this.horaires}})<br>
+{{/if}}
+{{#if this.is_soir}}
+&nbsp;&nbsp;→ <b>Cours du soir</b> : du {{this.date_debut}} au {{this.date_fin}} ({{this.horaires}})<br>
+{{/if}}
+{{/each}}
+<br>
+Merci de nous indiquer la date d'examen et le type de formation (jour ou soir) qui vous conviennent.<br>
+{{/if}}
+{{/if}}
+
+<!-- Si date d'examen assignée MAIS session vide -> proposer les sessions pour cette date -->
+{{#if date_examen}}
+{{#if session_vide}}
+{{#if has_sessions_proposees}}
+<br>
+<b>Prochaine étape : choisir votre session de formation</b><br>
+<br>
+Voici les sessions de formation disponibles pour votre examen du {{date_examen}} :<br>
+<br>
+{{#each sessions_proposees}}
+{{#if this.is_jour}}
+→ <b>Cours du jour</b> : du {{this.date_debut}} au {{this.date_fin}} ({{this.horaires}})<br>
+{{/if}}
+{{#if this.is_soir}}
+→ <b>Cours du soir</b> : du {{this.date_debut}} au {{this.date_fin}} ({{this.horaires}})<br>
+{{/if}}
+{{/each}}
+<br>
+Merci de nous indiquer votre préférence (cours du jour ou cours du soir).<br>
+{{/if}}
+{{/if}}
+{{/if}}
+
+<br>
+{{> acces_elearning_rappel}}
+{{> verifier_spams}}
+{{> signature}}

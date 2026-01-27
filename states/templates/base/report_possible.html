@@ -1,8 +1,13 @@
 <!-- TEMPLATE BASE: report_possible -->
 <!-- État: Report encore possible (date clôture non passée) -->
-<!-- Blocs utilisés: salutation, report_possible, prochaines_dates_examen, signature -->
+<!-- Blocs utilisés: salutation, empathie_force_majeure (si applicable), report_possible, prochaines_dates_examen, signature -->
 
 {{> salutation_personnalisee}}
+
+{{#if mentions_force_majeure}}
+{{> empathie_force_majeure}}
+<br>
+{{/if}}
 
 {{> report_possible}}
 
