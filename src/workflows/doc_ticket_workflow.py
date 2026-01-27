@@ -143,7 +143,8 @@ class DOCTicketWorkflow:
             logger.info("\n1️⃣  AGENT TRIEUR - Triage du ticket...")
             result['workflow_stage'] = 'TRIAGE'
 
-            triage_result = self._run_triage(ticket_id)
+            # auto_transfer=False if we're in dry-run mode (no ticket updates)
+            triage_result = self._run_triage(ticket_id, auto_transfer=auto_update_ticket)
             result['triage_result'] = triage_result
 
             # Check if we should STOP (routing to another department)
@@ -502,7 +503,7 @@ class DOCTicketWorkflow:
             deal_amount = analysis_result.get('deal_data', {}).get('Amount', 0)
             is_vtc_hors_partenariat = (deal_amount != 0 and deal_amount != 20)
 
-            if is_vtc_hors_partenariat and result.get('draft_created'):
+            if is_vtc_hors_partenariat and result.get('draft_created') and auto_update_ticket:
                 logger.info("\n8️⃣b TRANSFER DOCS CAB - Deal VTC classique (hors partenariat)...")
                 try:
                     self.desk_client.move_ticket_to_department(ticket_id, "DOCS CAB")
@@ -511,6 +512,9 @@ class DOCTicketWorkflow:
                 except Exception as transfer_error:
                     logger.warning(f"⚠️ Impossible de transférer vers DOCS CAB: {transfer_error}")
                     result['transfer_error'] = str(transfer_error)
+            elif is_vtc_hors_partenariat and not auto_update_ticket:
+                logger.info("\n8️⃣b TRANSFER DOCS CAB → Préparé (pas d'auto-update)")
+                result['transfer_prepared'] = "DOCS CAB"
 
             result['success'] = True
             logger.info("\n" + "=" * 80)

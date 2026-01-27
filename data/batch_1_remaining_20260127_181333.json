@@ -1,0 +1,62 @@
+[
+  {
+    "ticket_id": "198709000417584251",
+    "success": true,
+    "workflow_stage": "COMPLETED",
+    "triage_action": "GO",
+    "triage_target": "DOC",
+    "deal_found": true,
+    "state_id": "A1",
+    "state_name": "CREDENTIALS_INVALID",
+    "validation_errors": [],
+    "response_preview": "Bonjour Mahamadou,<br>\n<b>Création de votre compte ExamT3P</b><br>Nous allons créer votre compte sur la plateforme ExamT3P. Pour cela, nous avons beso"
+  },
+  {
+    "ticket_id": "198709000448040784",
+    "success": true,
+    "workflow_stage": "NEEDS_CLARIFICATION",
+    "triage_action": "NEEDS_CLARIFICATION",
+    "triage_target": "DOC",
+    "deal_found": false,
+    "state_id": null,
+    "state_name": null,
+    "validation_errors": [],
+    "response_preview": "Bonjour,\n\nJe vous remercie pour votre message.\n\nNous avons du mal à retrouver votre dossier via l'adresse mail **no-reply@slack.com**.\n\nAfin de pouvoi"
+  },
+  {
+    "ticket_id": "198709000448025997",
+    "success": true,
+    "workflow_stage": "COMPLETED",
+    "triage_action": "GO",
+    "triage_target": "DOC",
+    "deal_found": true,
+    "state_id": "D-6",
+    "state_name": "EXAM_DATE_ASSIGNED_WAITING",
+    "validation_errors": [],
+    "response_preview": "Bonjour Haroun,<br>\n<b>Création de votre compte ExamT3P</b><br>Nous allons créer votre compte sur la plateforme ExamT3P. Pour cela, nous avons besoin "
+  },
+  {
+    "ticket_id": "198709000448027901",
+    "success": true,
+    "workflow_stage": "COMPLETED",
+    "triage_action": "GO",
+    "triage_target": "DOC",
+    "deal_found": true,
+    "state_id": "D-4",
+    "state_name": "VALIDE_CMA_WAITING_CONVOC",
+    "validation_errors": [],
+    "response_preview": "Bonjour Oswald,<br>\n✅ <b>Votre dossier a été validé par la CMA</b><br>Bonne nouvelle ! La Chambre des Métiers et de l'Artisanat a validé votre dossier"
+  },
+  {
+    "ticket_id": "198709000448040528",
+    "success": true,
+    "workflow_stage": "COMPLETED",
+    "triage_action": "GO",
+    "triage_target": "DOC",
+    "deal_found": true,
+    "state_id": "D-10",
+    "state_name": "READY_TO_PAY",
+    "validation_errors": [],
+    "response_preview": "Bonjour Oualid,<br>\n💳 <b>Paiement des frais d'examen en cours</b><br>Votre dossier est complet et le paiement des frais d'examen est en cours de trait"
+  }
+]

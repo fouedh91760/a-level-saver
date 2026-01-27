@@ -15,6 +15,22 @@ Avant de coder une nouvelle fonctionnalité, **TOUJOURS vérifier** si elle exis
 3. Le client Zoho (`src/zoho_client.py`)
 4. Les alertes temporaires (`alerts/active_alerts.yaml`)
 5. Les fichiers de référence (`crm_schema.json`, `desk_departments.json`)
+6. **Le State Engine** (`states/candidate_states.yaml`, `states/state_intention_matrix.yaml`)
+
+### Vérification OBLIGATOIRE avant d'ajouter un Intent ou État
+
+```bash
+# Lister tous les intents existants (36 définis)
+grep -E "^  [A-Z_]+:" states/state_intention_matrix.yaml | head -50
+
+# Chercher si un intent similaire existe déjà
+grep -i "mot_clé" states/state_intention_matrix.yaml
+
+# Lister tous les états existants
+grep -E "^  [A-Z_]+:" states/candidate_states.yaml | head -30
+```
+
+**Si l'intent/état existe (même sous un nom différent) → l'utiliser, NE PAS en créer un nouveau.**
 
 ---
 
@@ -388,6 +404,60 @@ Next steps CAB:
 
 ✓ Aucune alerte
 ```
+
+---
+
+## State Engine - Architecture État × Intention → Template
+
+### Principe
+
+Le système génère les réponses de manière **déterministe** :
+1. **ÉTAT** = situation factuelle du candidat (détecté depuis CRM/ExamT3P)
+2. **INTENTION** = ce que le candidat demande (détecté par TriageAgent via IA)
+3. **TEMPLATE** = réponse adaptée à la combinaison ÉTAT × INTENTION
+
+### Fichiers Source de Vérité
+
+| Fichier | Contenu |
+|---------|---------|
+| `states/candidate_states.yaml` | **~25 ÉTATS** (T1-T4, A0-A3, U01-U06, E01-E13, etc.) |
+| `states/state_intention_matrix.yaml` | **36 INTENTIONS** (I01-I36) + MATRICE État×Intention |
+| `states/templates/base/*.html` | Templates HTML par état |
+| `states/blocks/*.md` | Blocs réutilisables (salutation, signature, etc.) |
+| `states/VARIABLES.md` | Documentation des variables Handlebars |
+
+### Détection d'Intent par TriageAgent
+
+```python
+triage_result = triage_agent.triage_ticket(ticket_id)
+# Retourne: action, detected_intent, intent_context
+```
+
+### Syntaxe Templates (Handlebars)
+
+```html
+{{variable}}                          <!-- Variable simple -->
+{{> bloc_name}}                       <!-- Inclusion de bloc -->
+{{#if condition}}...{{else}}...{{/if}} <!-- Conditionnel -->
+{{#unless condition}}...{{/unless}}   <!-- Conditionnel inverse -->
+{{#each items}}{{this.field}}{{/each}} <!-- Boucle -->
+```
+
+### Logique de Sélection Template
+
+1. Chercher dans la matrice : `ÉTAT:INTENTION` → template spécifique
+2. Si pas trouvé : utiliser le template par défaut de l'ÉTAT
+3. Résoudre les blocs → conditionnels → placeholders
+4. Section `{{personnalisation}}` pour personnalisation IA uniquement
+
+### Ajout d'un Nouvel Intent ou État
+
+**⚠️ TOUJOURS vérifier d'abord avec les commandes de la section "Règle d'Or" ci-dessus !**
+
+1. Vérifier qu'il n'existe pas (grep dans les YAML)
+2. Ajouter dans le fichier YAML approprié
+3. Créer/modifier le template si nécessaire
+4. Tester avec un ticket réel
 
 ---
 
