@@ -52,7 +52,7 @@ class CoherenceIssueType(Enum):
     TEMPLATE_PLACEHOLDER_UNRESOLVED = "template_placeholder_unresolved"
     TEMPLATE_WRONG_FOR_INTENTION = "template_wrong_for_intention"
     TEMPLATE_WRONG_FOR_STATE = "template_wrong_for_state"
-    LEGACY_VS_STATE_MISMATCH = "legacy_vs_state_mismatch"
+    # LEGACY_VS_STATE_MISMATCH retiré - obsolète depuis suppression du mode Legacy
     MISSING_DATA_IN_RESPONSE = "missing_data_in_response"
     WRONG_CASE_DETECTION = "wrong_case_detection"
     SPAM_NOT_DETECTED = "spam_not_detected"
@@ -480,18 +480,7 @@ class LotAnalyzer:
                     fix_suggestion="Ajouter bloc empathie_force_majeure dans le template"
                 ))
 
-        # 6. Comparer Legacy vs State Engine
-        if result.legacy_date_case and result.detected_state:
-            legacy_state_expected = self._map_legacy_case_to_state(result.legacy_date_case)
-            if legacy_state_expected and legacy_state_expected != result.detected_state:
-                issues.append(CoherenceIssue(
-                    issue_type=CoherenceIssueType.LEGACY_VS_STATE_MISMATCH,
-                    severity="major",
-                    description=f"Legacy CAS {result.legacy_date_case} vs State Engine mismatch",
-                    expected=legacy_state_expected,
-                    actual=result.detected_state,
-                    fix_suggestion="Aligner StateDetector avec les cas du legacy"
-                ))
+        # 6. (Retiré) Legacy vs State Engine - obsolète depuis suppression du mode Legacy
 
         # 7. Vérifier écarts CRM vs ExamT3P (SOURCE DE VÉRITÉ)
         if result.examt3p_is_source_of_truth and result.crm_vs_examt3p.get("has_mismatches"):
@@ -580,21 +569,7 @@ class LotAnalyzer:
         }
         return mapping.get(examt3p_status)
 
-    def _map_legacy_case_to_state(self, legacy_case: int) -> Optional[str]:
-        """Mappe un cas legacy vers un état State Engine."""
-        mapping = {
-            1: "EXAM_DATE_EMPTY",
-            2: "EXAM_DATE_PAST_NOT_VALIDATED",
-            3: "REFUSED_CMA",
-            4: "VALIDE_CMA_WAITING_CONVOC",
-            5: "DOSSIER_SYNCHRONIZED",
-            6: "EXAM_DATE_ASSIGNED_WAITING",
-            7: "EXAM_DATE_PAST_VALIDATED",
-            8: "DEADLINE_MISSED",
-            9: "CONVOCATION_RECEIVED",
-            10: "READY_TO_PAY"
-        }
-        return mapping.get(legacy_case)
+    # _map_legacy_case_to_state retiré - obsolète depuis suppression du mode Legacy
 
     def _compare_crm_vs_examt3p(self, deal_data: Dict, examt3p_data: Dict) -> Dict[str, Any]:
         """Compare CRM vs ExamT3P (source de vérité) et retourne les écarts."""
