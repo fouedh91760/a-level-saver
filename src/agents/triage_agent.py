@@ -290,29 +290,118 @@ Réponds UNIQUEMENT en JSON valide:
 
         except json.JSONDecodeError as e:
             logger.warning(f"  ⚠️ TriageAgent JSON error: {e}")
-            # Fallback: rester dans le département actuel
+            # Fallback: détection par mots-clés + rester dans le département actuel
+            fallback_intent = self._detect_intent_fallback(thread_content)
+            logger.info(f"  🔄 Fallback intention: {fallback_intent.get('detected_intent', 'None')}")
             return {
                 'action': 'GO',
                 'target_department': current_department,
                 'reason': 'Erreur parsing IA - fallback GO',
                 'confidence': 0.5,
                 'method': 'fallback',
-                'detected_intent': None,
-                'intent_context': {}
+                'detected_intent': fallback_intent.get('detected_intent'),
+                'intent_context': fallback_intent.get('intent_context', {})
             }
 
         except Exception as e:
             logger.error(f"  ❌ TriageAgent error: {e}")
-            # Fallback: rester dans le département actuel
+            # Fallback: détection par mots-clés + rester dans le département actuel
+            fallback_intent = self._detect_intent_fallback(thread_content)
+            logger.info(f"  🔄 Fallback intention: {fallback_intent.get('detected_intent', 'None')}")
             return {
                 'action': 'GO',
                 'target_department': current_department,
                 'reason': f'Erreur IA: {str(e)[:50]} - fallback GO',
                 'confidence': 0.3,
                 'method': 'fallback',
-                'detected_intent': None,
-                'intent_context': {}
+                'detected_intent': fallback_intent.get('detected_intent'),
+                'intent_context': fallback_intent.get('intent_context', {})
             }
+
+    def _detect_intent_fallback(self, text: str) -> dict:
+        """
+        Détection d'intention par mots-clés quand l'IA échoue.
+
+        Détecte les cas critiques:
+        - REPORT_DATE: demande de report/annulation
+        - Force majeure: décès, maladie, accident
+        """
+        text_lower = text.lower()
+
+        detected_intent = None
+        intent_context = {
+            'mentions_force_majeure': False,
+            'force_majeure_type': None,
+            'force_majeure_details': None,
+            'is_urgent': False
+        }
+
+        # Détection REPORT_DATE / ANNULATION
+        report_keywords = [
+            'annuler', 'annulation', 'reporter', 'report',
+            'changer la date', 'modifier la date', 'décaler',
+            'ne peux pas', 'ne pourrai pas', 'impossible de venir',
+            'empêché', 'indisponible'
+        ]
+
+        if any(kw in text_lower for kw in report_keywords):
+            detected_intent = 'REPORT_DATE'
+
+        # Détection force majeure - DÉCÈS
+        death_keywords = [
+            'décès', 'décédé', 'décédée', 'mort', 'deuil',
+            'enterrement', 'funérailles', 'obsèques'
+        ]
+
+        if any(kw in text_lower for kw in death_keywords):
+            intent_context['mentions_force_majeure'] = True
+            intent_context['force_majeure_type'] = 'death'
+            intent_context['force_majeure_details'] = 'Décès mentionné dans le message'
+            intent_context['is_urgent'] = True
+            if not detected_intent:
+                detected_intent = 'REPORT_DATE'
+
+        # Détection force majeure - MÉDICAL
+        medical_keywords = [
+            'maladie', 'malade', 'hospitalisation', 'hospitalisé',
+            'opération', 'chirurgie', 'urgence médicale', 'santé',
+            'médecin', 'certificat médical', 'arrêt maladie'
+        ]
+
+        if not intent_context['force_majeure_type'] and any(kw in text_lower for kw in medical_keywords):
+            intent_context['mentions_force_majeure'] = True
+            intent_context['force_majeure_type'] = 'medical'
+            intent_context['force_majeure_details'] = 'Problème médical mentionné'
+            intent_context['is_urgent'] = True
+            if not detected_intent:
+                detected_intent = 'REPORT_DATE'
+
+        # Détection force majeure - ACCIDENT
+        accident_keywords = [
+            'accident', 'accidenté', 'blessé', 'blessure'
+        ]
+
+        if not intent_context['force_majeure_type'] and any(kw in text_lower for kw in accident_keywords):
+            intent_context['mentions_force_majeure'] = True
+            intent_context['force_majeure_type'] = 'accident'
+            intent_context['force_majeure_details'] = 'Accident mentionné'
+            intent_context['is_urgent'] = True
+            if not detected_intent:
+                detected_intent = 'REPORT_DATE'
+
+        # Détection DEMANDE_IDENTIFIANTS
+        credentials_keywords = [
+            'identifiant', 'mot de passe', 'login', 'connexion',
+            'me connecter', 'accès', 'code d\'accès'
+        ]
+
+        if not detected_intent and any(kw in text_lower for kw in credentials_keywords):
+            detected_intent = 'DEMANDE_IDENTIFIANTS'
+
+        return {
+            'detected_intent': detected_intent,
+            'intent_context': intent_context
+        }
 
     def should_use_ai_triage(
         self,
