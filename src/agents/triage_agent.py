@@ -89,10 +89,17 @@ Pour REPORT_DATE, ajoute un contexte supplémentaire:
 - force_majeure_type: "medical" (maladie, hospitalisation, santé), "death" (décès, deuil), "accident", "other", ou null
 
 MOTIFS DE FORCE MAJEURE:
-- Medical: maladie, hospitalisation, problème de santé, opération, certificat médical, douleurs, enceinte, accouchement
-- Death: décès, deuil, enterrement, funérailles
-- Accident: accident (voiture, travail, etc.)
-- Other: convocation judiciaire, catastrophe naturelle, force majeure explicite
+IMPORTANT: La force majeure doit affecter DIRECTEMENT le candidat ou un membre de sa famille proche.
+Si c'est un problème indirect (ex: l'assistante maternelle qui a un décès dans SA famille), ce n'est PAS
+une force majeure du candidat mais une contrainte de garde d'enfant → force_majeure_type = "childcare" ou "other"
+
+- Medical: maladie DU CANDIDAT, hospitalisation, problème de santé, opération, certificat médical, douleurs, enceinte, accouchement
+- Death: décès d'un PROCHE DU CANDIDAT (parent, conjoint, enfant, frère/sœur) - PAS décès chez la nounou/voisin/etc.
+- Accident: accident DU CANDIDAT (voiture, travail, etc.)
+- Childcare: problème de garde d'enfant (nounou absente, assistante maternelle indisponible, etc.)
+- Other: convocation judiciaire, catastrophe naturelle, autre contrainte personnelle
+
+Pour force_majeure_details, préciser QUI est affecté (le candidat directement ou quelqu'un d'autre).
 
 CONTEXTE SUPPLÉMENTAIRE (pour toutes les intentions):
 - wants_earlier_date: true si le candidat demande une date plus tôt, plus proche, plus rapide,
@@ -111,7 +118,7 @@ Réponds UNIQUEMENT en JSON valide:
     "intent_context": {
         "is_urgent": true | false,
         "mentions_force_majeure": true | false,
-        "force_majeure_type": "medical" | "death" | "accident" | "other" | null,
+        "force_majeure_type": "medical" | "death" | "accident" | "childcare" | "other" | null,
         "force_majeure_details": "description courte si force majeure détectée" | null,
         "wants_earlier_date": true | false
     }

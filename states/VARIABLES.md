@@ -1,6 +1,19 @@
 # Convention des Variables - Templates CAB Formations
 
-## Syntaxe
+## Formatage HTML (IMPORTANT)
+
+**Ne PAS utiliser `<p>` dans les blocs/templates** - Zoho Desk ajoute des marges entre les paragraphes.
+
+| À utiliser | À éviter |
+|------------|----------|
+| `Texte...<br>` | `<p>Texte...</p>` |
+| `<b>Titre</b><br>` | `<p><b>Titre</b></p>` |
+
+**Balises autorisées :** `<br>`, `<b>`, `<i>`, `<a>`, `<ul>`, `<ol>`, `<li>`
+
+---
+
+## Syntaxe Handlebars
 
 ```
 {{variable}}           → Variable simple

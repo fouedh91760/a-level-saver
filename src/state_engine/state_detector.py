@@ -211,6 +211,8 @@ class StateDetector:
             'is_force_majeure_deces': triage_result.get('intent_context', {}).get('force_majeure_type') == 'death',
             'is_force_majeure_medical': triage_result.get('intent_context', {}).get('force_majeure_type') == 'medical',
             'is_force_majeure_accident': triage_result.get('intent_context', {}).get('force_majeure_type') == 'accident',
+            'is_force_majeure_childcare': triage_result.get('intent_context', {}).get('force_majeure_type') == 'childcare',
+            'is_force_majeure_other': triage_result.get('intent_context', {}).get('force_majeure_type') == 'other',
 
             # Deal linking
             'has_duplicate_uber_offer': linking_result.get('has_duplicate_uber_offer', False),

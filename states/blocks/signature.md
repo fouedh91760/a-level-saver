@@ -1,6 +1,1 @@
-<!-- BLOC: signature -->
-<!-- Format: HTML pour Zoho Desk -->
-
-<p>Bien cordialement,</p>
-
-<p>L'équipe CAB Formations</p>
+<br>Bien cordialement,<br>L'équipe CAB Formations

@@ -130,7 +130,8 @@ class ResponseValidator:
         response_text: str,
         state: DetectedState,
         proposed_dates: Optional[List[Dict]] = None,
-        allowed_amounts: Optional[List[int]] = None
+        allowed_amounts: Optional[List[int]] = None,
+        template_used: Optional[str] = None
     ) -> ValidationResult:
         """
         Valide une réponse générée.
@@ -140,6 +141,7 @@ class ResponseValidator:
             state: État détecté (contient la config de validation)
             proposed_dates: Dates effectivement proposées au candidat
             allowed_amounts: Montants autorisés à mentionner
+            template_used: Nom du template utilisé (pour ajuster les règles de validation)
 
         Returns:
             ValidationResult avec erreurs et warnings
@@ -150,7 +152,12 @@ class ResponseValidator:
         self._check_forbidden_terms(response_text, result)
 
         # 2. Vérifier les blocs obligatoires
-        self._check_required_blocks(response_text, state, result)
+        # IMPORTANT: Si le template utilisé est différent du template par défaut de l'état,
+        # on ne vérifie PAS les blocs requis de l'état (ils ne sont pas pertinents)
+        # Exemples: report_bloque, credentials_refused, etc.
+        skip_blocks_validation = self._should_skip_blocks_validation(state, template_used)
+        if not skip_blocks_validation:
+            self._check_required_blocks(response_text, state, result)
 
         # 3. Vérifier les blocs interdits
         self._check_forbidden_blocks(response_text, state, result)
@@ -484,6 +491,58 @@ class ResponseValidator:
                                      'missing_closing', 'unresolved_placeholder']
                    for e in result.errors + result.warnings):
             result.add_passed('format_check')
+
+    def _should_skip_blocks_validation(
+        self,
+        state: DetectedState,
+        template_used: Optional[str]
+    ) -> bool:
+        """
+        Détermine si on doit ignorer la validation des blocs obligatoires.
+
+        Quand le template utilisé est différent du template par défaut de l'état
+        (ex: report_bloque utilisé pour CONVOCATION_RECEIVED avec intention REPORT_DATE),
+        les blocs requis de l'état ne sont pas pertinents.
+
+        Args:
+            state: État détecté
+            template_used: Nom du template réellement utilisé
+
+        Returns:
+            True si on doit ignorer la validation des blocs
+        """
+        if not template_used:
+            return False
+
+        # Templates qui ont leurs propres règles de validation
+        # et ne doivent pas être validés avec les blocs de l'état détecté
+        override_templates = [
+            'report_bloque',
+            'report_bloque_force_majeure',
+            'credentials_refused',
+            'credentials_refused_security',
+        ]
+
+        # Si le template utilisé est un template "override", on ignore la validation
+        # des blocs de l'état car ils ne sont pas pertinents
+        for override in override_templates:
+            if override in template_used.lower():
+                logger.info(f"⚡ Validation des blocs ignorée (template override: {template_used})")
+                return True
+
+        # Vérifier aussi par intention - si l'intention est REPORT_DATE ou REFUS_PARTAGE_CREDENTIALS
+        # et que le template n'est pas celui par défaut de l'état, ignorer la validation
+        context = state.context_data
+        detected_intent = context.get('detected_intent')
+
+        if detected_intent in ['REPORT_DATE', 'REFUS_PARTAGE_CREDENTIALS', 'FORCE_MAJEURE_REPORT']:
+            # Pour ces intentions, le template utilisé est souvent différent du template de l'état
+            default_template = state.response_config.get('template', '')
+            if default_template and template_used and default_template != template_used:
+                logger.info(f"⚡ Validation des blocs ignorée (intention {detected_intent}, template {template_used} != {default_template})")
+                return True
+
+        return False
 
     def _find_location(self, text: str, search: str) -> str:
         """Trouve la position approximative d'un texte."""

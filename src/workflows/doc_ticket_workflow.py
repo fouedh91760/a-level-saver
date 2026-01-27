@@ -1616,7 +1616,8 @@ L'équipe Cab Formations"""
         validation_result = self.response_validator.validate(
             response_text=response_text,
             state=detected_state,
-            proposed_dates=proposed_dates
+            proposed_dates=proposed_dates,
+            template_used=template_result.get('template_used')
         )
 
         if validation_result.valid:

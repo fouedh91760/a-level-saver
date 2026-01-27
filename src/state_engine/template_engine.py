@@ -265,6 +265,8 @@ class TemplateEngine:
 
         try:
             content = full_path.read_text(encoding='utf-8')
+            # Nettoyer le contenu: supprimer commentaires HTML et espaces inutiles
+            content = self._clean_block_content(content)
             self.templates_cache[template_path] = content
             return content
         except Exception as e:
@@ -292,11 +294,24 @@ class TemplateEngine:
 
         try:
             content = full_path.read_text(encoding='utf-8')
+            # Nettoyer le contenu: supprimer commentaires HTML et espaces inutiles
+            content = self._clean_block_content(content)
             self.blocks_cache[block_name] = content
             return content
         except Exception as e:
             logger.error(f"Erreur lecture bloc {block_name}: {e}")
             return None
+
+    def _clean_block_content(self, content: str) -> str:
+        """Nettoie le contenu d'un bloc en supprimant commentaires et espaces inutiles."""
+        import re
+        # Supprimer les commentaires HTML (<!-- ... -->)
+        content = re.sub(r'<!--.*?-->\s*', '', content, flags=re.DOTALL)
+        # Supprimer les lignes vides multiples
+        content = re.sub(r'\n\s*\n', '\n', content)
+        # Supprimer les espaces en début et fin
+        content = content.strip()
+        return content
 
     def _parse_template(
         self,
@@ -613,6 +628,8 @@ class TemplateEngine:
             'is_force_majeure_deces': context.get('is_force_majeure_deces', False),
             'is_force_majeure_medical': context.get('is_force_majeure_medical', False),
             'is_force_majeure_accident': context.get('is_force_majeure_accident', False),
+            'is_force_majeure_childcare': context.get('is_force_majeure_childcare', False),
+            'is_force_majeure_other': context.get('is_force_majeure_other', False),
         }
 
     def _extract_prenom(self, deal_data: Dict[str, Any]) -> str:

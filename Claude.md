@@ -18,6 +18,36 @@ Avant de coder une nouvelle fonctionnalité, **TOUJOURS vérifier** si elle exis
 
 ---
 
+## Convention de Formatage HTML (Blocs & Templates)
+
+**IMPORTANT : Ne PAS utiliser de balises `<p>` dans les blocs et templates.**
+
+Zoho Desk ajoute des marges automatiques entre les `<p>`, ce qui crée trop d'espacement.
+
+### Règles de formatage :
+1. **Utiliser `<br>` pour les sauts de ligne** (un seul saut = un `<br>`)
+2. **Pas de `<p>...</p>`** → remplacer par `...<br>`
+3. **Garder `<ul>`, `<ol>`, `<li>`** pour les listes
+4. **Garder `<b>`, `<i>`, `<a>`** pour le formatage inline
+5. **Pas de commentaires HTML** dans les blocs (supprimés automatiquement par le template engine)
+
+### Exemple de bloc correct :
+```html
+Bonjour {{prenom}},<br>
+Votre dossier est en cours de traitement.<br>
+<b>Prochaines étapes :</b><br>
+<ul><li>Étape 1</li><li>Étape 2</li></ul>
+Bien cordialement,<br>L'équipe CAB Formations
+```
+
+### Exemple incorrect (à éviter) :
+```html
+<p>Bonjour {{prenom}},</p>
+<p>Votre dossier est en cours de traitement.</p>
+```
+
+---
+
 ## Architecture des Agents
 
 ### 1. TriageAgent (`src/agents/triage_agent.py`) - PREMIER DANS LE WORKFLOW
