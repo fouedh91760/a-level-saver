@@ -473,6 +473,24 @@ class TemplateEngine:
         if key == 'mot_de_passe_examt3p':
             return context.get('examt3p_data', {}).get('mot_de_passe', '')
 
+        # Mapping prochaines_dates depuis next_dates
+        if key == 'prochaines_dates':
+            next_dates = context.get('next_dates', [])
+            if next_dates:
+                formatted_dates = []
+                for d in next_dates[:5]:  # Limiter à 5 dates
+                    date_str = d.get('Date_Examen', '')
+                    date_formatted = self._format_date(date_str) if date_str else ''
+                    cloture_str = d.get('Date_Cloture_Inscription', '')
+                    cloture_formatted = self._format_date(cloture_str) if cloture_str else ''
+                    formatted_dates.append({
+                        'date': date_formatted,
+                        'departement': d.get('Departement', ''),
+                        'cloture': cloture_formatted
+                    })
+                return formatted_dates
+            return []
+
         # Chercher directement dans le contexte
         if key in context:
             return context[key]

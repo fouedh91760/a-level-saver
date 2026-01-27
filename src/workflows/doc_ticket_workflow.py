@@ -1532,6 +1532,7 @@ L'équipe Cab Formations"""
             # Données extraites pour les placeholders (niveau racine)
             'next_dates': date_examen_vtc_result.get('next_dates', []),
             'date_case': date_examen_vtc_result.get('case'),
+            'date_cloture': date_examen_vtc_result.get('date_cloture'),
             'can_choose_other_department': date_examen_vtc_result.get('can_choose_other_department', False),
             'alternative_department_dates': date_examen_vtc_result.get('alternative_department_dates', []),
 
