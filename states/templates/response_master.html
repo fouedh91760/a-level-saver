@@ -1,0 +1,170 @@
+<!-- =======================================================================
+     TEMPLATE MASTER - Architecture Modulaire
+     =======================================================================
+     Principe: Chaque réponse fait avancer le candidat vers l'inscription
+
+     Structure:
+     1. Salutation personnalisée
+     2. Réponse à l'intention (ce que le candidat demande)
+     3. Statut actuel du dossier
+     4. Action requise pour avancer
+     5. Ressources (e-learning, vérifier spams)
+     6. Signature
+     ======================================================================= -->
+
+{{> salutation_personnalisee}}
+
+<!-- =====================================================================
+     SECTION 1: RÉPONDRE À L'INTENTION DU CANDIDAT
+     ===================================================================== -->
+
+{{#if intention_statut_dossier}}
+{{> partials/intentions/statut_dossier}}
+{{/if}}
+
+{{#if intention_demande_date}}
+{{> partials/intentions/demande_date}}
+{{/if}}
+
+{{#if intention_demande_identifiants}}
+{{> partials/intentions/demande_identifiants}}
+{{/if}}
+
+{{#if intention_confirmation_session}}
+{{> partials/intentions/confirmation_session}}
+{{/if}}
+
+{{#if intention_demande_convocation}}
+{{> partials/intentions/demande_convocation}}
+{{/if}}
+
+{{#if intention_demande_elearning}}
+{{> partials/intentions/demande_elearning}}
+{{/if}}
+
+{{#if intention_report_date}}
+{{> partials/intentions/report_date}}
+{{/if}}
+
+{{#if intention_probleme_documents}}
+{{> partials/intentions/probleme_documents}}
+{{/if}}
+
+<!-- =====================================================================
+     SECTION 2: STATUT ACTUEL DU DOSSIER
+     (Toujours affiché pour que le candidat sache où il en est)
+     ===================================================================== -->
+
+{{#if show_statut_section}}
+<b>Statut de votre dossier</b><br>
+<br>
+{{#if evalbox_dossier_cree}}
+{{> partials/statuts/dossier_cree}}
+{{/if}}
+{{#if evalbox_dossier_synchronise}}
+{{> partials/statuts/dossier_synchronise}}
+{{/if}}
+{{#if evalbox_pret_a_payer}}
+{{> partials/statuts/pret_a_payer}}
+{{/if}}
+{{#if evalbox_valide_cma}}
+{{> partials/statuts/valide_cma}}
+{{/if}}
+{{#if evalbox_refus_cma}}
+{{> partials/statuts/refus_cma}}
+{{/if}}
+{{#if evalbox_convoc_recue}}
+{{> partials/statuts/convoc_recue}}
+{{/if}}
+{{#if no_evalbox_status}}
+{{> partials/statuts/en_attente}}
+{{/if}}
+<br>
+{{/if}}
+
+<!-- =====================================================================
+     SECTION 3: ACTION REQUISE POUR AVANCER
+     (Ce que le candidat doit faire pour progresser)
+     ===================================================================== -->
+
+{{#if has_required_action}}
+<b style="color: #d35400;">Prochaine étape pour avancer</b><br>
+<br>
+{{#if action_passer_test}}
+{{> partials/actions/passer_test}}
+{{/if}}
+{{#if action_envoyer_documents}}
+{{> partials/actions/envoyer_documents}}
+{{/if}}
+{{#if action_completer_dossier}}
+{{> partials/actions/completer_dossier}}
+{{/if}}
+{{#if action_choisir_date}}
+{{> partials/actions/choisir_date}}
+{{/if}}
+{{#if action_choisir_session}}
+{{> partials/actions/choisir_session}}
+{{/if}}
+{{#if action_surveiller_paiement}}
+{{> partials/actions/surveiller_paiement}}
+{{/if}}
+{{#if action_attendre_convocation}}
+{{> partials/actions/attendre_convocation}}
+{{/if}}
+{{#if action_preparer_examen}}
+{{> partials/actions/preparer_examen}}
+{{/if}}
+{{#if action_corriger_documents}}
+{{> partials/actions/corriger_documents}}
+{{/if}}
+{{#if action_contacter_uber}}
+{{> partials/actions/contacter_uber}}
+{{/if}}
+<br>
+{{/if}}
+
+<!-- =====================================================================
+     SECTION 4: INFORMATIONS COMPLÉMENTAIRES
+     (Dates, sessions si pertinent)
+     ===================================================================== -->
+
+{{#if show_dates_section}}
+{{#if has_next_dates}}
+<b>Prochaines dates d'examen disponibles</b><br>
+<br>
+{{#each next_dates}}
+{{#if this.is_first_of_dept}}
+<b>CMA {{this.Departement}}</b><br>
+{{/if}}
+&nbsp;&nbsp;→ <b>{{this.date_examen_formatted}}</b> (clôture : {{this.date_cloture_formatted}})<br>
+{{/each}}
+<br>
+{{/if}}
+{{/if}}
+
+{{#if show_sessions_section}}
+{{#if has_sessions_proposees}}
+<b>Sessions de formation disponibles</b><br>
+<br>
+{{#each sessions_proposees}}
+{{#if this.is_first_of_exam}}
+Pour l'examen du {{this.date_examen_formatted}} :<br>
+{{/if}}
+{{#if this.is_jour}}
+&nbsp;&nbsp;→ <b>Cours du jour</b> : du {{this.date_debut}} au {{this.date_fin}} ({{this.horaires}})<br>
+{{/if}}
+{{#if this.is_soir}}
+&nbsp;&nbsp;→ <b>Cours du soir</b> : du {{this.date_debut}} au {{this.date_fin}} ({{this.horaires}})<br>
+{{/if}}
+{{/each}}
+<br>
+{{/if}}
+{{/if}}
+
+<!-- =====================================================================
+     SECTION 5: RESSOURCES
+     ===================================================================== -->
+
+{{> acces_elearning_rappel}}
+{{> verifier_spams}}
+{{> signature}}

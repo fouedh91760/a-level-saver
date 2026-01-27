@@ -1,0 +1,18 @@
+<!-- Partial: Réponse à l'intention DEMANDE_CONVOCATION -->
+<b>Concernant votre convocation</b><br>
+<br>
+{{#if evalbox_convoc_recue}}
+Votre convocation est disponible ! Vous pouvez la télécharger sur <a href="https://www.exament3p.fr">exament3p.fr</a> avec vos identifiants.<br>
+<br>
+<i>Pensez à l'imprimer pour le jour de l'examen.</i><br>
+{{else}}
+{{#if evalbox_valide_cma}}
+Votre dossier est validé. La convocation est généralement envoyée environ 10 jours avant l'examen.<br>
+{{#if date_convocation}}
+→ Attendue aux alentours du <b>{{date_convocation}}</b><br>
+{{/if}}
+{{else}}
+La convocation sera disponible une fois votre dossier validé par la CMA.<br>
+{{/if}}
+{{/if}}
+<br>

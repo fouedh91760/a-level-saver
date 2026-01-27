@@ -648,6 +648,277 @@ Le bloc `empathie_force_majeure.md` adapte le message selon `force_majeure_type`
 - `accident` → Soutien et compréhension
 - `childcare` → Compréhension de la situation familiale
 
+---
+
+## Architecture Modulaire des Templates (v2.0)
+
+### Principe Fondamental
+
+**Objectif : Chaque réponse fait AVANCER le candidat vers l'inscription finale à l'examen.**
+
+L'architecture modulaire garantit que TOUTE réponse :
+1. **Répond à la question** (intention du candidat)
+2. **Affiche le statut actuel** (où en est le dossier)
+3. **Pousse vers l'action suivante** (ce que le candidat doit faire maintenant)
+
+### Structure des Dossiers
+
+```
+states/templates/
+├── response_master.html          # Template master universel
+├── base/                         # Templates spécifiques par état (legacy)
+│   ├── uber_cas_a.html
+│   ├── dossier_synchronise.html
+│   └── ...
+└── partials/                     # Blocs modulaires réutilisables
+    ├── intentions/               # Réponses aux intentions (7 fichiers)
+    │   ├── statut_dossier.html
+    │   ├── demande_date.html
+    │   ├── demande_identifiants.html
+    │   ├── confirmation_session.html
+    │   ├── demande_convocation.html
+    │   ├── demande_elearning.html
+    │   ├── report_date.html
+    │   └── probleme_documents.html
+    ├── statuts/                  # Affichage du statut Evalbox (7 fichiers)
+    │   ├── dossier_cree.html
+    │   ├── dossier_synchronise.html
+    │   ├── pret_a_payer.html
+    │   ├── valide_cma.html
+    │   ├── refus_cma.html
+    │   ├── convoc_recue.html
+    │   └── en_attente.html
+    └── actions/                  # Actions requises pour avancer (10 fichiers)
+        ├── passer_test.html
+        ├── envoyer_documents.html
+        ├── completer_dossier.html
+        ├── choisir_date.html
+        ├── choisir_session.html
+        ├── surveiller_paiement.html
+        ├── attendre_convocation.html
+        ├── preparer_examen.html
+        ├── corriger_documents.html
+        └── contacter_uber.html
+```
+
+### Template Master (`response_master.html`)
+
+Le template master combine dynamiquement les partials selon le contexte :
+
+```html
+{{> salutation_personnalisee}}
+
+<!-- SECTION 1: RÉPONDRE À L'INTENTION -->
+{{#if intention_statut_dossier}}
+{{> partials/intentions/statut_dossier}}
+{{/if}}
+{{#if intention_demande_date}}
+{{> partials/intentions/demande_date}}
+{{/if}}
+<!-- ... autres intentions ... -->
+
+<!-- SECTION 2: STATUT ACTUEL DU DOSSIER -->
+{{#if show_statut_section}}
+<b>Statut de votre dossier</b><br>
+{{#if evalbox_dossier_synchronise}}
+{{> partials/statuts/dossier_synchronise}}
+{{/if}}
+<!-- ... autres statuts ... -->
+{{/if}}
+
+<!-- SECTION 3: ACTION REQUISE POUR AVANCER -->
+{{#if has_required_action}}
+<b style="color: #d35400;">Prochaine étape pour avancer</b><br>
+{{#if action_passer_test}}
+{{> partials/actions/passer_test}}
+{{/if}}
+<!-- ... autres actions ... -->
+{{/if}}
+
+<!-- SECTION 4: DATES/SESSIONS SI PERTINENT -->
+{{#if show_dates_section}}
+{{#each next_dates}}
+...
+{{/each}}
+{{/if}}
+
+{{> acces_elearning_rappel}}
+{{> verifier_spams}}
+{{> signature}}
+```
+
+### Context Flags pour Intentions
+
+Les context flags sont injectés par la matrice État×Intention et activent les sections appropriées :
+
+```yaml
+# Dans state_intention_matrix.yaml
+"UBER_TEST_MISSING:STATUT_DOSSIER":
+  template: "response_master.html"  # ou template hybride
+  context_flags:
+    intention_statut_dossier: true
+
+"UBER_TEST_MISSING:DEMANDE_DATE_EXAMEN":
+  template: "response_master.html"
+  context_flags:
+    intention_demande_date: true
+```
+
+**Flags d'intention disponibles :**
+- `intention_statut_dossier` - Question sur l'avancement
+- `intention_demande_date` - Demande de dates d'examen
+- `intention_demande_identifiants` - Demande d'identifiants ExamT3P
+- `intention_confirmation_session` - Choix de session jour/soir
+- `intention_demande_convocation` - Où est ma convocation ?
+- `intention_demande_elearning` - Accès e-learning
+- `intention_report_date` - Demande de report
+- `intention_probleme_documents` - Problème avec les documents
+
+### Détermination Automatique des Actions
+
+Le `TemplateEngine._determine_required_actions()` calcule automatiquement les actions requises :
+
+```python
+def _determine_required_actions(self, context, evalbox) -> Dict[str, bool]:
+    """Détermine les actions requises selon l'état du candidat."""
+    actions = {
+        'has_required_action': False,
+        'action_passer_test': False,
+        'action_envoyer_documents': False,
+        'action_completer_dossier': False,
+        'action_choisir_date': False,
+        'action_choisir_session': False,
+        'action_surveiller_paiement': False,
+        'action_attendre_convocation': False,
+        'action_preparer_examen': False,
+        'action_corriger_documents': False,
+        'action_contacter_uber': False,
+    }
+
+    # Logique Uber (prioritaire)
+    if is_uber_20:
+        if not date_dossier_recu:
+            actions['action_envoyer_documents'] = True  # CAS A
+        elif not date_test_selection:
+            actions['action_passer_test'] = True        # CAS B
+        elif not compte_uber:
+            actions['action_contacter_uber'] = True     # CAS D
+        elif not eligible_uber:
+            actions['action_contacter_uber'] = True     # CAS E
+
+    # Logique Evalbox
+    if evalbox == 'Dossier crée':
+        actions['action_completer_dossier'] = True
+    elif evalbox == 'Dossier Synchronisé':
+        actions['action_surveiller_paiement'] = True
+    elif evalbox == 'VALIDE CMA':
+        actions['action_attendre_convocation'] = True
+    elif evalbox == 'Refusé CMA':
+        actions['action_corriger_documents'] = True
+    elif evalbox == 'Convoc CMA reçue':
+        actions['action_preparer_examen'] = True
+    # ...
+
+    return actions
+```
+
+### Chargement des Partials avec Chemin
+
+Le `TemplateEngine` supporte les chemins dans les partials :
+
+```html
+{{> partials/intentions/statut_dossier}}  <!-- Chemin relatif à states/templates/ -->
+{{> signature}}                            <!-- Bloc classique depuis states/blocks/ -->
+```
+
+**Méthode `_load_partial_path()` :**
+```python
+def _load_partial_path(self, partial_path: str) -> str:
+    """Charge un partial depuis un chemin relatif au dossier templates."""
+    templates_root = self.states_path / "templates"
+    full_path = templates_root / partial_path
+    # Essaie .html puis .md puis sans extension
+    for ext in ['.html', '.md', '']:
+        file_path = full_path.parent / (full_path.name + ext)
+        if file_path.exists():
+            return self._clean_block_content(file_path.read_text())
+    return ''
+```
+
+### Exemple de Rendu Complet
+
+Pour un candidat Uber CAS B qui demande son statut :
+- État : `UBER_TEST_MISSING`
+- Intention : `STATUT_DOSSIER`
+- Context flags : `intention_statut_dossier: true`
+
+**Résultat généré :**
+```html
+Bonjour Thomas,
+
+<b>Concernant l'avancement de votre dossier</b>
+Votre dossier est en attente de traitement...
+
+<b>Statut de votre dossier</b>
+Votre dossier est en attente de traitement...
+
+<b style="color: #d35400;">Prochaine étape pour avancer</b>
+Pour finaliser votre inscription, vous devez <b>passer le test de sélection</b>.
+→ <a href="...">Passez le test maintenant</a>
+Ce test est rapide (environ 10 minutes)...
+
+<b>Prochaines dates d'examen disponibles</b>
+CMA 75
+  → 31/03/2026 (clôture : 15/03/2026)
+
+Accès à votre formation e-learning...
+Pensez à vérifier vos spams...
+
+Bien cordialement,
+L'équipe CAB Formations
+```
+
+### Migration Progressive
+
+L'architecture permet une migration progressive :
+1. **Templates legacy** (`states/templates/base/*.html`) continuent de fonctionner
+2. **Nouveaux templates** peuvent utiliser `response_master.html` avec context flags
+3. **Templates hybrides** (comme `uber_test_missing_hybrid.html`) combinent les deux approches
+
+### Ajout d'une Nouvelle Intention
+
+1. Créer le partial `states/templates/partials/intentions/nouvelle_intention.html`
+2. Ajouter le flag dans `_prepare_placeholder_data()` :
+   ```python
+   'intention_nouvelle_intention': context.get('intention_nouvelle_intention', False),
+   ```
+3. Ajouter la section dans `response_master.html` :
+   ```html
+   {{#if intention_nouvelle_intention}}
+   {{> partials/intentions/nouvelle_intention}}
+   {{/if}}
+   ```
+4. Ajouter les entrées dans la matrice pour chaque état concerné
+
+### Ajout d'une Nouvelle Action
+
+1. Créer le partial `states/templates/partials/actions/nouvelle_action.html`
+2. Ajouter le flag dans `_determine_required_actions()` :
+   ```python
+   'action_nouvelle_action': False,
+   # ... logique de détection
+   if condition_specifique:
+       actions['action_nouvelle_action'] = True
+   ```
+3. Ajouter la section dans `response_master.html` :
+   ```html
+   {{#if action_nouvelle_action}}
+   {{> partials/actions/nouvelle_action}}
+   {{/if}}
+   ```
+
+---
+
 ### Test de Sélection Uber (CAS B → ELIGIBLE)
 
 **`Date_test_selection` est un champ interdit de modification** : mis à jour par webhook e-learning, pas par le workflow.

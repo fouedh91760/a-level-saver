@@ -1,0 +1,15 @@
+<!-- Partial: Réponse à l'intention REPORT_DATE -->
+<b>Concernant votre demande de changement de date</b><br>
+<br>
+{{#if can_modify_exam_date}}
+Nous pouvons effectuer le changement de date. Merci de nous indiquer la nouvelle date souhaitée parmi les options disponibles.<br>
+{{else}}
+{{#if mentions_force_majeure}}
+Nous comprenons votre situation. Pour un report après la date de clôture, un justificatif de force majeure est nécessaire (certificat médical, etc.).<br>
+Merci de nous l'envoyer par email et nous transmettrons votre demande à la CMA.<br>
+{{else}}
+Malheureusement, la date de clôture des inscriptions est passée pour votre session actuelle.<br>
+Un changement n'est possible qu'avec un justificatif de force majeure (certificat médical, etc.).<br>
+{{/if}}
+{{/if}}
+<br>

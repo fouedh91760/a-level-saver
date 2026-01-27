@@ -292,15 +292,22 @@ class TemplateEngine:
         if template_path in self.templates_cache:
             return self.templates_cache[template_path]
 
-        # Construire le chemin complet
+        # Construire le chemin complet - ordre de recherche:
+        # 1. Chemin relatif depuis states_path (ex: templates/base/xxx.html)
+        # 2. Directement dans templates/ (ex: response_master.html)
+        # 3. Dans templates/base/ (fallback)
         full_path = self.states_path / template_path
 
         if not full_path.exists():
-            # Essayer avec le path direct
-            full_path = self.templates_base_path / Path(template_path).name
+            # Essayer dans states/templates/ directement
+            templates_root = self.states_path / "templates"
+            full_path = templates_root / Path(template_path).name
             if not full_path.exists():
-                logger.warning(f"Template non trouvé: {template_path}")
-                return None
+                # Essayer dans templates/base/
+                full_path = self.templates_base_path / Path(template_path).name
+                if not full_path.exists():
+                    logger.warning(f"Template non trouvé: {template_path}")
+                    return None
 
         try:
             content = full_path.read_text(encoding='utf-8')
@@ -392,8 +399,9 @@ class TemplateEngine:
         """Résout les {{> bloc_name}} en chargeant et injectant les blocs."""
         result = template
 
-        # Pattern pour {{> bloc_name}}
-        pattern = r'\{\{>\s*(\w+)\s*\}\}'
+        # Pattern pour {{> bloc_name}} ou {{> path/to/partial}}
+        # Supporte les chemins avec / comme partials/intentions/statut_dossier
+        pattern = r'\{\{>\s*([\w/]+)\s*\}\}'
 
         while True:
             match = re.search(pattern, result)
@@ -401,7 +409,12 @@ class TemplateEngine:
                 break
 
             block_name = match.group(1)
-            block_content = self._load_block(block_name)
+
+            # Si c'est un chemin (contient /), charger directement depuis templates/
+            if '/' in block_name:
+                block_content = self._load_partial_path(block_name)
+            else:
+                block_content = self._load_block(block_name)
 
             if block_content:
                 # Résoudre récursivement les partials dans le bloc
@@ -411,13 +424,35 @@ class TemplateEngine:
                 block_content = self._resolve_unless_blocks(block_content, context)
 
                 result = result[:match.start()] + block_content + result[match.end():]
-                blocks_included.append(block_name)
+                blocks_included.append(block_name.split('/')[-1])  # Juste le nom pour le log
             else:
                 # Bloc non trouvé, supprimer le placeholder
                 logger.warning(f"Bloc {block_name} non trouvé, suppression du placeholder")
                 result = result[:match.start()] + result[match.end():]
 
         return result
+
+    def _load_partial_path(self, partial_path: str) -> str:
+        """Charge un partial depuis un chemin relatif au dossier templates."""
+        # Construire le chemin complet - utiliser states_path / templates
+        templates_root = self.states_path / "templates"
+        full_path = templates_root / partial_path
+        extensions = ['.html', '.md', '']
+
+        for ext in extensions:
+            file_path = full_path.parent / (full_path.name + ext)
+            if file_path.exists():
+                try:
+                    with open(file_path, 'r', encoding='utf-8') as f:
+                        content = f.read()
+                        # Nettoyer le contenu comme pour les autres blocs
+                        return self._clean_block_content(content)
+                except Exception as e:
+                    logger.warning(f"Erreur lecture partial {file_path}: {e}")
+                    return ''
+
+        logger.warning(f"Partial non trouvé: {partial_path} (cherché dans {templates_root})")
+        return ''
 
     def _resolve_if_blocks(self, template: str, context: Dict[str, Any]) -> str:
         """Résout les {{#if condition}}...{{else}}...{{/if}} avec support des blocs imbriqués."""
@@ -771,12 +806,102 @@ class TemplateEngine:
             'intention_confirmation_session': context.get('intention_confirmation_session', False),
             'intention_demande_identifiants': context.get('intention_demande_identifiants', False),
             'intention_demande_convocation': context.get('intention_demande_convocation', False),
+            'intention_demande_elearning': context.get('intention_demande_elearning', False),
+            'intention_report_date': context.get('intention_report_date', False),
+            'intention_probleme_documents': context.get('intention_probleme_documents', False),
 
             # Données supplémentaires pour templates hybrides
             'has_next_dates': bool(context.get('next_dates', [])),
             'next_dates': self._format_next_dates_for_template(context.get('next_dates', [])),
             'preference_horaire_text': 'cours du soir' if self._get_session_preference(context) == 'soir' else 'cours du jour',
+
+            # Flags pour le template master (architecture modulaire)
+            # Sections à afficher
+            'show_statut_section': True,  # Toujours afficher le statut
+            'show_dates_section': not date_examen and bool(context.get('next_dates', [])),
+            'show_sessions_section': date_examen and not deal_data.get('Session') and bool(self._flatten_session_options_filtered(context)),
+
+            # Actions requises (déterminées par l'état)
+            **self._determine_required_actions(context, evalbox),
         }
+
+    def _determine_required_actions(self, context: Dict[str, Any], evalbox: str) -> Dict[str, bool]:
+        """Détermine les actions requises selon l'état du candidat."""
+        actions = {
+            'has_required_action': False,
+            'action_passer_test': False,
+            'action_envoyer_documents': False,
+            'action_completer_dossier': False,
+            'action_choisir_date': False,
+            'action_choisir_session': False,
+            'action_surveiller_paiement': False,
+            'action_attendre_convocation': False,
+            'action_preparer_examen': False,
+            'action_corriger_documents': False,
+            'action_contacter_uber': False,
+        }
+
+        # Déterminer l'état Uber
+        is_uber_20 = context.get('is_uber_20_deal', False)
+        date_dossier_recu = context.get('date_dossier_recu')
+        date_test_selection = context.get('date_test_selection')
+        compte_uber = context.get('compte_uber', True)
+        eligible_uber = context.get('eligible_uber', True)
+
+        # États bloquants Uber
+        if is_uber_20:
+            if not date_dossier_recu:
+                # CAS A: Documents non envoyés
+                actions['action_envoyer_documents'] = True
+                actions['has_required_action'] = True
+                return actions
+            if not date_test_selection:
+                # CAS B: Test non passé
+                actions['action_passer_test'] = True
+                actions['has_required_action'] = True
+                return actions
+            if not compte_uber:
+                # CAS D: Compte Uber non vérifié
+                actions['action_contacter_uber'] = True
+                actions['has_required_action'] = True
+                return actions
+            if not eligible_uber:
+                # CAS E: Non éligible
+                actions['action_contacter_uber'] = True
+                actions['has_required_action'] = True
+                return actions
+
+        # Actions selon Evalbox
+        if evalbox == 'Dossier crée':
+            actions['action_completer_dossier'] = True
+            actions['has_required_action'] = True
+        elif evalbox == 'Dossier Synchronisé':
+            actions['action_surveiller_paiement'] = True
+            actions['has_required_action'] = True
+        elif evalbox in ['Pret a payer', 'Pret a payer par cheque']:
+            actions['action_surveiller_paiement'] = True
+            actions['has_required_action'] = True
+        elif evalbox == 'VALIDE CMA':
+            actions['action_attendre_convocation'] = True
+            actions['has_required_action'] = True
+        elif evalbox == 'Refusé CMA':
+            actions['action_corriger_documents'] = True
+            actions['has_required_action'] = True
+        elif evalbox == 'Convoc CMA reçue':
+            actions['action_preparer_examen'] = True
+            actions['has_required_action'] = True
+        else:
+            # Pas de statut Evalbox - vérifier si date/session manquantes
+            date_examen = context.get('date_examen')
+            session = context.get('deal_data', {}).get('Session')
+            if not date_examen:
+                actions['action_choisir_date'] = True
+                actions['has_required_action'] = True
+            elif not session:
+                actions['action_choisir_session'] = True
+                actions['has_required_action'] = True
+
+        return actions
 
     def _format_next_dates_for_template(self, dates: List[Dict]) -> List[Dict]:
         """Formate les next_dates pour utilisation dans les templates {{#each}}."""
