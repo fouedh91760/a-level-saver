@@ -18,14 +18,28 @@ Sans cet accès, nous ne pouvons pas :
 <!-- BLOCK: alternative_autonomie -->
 **Vous préférez gérer vous-même votre inscription ?**
 
-C'est tout à fait possible ! Voici la procédure :
+C'est tout à fait possible ! Voici la procédure à suivre **dans cet ordre** :
 
-1. Connectez-vous sur **exament3p.fr** avec vos identifiants
-2. Vérifiez que tous vos documents ont été validés
-3. Procédez au paiement des frais d'examen (**241€**)
-4. Une fois le paiement effectué, confirmez-nous par email
+**Étape 1 - Inscription sur ExamT3P**
+1. Créez votre compte sur **exament3p.fr**
+2. Uploadez tous vos documents (pièce d'identité, justificatif de domicile, etc.)
+3. Effectuez le paiement des frais d'examen (**241€**)
 
-Dans ce cas, les 20€ déjà réglés via le partenariat Uber couvriront uniquement la formation e-learning.
+**Étape 2 - Informez-nous immédiatement après paiement**
+→ Transmettez-nous la **date d'examen** et le **département** choisis
+*(Cette information est essentielle pour vous positionner sur la session de formation visio au bon timing)*
+
+**Étape 3 - Validation CMA**
+- La CMA va examiner votre dossier
+- Si des pièces sont refusées : effectuez les corrections nécessaires **avant la date de clôture**
+- Informez-nous dès que votre dossier est **validé**
+
+**Étape 4 - Convocation**
+- Informez-nous dès réception de votre **convocation**
+
+**Ce que comprend votre offre à 20€ :**
+- Accès complet à la plateforme **e-learning**
+- **Formation en visioconférence** avec formateur (cours du jour OU cours du soir)
 <!-- /BLOCK -->
 
 Quelle option préférez-vous ?
