@@ -75,6 +75,7 @@ Quand l'action est GO, tu dois aussi identifier l'INTENTION PRINCIPALE du candid
 INTENTIONS POSSIBLES:
 - REPORT_DATE: Changement/report de date d'examen (changement de date, décaler, reporter, repousser, nouvelle date)
 - DEMANDE_IDENTIFIANTS: Demande d'identifiants ExamT3P (mot de passe oublié, identifiants, connexion)
+- REFUS_PARTAGE_CREDENTIALS: Refus de partager ses identifiants pour raison de sécurité (ne veut pas donner mot de passe, sécurité, données personnelles, confidentialité, RGPD)
 - STATUT_DOSSIER: Question sur l'avancement du dossier (où en est mon dossier, suivi, statut)
 - CONFIRMATION_SESSION: Choix/confirmation de session de formation (je choisis, je confirme, option 1/2)
 - CONFIRMATION_PAIEMENT: Question sur le paiement (payé, paiement effectué, facture)
@@ -106,7 +107,7 @@ Réponds UNIQUEMENT en JSON valide:
     "target_department": "DOC" | "Refus CMA" | "Contact" | "Comptabilité" | null,
     "reason": "explication courte",
     "confidence": 0.0-1.0,
-    "detected_intent": "REPORT_DATE" | "DEMANDE_IDENTIFIANTS" | "STATUT_DOSSIER" | "CONFIRMATION_SESSION" | "CONFIRMATION_PAIEMENT" | "DOCUMENT_QUESTION" | "RESULTAT_EXAMEN" | "QUESTION_GENERALE" | null,
+    "detected_intent": "REPORT_DATE" | "DEMANDE_IDENTIFIANTS" | "REFUS_PARTAGE_CREDENTIALS" | "STATUT_DOSSIER" | "CONFIRMATION_SESSION" | "CONFIRMATION_PAIEMENT" | "DOCUMENT_QUESTION" | "RESULTAT_EXAMEN" | "QUESTION_GENERALE" | null,
     "intent_context": {
         "is_urgent": true | false,
         "mentions_force_majeure": true | false,

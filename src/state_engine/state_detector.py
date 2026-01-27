@@ -368,7 +368,9 @@ class StateDetector:
         method = detection.get('method', '')
 
         # Dispatch selon la méthode de détection
-        if method == 'triage_agent':
+        if method == 'intent':
+            return self._match_intent_state(state_name, detection, context)
+        elif method == 'triage_agent':
             return self._match_triage_state(state_name, detection, context)
         elif method == 'deal_linking_agent':
             return self._match_linking_state(state_name, detection, context)
@@ -390,6 +392,20 @@ class StateDetector:
             return self._match_workflow_state(state_name, detection, context)
         elif method == 'fallback':
             return True  # État par défaut
+
+        return False
+
+    def _match_intent_state(
+        self, state_name: str, detection: Dict, context: Dict
+    ) -> bool:
+        """Match les états basés sur l'intention détectée par le Triage Agent."""
+        condition = detection.get('condition', '')
+
+        if 'detected_intent' in condition:
+            # Format: "detected_intent == 'REFUS_PARTAGE_CREDENTIALS'"
+            expected_intent = condition.split('==')[1].strip().strip("'\"")
+            actual_intent = context.get('detected_intent')
+            return actual_intent == expected_intent
 
         return False
 

@@ -221,6 +221,20 @@ class ResponseValidator:
                 r'recherchez dans votre bo[îi]te mail',
                 r'noreply@intras\.fr',
             ],
+            # Blocs pour credentials_refused_security
+            'comprendre_besoin_identifiants': [
+                r'pourquoi.*besoin.*identifiants',
+                r'chambre des m[ée]tiers',
+                r'cma',
+                r'paiement des frais',
+                r'en votre nom',
+            ],
+            'alternative_autonomie': [
+                r'vous pr[ée]f[ée]rez.*vous-m[êe]me',
+                r'c\'est tout [àa] fait possible',
+                r'voici la proc[ée]dure',
+                r'241.*€',
+            ],
         }
 
         for block in required_blocks:

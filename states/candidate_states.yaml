@@ -157,6 +157,38 @@ states:
 # =============================================================================
 
   # ---------------------------------------------------------------------------
+  # A0: REFUS PARTAGE CREDENTIALS (Préoccupation sécurité)
+  # ---------------------------------------------------------------------------
+  CREDENTIALS_REFUSED_SECURITY:
+    id: "A0"
+    priority: 95  # Plus haute priorité que CREDENTIALS_INVALID
+    description: "Le candidat refuse de partager ses identifiants pour raison de sécurité"
+    category: "analysis"
+
+    detection:
+      method: "intent"
+      condition: "detected_intent == 'REFUS_PARTAGE_CREDENTIALS'"
+
+    workflow:
+      action: "RESPOND"
+      skip_date_analysis: true
+      skip_session_analysis: true
+
+    response:
+      template: "credentials_refused_security.md"
+      blocks_required:
+        - "salutation"
+        - "comprendre_besoin_identifiants"
+        - "alternative_autonomie"
+        - "signature"
+      blocks_forbidden:
+        - "demande_identifiants_directe"  # NE PAS redemander les identifiants !
+      ai_section: "personnalisation"
+      ai_instructions: "Valider la préoccupation sécurité du candidat. Être rassurant et compréhensif. 1-2 phrases max."
+
+    crm_updates: null
+
+  # ---------------------------------------------------------------------------
   # A1: IDENTIFIANTS INVALIDES
   # ---------------------------------------------------------------------------
   CREDENTIALS_INVALID:
