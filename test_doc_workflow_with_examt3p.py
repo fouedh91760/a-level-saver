@@ -4,7 +4,7 @@ Script de test pour le workflow DOC complet avec validation ExamT3P et Date Exam
 Ce script teste le workflow complet incluant :
 1. AGENT TRIEUR
 2. AGENT ANALYSTE (incluant validation ExamT3P + Date Examen VTC)
-3. AGENT RÉDACTEUR
+3. AGENT RÉDACTEUR (State Engine ou Legacy mode)
 4. CRM Note
 5. Ticket Update
 6. Deal Update
@@ -12,10 +12,14 @@ Ce script teste le workflow complet incluant :
 8. Final Validation
 
 Usage:
-    python test_doc_workflow_with_examt3p.py <ticket_id>
+    python test_doc_workflow_with_examt3p.py <ticket_id> [--legacy]
 
-Exemple:
+Exemples:
+    # Mode State Engine (défaut - déterministe)
     python test_doc_workflow_with_examt3p.py 198709000447309732
+
+    # Mode Legacy (IA avec ResponseGeneratorAgent)
+    python test_doc_workflow_with_examt3p.py 198709000447309732 --legacy
 """
 import sys
 import logging
@@ -38,17 +42,18 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-def test_doc_workflow(ticket_id: str):
+def test_doc_workflow(ticket_id: str, use_state_engine: bool = True):
     """Test le workflow DOC complet avec validation ExamT3P."""
     print("\n" + "=" * 80)
     print("🧪 TEST WORKFLOW DOC COMPLET (avec validation ExamT3P)")
     print("=" * 80)
     print(f"Ticket ID: {ticket_id}")
+    print(f"Mode: {'🎯 STATE ENGINE (déterministe)' if use_state_engine else '🤖 LEGACY (IA)'}")
     print()
 
     from src.workflows.doc_ticket_workflow import DOCTicketWorkflow
 
-    workflow = DOCTicketWorkflow()
+    workflow = DOCTicketWorkflow(use_state_engine=use_state_engine)
 
     try:
         print("\n🚀 Lancement du workflow complet...\n")
@@ -179,8 +184,42 @@ def test_doc_workflow(ticket_id: str):
         print("-" * 80)
         response = result.get('response_result', {})
         if response:
-            print(f"   Scénarios détectés: {', '.join(response.get('detected_scenarios', []))}")
+            # State Engine metadata
+            state_engine_info = response.get('state_engine', {})
+            if state_engine_info:
+                print(f"   🎯 STATE ENGINE:")
+                print(f"      État détecté: {state_engine_info.get('state_id')} - {state_engine_info.get('state_name')}")
+                print(f"      Priorité: {state_engine_info.get('priority')}")
+                ctx = state_engine_info.get('context', {})
+                if ctx.get('evalbox'):
+                    print(f"      Evalbox: {ctx.get('evalbox')}")
+                if ctx.get('uber_case'):
+                    print(f"      Cas Uber: {ctx.get('uber_case')}")
+                if ctx.get('date_case'):
+                    print(f"      Cas Date: {ctx.get('date_case')}")
+                if ctx.get('detected_intent'):
+                    print(f"      Intention: {ctx.get('detected_intent')}")
+                if state_engine_info.get('crm_updates_blocked'):
+                    print(f"      🔒 Mises à jour bloquées: {list(state_engine_info['crm_updates_blocked'].keys())}")
+            else:
+                print(f"   🤖 LEGACY MODE (ResponseGeneratorAgent)")
+
+            print(f"\n   Scénarios détectés: {', '.join(response.get('detected_scenarios', []))}")
             print(f"   Mise à jour CRM requise: {response.get('requires_crm_update', False)}")
+            if response.get('crm_updates'):
+                print(f"   Mises à jour CRM: {response.get('crm_updates')}")
+
+            # Validation info
+            validation = response.get('validation', {})
+            if validation:
+                for scenario_id, val_info in validation.items():
+                    if not val_info.get('compliant', True):
+                        print(f"\n   ⚠️ VALIDATION ÉCHOUÉE pour {scenario_id}:")
+                        for error in val_info.get('errors', []):
+                            print(f"      - {error}")
+                    if val_info.get('forbidden_terms_found'):
+                        print(f"   🚫 Termes interdits trouvés: {val_info['forbidden_terms_found']}")
+
             if response.get('response_text'):
                 print(f"\n   📧 RÉPONSE COMPLÈTE:")
                 print("   " + "=" * 76)
@@ -274,7 +313,13 @@ def main():
 
     ticket_id = sys.argv[1]
 
-    result = test_doc_workflow(ticket_id)
+    # Check for --legacy flag
+    use_state_engine = True
+    if '--legacy' in sys.argv:
+        use_state_engine = False
+        print("⚠️  Mode LEGACY activé (ResponseGeneratorAgent avec IA)")
+
+    result = test_doc_workflow(ticket_id, use_state_engine=use_state_engine)
 
     if result:
         print("\n✅ Test terminé avec succès")
