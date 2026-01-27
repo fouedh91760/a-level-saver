@@ -210,18 +210,17 @@ states:
       skip_session_analysis: true
 
     response:
-      template: "credentials_invalid.md"
+      template: "credentials_invalid.html"
       blocks_required:
         - "salutation"
-        - "explication_probleme_identifiants"
-        - "instructions_recuperation"
-        - "warning_spam"
         - "signature"
       blocks_forbidden:
         - "dates_examen"
         - "sessions_formation"
-      ai_section: "personnalisation"
-      ai_instructions: "Phrase empathique sur le problème d'accès. 1 phrase max."
+      ai_section: null
+      # Note: Le template contient une logique conditionnelle:
+      # - Si identifiant_examt3p existe → affiche les identifiants avec conseils dépannage
+      # - Sinon → demande de retrouver/fournir les identifiants
 
     crm_updates: null
 

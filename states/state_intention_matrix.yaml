@@ -193,10 +193,22 @@ intentions:
       - "ne souhaite pas partager"
       - "refuse de donner"
       - "sécurité"
-      - "données personnelles"
       - "confidentialité"
-      - "RGPD"
     priority: 95
+
+  DEMANDE_SUPPRESSION_DONNEES:
+    id: "I37"
+    description: "Demande RGPD de suppression de données personnelles"
+    triggers:
+      - "suppression"
+      - "supprimer mes données"
+      - "destruction"
+      - "demande destruction"
+      - "droit à l'oubli"
+      - "effacer mes données"
+      - "retirer mes informations"
+    routing: "Contact"
+    priority: 90
 
   # --- Questions documents ---
   DOCUMENT_QUESTION:
@@ -1212,6 +1224,56 @@ matrix:
         value: "{{confirmed_session}}"
     blocks:
       - confirmation_session
+      - prochaines_etapes
+
+  # --- CONFIRMATION_SESSION pour états avec date d'examen ---
+  "DATE_EXAMEN_VIDE:CONFIRMATION_SESSION":
+    template: "confirmation_session.md"
+    crm_update:
+      - field: Session_choisie
+        value: "{{confirmed_session}}"
+    blocks:
+      - confirmation_session
+      - prochaines_dates_examen
+      - prochaines_etapes
+
+  "EXAM_DATE_ASSIGNED_WAITING:CONFIRMATION_SESSION":
+    template: "confirmation_session.md"
+    crm_update:
+      - field: Session_choisie
+        value: "{{confirmed_session}}"
+    blocks:
+      - confirmation_session
+      - prochaines_etapes
+
+  "DATE_FUTURE_DOSSIER_SYNC:CONFIRMATION_SESSION":
+    template: "confirmation_session.md"
+    crm_update:
+      - field: Session_choisie
+        value: "{{confirmed_session}}"
+    blocks:
+      - confirmation_session
+      - statut_dossier_synchronise
+      - prochaines_etapes
+
+  "DATE_FUTURE_VALIDE_CMA:CONFIRMATION_SESSION":
+    template: "confirmation_session.md"
+    crm_update:
+      - field: Session_choisie
+        value: "{{confirmed_session}}"
+    blocks:
+      - confirmation_session
+      - convocation_a_venir
+      - prochaines_etapes
+
+  "PRET_A_PAYER:CONFIRMATION_SESSION":
+    template: "confirmation_session.md"
+    crm_update:
+      - field: Session_choisie
+        value: "{{confirmed_session}}"
+    blocks:
+      - confirmation_session
+      - statut_pret_a_payer
       - prochaines_etapes
 
   # --- RESULTAT × Intentions ---

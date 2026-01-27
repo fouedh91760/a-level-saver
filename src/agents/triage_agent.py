@@ -59,6 +59,7 @@ RÈGLES DE TRIAGE:
    - Demande d'information sur une NOUVELLE formation
    - Questions sur le prix, les modalités d'inscription
    - Pas de dossier en cours (pas de deal)
+   - Demande de suppression de données (RGPD, droit à l'oubli, destruction données)
 
 IMPORTANT:
 - Le mot "document" ne signifie PAS automatiquement Refus CMA
@@ -81,6 +82,7 @@ INTENTIONS POSSIBLES:
 - CONFIRMATION_PAIEMENT: Question sur le paiement (payé, paiement effectué, facture)
 - DOCUMENT_QUESTION: Question sur les documents (document manquant, pièce à fournir)
 - RESULTAT_EXAMEN: Question sur le résultat d'examen (réussi, échoué, admis)
+- DEMANDE_SUPPRESSION_DONNEES: Demande RGPD de suppression/destruction de données personnelles (supprimer, destruction, droit à l'oubli, effacer mes données)
 - QUESTION_GENERALE: Autre question générale
 
 Pour REPORT_DATE, ajoute un contexte supplémentaire:
@@ -114,15 +116,20 @@ Réponds UNIQUEMENT en JSON valide:
     "target_department": "DOC" | "Refus CMA" | "Contact" | "Comptabilité" | null,
     "reason": "explication courte",
     "confidence": 0.0-1.0,
-    "detected_intent": "REPORT_DATE" | "DEMANDE_IDENTIFIANTS" | "REFUS_PARTAGE_CREDENTIALS" | "STATUT_DOSSIER" | "CONFIRMATION_SESSION" | "CONFIRMATION_PAIEMENT" | "DOCUMENT_QUESTION" | "RESULTAT_EXAMEN" | "QUESTION_GENERALE" | null,
+    "detected_intent": "REPORT_DATE" | "DEMANDE_IDENTIFIANTS" | "REFUS_PARTAGE_CREDENTIALS" | "STATUT_DOSSIER" | "CONFIRMATION_SESSION" | "CONFIRMATION_PAIEMENT" | "DOCUMENT_QUESTION" | "RESULTAT_EXAMEN" | "DEMANDE_SUPPRESSION_DONNEES" | "QUESTION_GENERALE" | null,
     "intent_context": {
         "is_urgent": true | false,
         "mentions_force_majeure": true | false,
         "force_majeure_type": "medical" | "death" | "accident" | "childcare" | "other" | null,
         "force_majeure_details": "description courte si force majeure détectée" | null,
-        "wants_earlier_date": true | false
+        "wants_earlier_date": true | false,
+        "session_preference": "jour" | "soir" | null
     }
 }
+
+Pour CONFIRMATION_SESSION, extraire la préférence:
+- "jour" si le candidat mentionne: cours du jour, formation du jour, journée, matin
+- "soir" si le candidat mentionne: cours du soir, formation du soir, soirée, après le travail
 """
 
     def __init__(self):
