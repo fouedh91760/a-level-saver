@@ -1470,15 +1470,27 @@ L'équipe Cab Formations"""
         # ================================================================
         deal_data = analysis_result.get('deal_data', {})
         examt3p_data = analysis_result.get('exament3p_data', {})
+        threads_data = analysis_result.get('threads', [])
+
+        # Build linking_result from analysis data
+        linking_result = {
+            'deal_id': analysis_result.get('deal_id'),
+            'deal': deal_data,
+            'selected_deal': deal_data,
+            'has_duplicate_uber_offer': analysis_result.get('has_duplicate_uber_offer', False),
+            'needs_clarification': analysis_result.get('needs_clarification', False),
+        }
 
         detected_state = self.state_detector.detect_state(
             deal_data=deal_data,
             examt3p_data=examt3p_data,
-            triage_result=triage_result
+            triage_result=triage_result,
+            linking_result=linking_result,
+            threads_data=threads_data
         )
 
-        state_id = detected_state.state_id
-        state_name = detected_state.state_name
+        state_id = detected_state.id
+        state_name = detected_state.name
         priority = detected_state.priority
 
         logger.info(f"  ✅ État détecté: {state_id} - {state_name} (priorité {priority})")
@@ -1577,7 +1589,7 @@ L'équipe Cab Formations"""
             'detected_scenarios': [state_id],
             'crm_updates': crm_updates,
             'requires_crm_update': len(crm_updates) > 0,
-            'should_stop_workflow': detected_state.template_config.get('stop_workflow', False),
+            'should_stop_workflow': detected_state.response_config.get('stop_workflow', False),
             'validation': {
                 state_id: {
                     'compliant': validation_result.is_valid,
