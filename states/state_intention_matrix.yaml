@@ -1652,6 +1652,12 @@ base_templates:
     for_intention: "REFUS_IDENTIFIANTS"
     blocks: [salutation_personnalisee, credentials_refused_security, signature]
 
+  demande_identifiants:
+    file: "templates/base/demande_identifiants.html"
+    for_intention: "DEMANDE_IDENTIFIANTS"
+    for_condition: "compte_existe == true"
+    blocks: [salutation_personnalisee, identifiants_examt3p, verifier_spams, signature]
+
   annulation:
     file: "templates/base/annulation.html"
     for_intention: "ANNULATION"

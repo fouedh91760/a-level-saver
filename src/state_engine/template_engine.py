@@ -175,11 +175,11 @@ class TemplateEngine:
         Sélectionne le template de base approprié selon l'état et le contexte.
 
         Ordre de priorité:
-        1. for_condition (conditions spéciales)
-        2. for_intention (intention détectée)
-        3. for_uber_case (cas Uber)
-        4. for_resultat (résultat examen)
-        5. for_evalbox (statut Evalbox)
+        1. Intention + condition (ex: DEMANDE_IDENTIFIANTS + compte_existe)
+        2. Condition seule (ex: has_duplicate_uber_offer)
+        3. Cas Uber (A, B, D, E)
+        4. Résultat examen (Admis, Non admis)
+        5. Evalbox (statut du dossier)
         6. Fallback par nom d'état
         """
         evalbox = context.get('evalbox', '')
@@ -187,30 +187,36 @@ class TemplateEngine:
         resultat = context.get('deal_data', {}).get('Resultat', '')
         intention = context.get('detected_intent', '')
 
-        # Chercher dans base_templates
+        # PASS 1: Templates avec intention (priorité haute)
         for template_key, config in self.base_templates.items():
-            # Condition spéciale
-            if 'for_condition' in config:
-                condition = config['for_condition']
-                if self._evaluate_condition(condition, context):
-                    return template_key, config
-
-            # Intention
             if 'for_intention' in config:
                 if intention == config['for_intention']:
+                    # Vérifier aussi la condition si elle existe
+                    if 'for_condition' in config:
+                        if not self._evaluate_condition(config['for_condition'], context):
+                            continue  # Condition non satisfaite, passer au suivant
                     return template_key, config
 
-            # Cas Uber
+        # PASS 2: Templates avec condition seule (sans intention)
+        for template_key, config in self.base_templates.items():
+            if 'for_condition' in config and 'for_intention' not in config:
+                if self._evaluate_condition(config['for_condition'], context):
+                    return template_key, config
+
+        # PASS 3: Cas Uber
+        for template_key, config in self.base_templates.items():
             if 'for_uber_case' in config:
                 if uber_case == config['for_uber_case']:
                     return template_key, config
 
-            # Résultat examen
+        # PASS 4: Résultat examen
+        for template_key, config in self.base_templates.items():
             if 'for_resultat' in config:
                 if resultat == config['for_resultat']:
                     return template_key, config
 
-            # Evalbox (le plus courant)
+        # PASS 5: Evalbox (le plus courant)
+        for template_key, config in self.base_templates.items():
             if 'for_evalbox' in config:
                 if evalbox == config['for_evalbox']:
                     return template_key, config
@@ -513,11 +519,25 @@ class TemplateEngine:
         date_examen = context.get('date_examen')
         date_examen_formatted = self._format_date(date_examen) if date_examen else ''
 
+        # Département
+        departement = context.get('departement', '')
+
         # Préparer les dates proposées
         dates_proposees = self._format_dates_list(context.get('next_dates', []))
 
         # Préparer le statut actuel
         statut_actuel = self._format_statut(context.get('evalbox', ''))
+
+        # Calculer la date de convocation (environ 10 jours avant l'examen)
+        date_convocation = ''
+        if date_examen:
+            try:
+                from datetime import timedelta
+                exam_date = datetime.strptime(date_examen, '%Y-%m-%d')
+                convoc_date = exam_date - timedelta(days=10)
+                date_convocation = convoc_date.strftime('%d/%m/%Y')
+            except:
+                pass
 
         return {
             # Infos candidat
@@ -530,10 +550,15 @@ class TemplateEngine:
             'mot_de_passe_examt3p': examt3p_data.get('mot_de_passe', ''),
 
             # Dates
-            'date_examen': date_examen or '',
+            'date_examen': date_examen_formatted or '',
+            'date_examen_raw': date_examen or '',
             'date_examen_formatted': date_examen_formatted,
-            'date_cloture': context.get('date_cloture', ''),
+            'date_cloture': self._format_date(context.get('date_cloture', '')) if context.get('date_cloture') else '',
+            'date_convocation': date_convocation,
             'dates_proposees': dates_proposees,
+
+            # Département
+            'departement': departement,
 
             # Session
             'session_choisie': self._format_session(deal_data.get('Session')),
@@ -546,14 +571,14 @@ class TemplateEngine:
             'num_dossier_cma': examt3p_data.get('num_dossier', ''),
 
             # Numéro de dossier
-            'num_dossier': examt3p_data.get('num_dossier', ''),
+            'num_dossier': examt3p_data.get('num_dossier', '') or context.get('num_dossier', ''),
 
             # Prochaines étapes
             'prochaines_etapes': self._get_prochaines_etapes(state),
 
             # Booléens pour les conditions (aussi disponibles comme placeholders)
             'uber_20': context.get('is_uber_20_deal', False),
-            'can_choose_other_department': not context.get('compte_existe', True),
+            'can_choose_other_department': context.get('can_choose_other_department', False) or not context.get('compte_existe', True),
             'session_assigned': context.get('session_assigned', False),
             'compte_existe': context.get('compte_existe', False),
         }

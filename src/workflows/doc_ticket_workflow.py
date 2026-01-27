@@ -1513,16 +1513,35 @@ L'équipe Cab Formations"""
 
         # Enrich context_data with additional analysis data
         # (TemplateEngine uses state.context_data for placeholders)
+        date_examen_vtc_result = analysis_result.get('date_examen_vtc_result', {})
+        session_data = analysis_result.get('session_data', {})
+        uber_result = analysis_result.get('uber_eligibility_result', {})
+
         detected_state.context_data.update({
+            # Données brutes
             'deal_data': deal_data,
             'examt3p_data': examt3p_data,
-            'date_examen_vtc_data': analysis_result.get('date_examen_vtc_result', {}),
-            'session_data': analysis_result.get('session_data', {}),
-            'uber_eligibility_data': analysis_result.get('uber_eligibility_result', {}),
+            'date_examen_vtc_data': date_examen_vtc_result,
+            'session_data': session_data,
+            'uber_eligibility_data': uber_result,
             'training_exam_consistency_data': analysis_result.get('training_exam_consistency_result', {}),
             'ticket_subject': ticket_subject,
             'customer_message': customer_message,
             'threads': analysis_result.get('threads', []),
+
+            # Données extraites pour les placeholders (niveau racine)
+            'next_dates': date_examen_vtc_result.get('next_dates', []),
+            'date_case': date_examen_vtc_result.get('case'),
+            'can_choose_other_department': date_examen_vtc_result.get('can_choose_other_department', False),
+            'alternative_department_dates': date_examen_vtc_result.get('alternative_department_dates', []),
+
+            # Session
+            'proposed_sessions': session_data.get('proposed_options', []),
+            'session_preference': session_data.get('session_preference'),
+
+            # Uber
+            'is_uber_20_deal': uber_result.get('is_uber_20_deal', False),
+            'uber_case': uber_result.get('case', ''),
         })
 
         # Create AI generator for personalization sections

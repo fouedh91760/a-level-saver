@@ -152,6 +152,7 @@ class StateDetector:
         evalbox = deal_data.get('Evalbox', '')
         date_examen = self._extract_date_examen(deal_data)
         date_cloture = self._extract_date_cloture(deal_data)
+        departement = self._extract_departement(deal_data)
         amount = deal_data.get('Amount', 0)
         stage = deal_data.get('Stage', '')
 
@@ -185,9 +186,11 @@ class StateDetector:
             'evalbox': evalbox,
             'date_examen': date_examen,
             'date_cloture': date_cloture,
+            'departement': departement,
             'amount': amount,
             'stage': stage,
             'deal_id': linking_result.get('deal_id'),
+            'num_dossier': examt3p_data.get('num_dossier', ''),
 
             # Calculs
             'today': today.isoformat(),
@@ -232,16 +235,21 @@ class StateDetector:
 
     def _extract_date_examen(self, deal_data: Dict[str, Any]) -> Optional[str]:
         """Extrait la date d'examen au format YYYY-MM-DD."""
+        import re
+
         date_examen_vtc = deal_data.get('Date_examen_VTC')
         if not date_examen_vtc:
             return None
 
-        # Si c'est un lookup, extraire la date
+        # Si c'est un lookup, extraire la date du nom
+        # Format: "93_2026-02-24" ou "75_2026-03-15"
         if isinstance(date_examen_vtc, dict):
-            # Le nom contient souvent la date
             name = date_examen_vtc.get('name', '')
-            # Essayer d'extraire une date du nom ou récupérer via API
-            return None  # À implémenter si nécessaire
+            # Chercher une date au format YYYY-MM-DD dans le nom
+            match = re.search(r'(\d{4}-\d{2}-\d{2})', name)
+            if match:
+                return match.group(1)
+            return None
 
         return str(date_examen_vtc)[:10] if date_examen_vtc else None
 
@@ -249,6 +257,29 @@ class StateDetector:
         """Extrait la date de clôture au format YYYY-MM-DD."""
         # La date de clôture peut être dans les données de session
         # Pour l'instant, retourner None - sera enrichi par le workflow
+        return None
+
+    def _extract_departement(self, deal_data: Dict[str, Any]) -> Optional[str]:
+        """Extrait le département depuis le deal ou le lookup Date_examen_VTC."""
+        import re
+
+        # D'abord essayer CMA_de_depot
+        cma_depot = deal_data.get('CMA_de_depot')
+        if cma_depot:
+            # Peut être un string "93" ou un lookup
+            if isinstance(cma_depot, dict):
+                return cma_depot.get('name', '')
+            return str(cma_depot)
+
+        # Sinon extraire du nom du lookup Date_examen_VTC
+        # Format: "93_2026-02-24"
+        date_examen_vtc = deal_data.get('Date_examen_VTC')
+        if isinstance(date_examen_vtc, dict):
+            name = date_examen_vtc.get('name', '')
+            match = re.match(r'^(\d+)_', name)
+            if match:
+                return match.group(1)
+
         return None
 
     def _can_modify_exam_date(self, context: Dict[str, Any]) -> bool:
