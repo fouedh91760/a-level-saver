@@ -1507,8 +1507,9 @@ L'équipe Cab Formations"""
         # ================================================================
         logger.info("  📝 STATE ENGINE: Génération de la réponse...")
 
-        # Prepare data sources for template
-        data_sources = {
+        # Enrich context_data with additional analysis data
+        # (TemplateEngine uses state.context_data for placeholders)
+        detected_state.context_data.update({
             'deal_data': deal_data,
             'examt3p_data': examt3p_data,
             'date_examen_vtc_data': analysis_result.get('date_examen_vtc_result', {}),
@@ -1518,36 +1519,40 @@ L'équipe Cab Formations"""
             'ticket_subject': ticket_subject,
             'customer_message': customer_message,
             'threads': analysis_result.get('threads', []),
-        }
+        })
 
-        response_text = self.template_engine.generate_response(
-            state=detected_state,
-            data_sources=data_sources
-        )
+        # Generate response from template
+        template_result = self.template_engine.generate_response(state=detected_state)
+        response_text = template_result.get('response_text', '')
 
         logger.info(f"  ✅ Réponse générée ({len(response_text)} caractères)")
+        if template_result.get('template_used'):
+            logger.info(f"     Template: {template_result['template_used']}")
 
         # ================================================================
         # STEP 3: Validate Response
         # ================================================================
         logger.info("  🔍 STATE ENGINE: Validation de la réponse...")
 
+        # Get proposed dates for validation
+        proposed_dates = analysis_result.get('date_examen_vtc_result', {}).get('next_dates', [])
+
         validation_result = self.response_validator.validate(
             response_text=response_text,
             state=detected_state,
-            context_data=data_sources
+            proposed_dates=proposed_dates
         )
 
-        if validation_result.is_valid:
+        if validation_result.valid:
             logger.info("  ✅ Validation OK")
         else:
             logger.warning(f"  ⚠️ Validation échouée: {len(validation_result.errors)} erreur(s)")
             for error in validation_result.errors:
-                logger.warning(f"     - {error}")
+                logger.warning(f"     - {error.message}")
 
             # Log warnings too
             for warning in validation_result.warnings:
-                logger.info(f"     ⚡ {warning}")
+                logger.info(f"     ⚡ {warning.message}")
 
         # ================================================================
         # STEP 4: Determine CRM Updates (Deterministic)
@@ -1584,6 +1589,12 @@ L'équipe Cab Formations"""
         # ================================================================
         # BUILD RESPONSE RESULT (compatible with current workflow)
         # ================================================================
+        # Extract forbidden terms found from validation errors
+        forbidden_terms_found = [
+            e.message for e in validation_result.errors
+            if e.error_type == 'forbidden_term'
+        ]
+
         response_result = {
             'response_text': response_text,
             'detected_scenarios': [state_id],
@@ -1592,11 +1603,11 @@ L'équipe Cab Formations"""
             'should_stop_workflow': detected_state.response_config.get('stop_workflow', False),
             'validation': {
                 state_id: {
-                    'compliant': validation_result.is_valid,
-                    'errors': validation_result.errors,
-                    'warnings': validation_result.warnings,
+                    'compliant': validation_result.valid,
+                    'errors': [e.message for e in validation_result.errors],
+                    'warnings': [w.message for w in validation_result.warnings],
                     'missing_blocks': [],
-                    'forbidden_terms_found': validation_result.forbidden_terms_found,
+                    'forbidden_terms_found': forbidden_terms_found,
                 }
             },
             # State Engine specific metadata
