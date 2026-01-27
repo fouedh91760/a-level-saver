@@ -210,6 +210,17 @@ class ResponseValidator:
             'call_to_action': [r'merci de', r'veuillez', r'n\'hésitez pas', r'contactez'],
             'lien_plateforme': [r'intras\.fr', r'https://'],
             'confirmation_choix': [r'enregistré', r'confirmé', r'validé'],
+            # Blocs pour credentials_invalid
+            'explication_probleme_identifiants': [
+                r'identifiants de connexion',
+                r'plateforme examt3p',
+                r'avons besoin de vos identifiants',
+            ],
+            'instructions_recuperation': [
+                r'retrouver vos identifiants',
+                r'recherchez dans votre bo[îi]te mail',
+                r'noreply@intras\.fr',
+            ],
         }
 
         for block in required_blocks:
