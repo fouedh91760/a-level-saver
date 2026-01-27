@@ -44,6 +44,7 @@ from knowledge_base.scenarios_mapping import (
 
 # State Engine - Architecture State-Driven
 from src.state_engine import StateDetector, TemplateEngine, ResponseValidator, CRMUpdater
+import anthropic
 
 logger = logging.getLogger(__name__)
 
@@ -75,7 +76,10 @@ class DOCTicketWorkflow:
             self.template_engine = TemplateEngine()
             self.response_validator = ResponseValidator()
             self.state_crm_updater = CRMUpdater(crm_client=self.crm_client)
-            logger.info("✅ State Engine initialized (deterministic mode)")
+            # Anthropic client for AI personalization (using Sonnet for best quality)
+            self.anthropic_client = anthropic.Anthropic()
+            self.personalization_model = "claude-sonnet-4-5-20250929"  # Best model for complex context understanding
+            logger.info("✅ State Engine initialized (deterministic mode + Sonnet personalization)")
         else:
             self.state_detector = None
             self.template_engine = None
@@ -1521,8 +1525,22 @@ L'équipe Cab Formations"""
             'threads': analysis_result.get('threads', []),
         })
 
-        # Generate response from template
-        template_result = self.template_engine.generate_response(state=detected_state)
+        # Create AI generator for personalization sections
+        # This uses Sonnet to generate contextual personalization based on threads/message
+        def ai_personalization_generator(state, instructions="", max_length=150):
+            return self._generate_personalization(
+                state=state,
+                customer_message=customer_message,
+                threads=threads_data,
+                instructions=instructions,
+                max_length=max_length
+            )
+
+        # Generate response from template with AI personalization
+        template_result = self.template_engine.generate_response(
+            state=detected_state,
+            ai_generator=ai_personalization_generator
+        )
         response_text = template_result.get('response_text', '')
 
         logger.info(f"  ✅ Réponse générée ({len(response_text)} caractères)")
@@ -1622,6 +1640,162 @@ L'équipe Cab Formations"""
         }
 
         return response_result
+
+    def _generate_personalization(
+        self,
+        state,
+        customer_message: str,
+        threads: list,
+        instructions: str = "",
+        max_length: int = 150
+    ) -> str:
+        """
+        Generate personalized introduction using Sonnet.
+
+        This creates a contextual 1-3 sentence introduction that:
+        - Acknowledges the candidate's specific concern/question
+        - Takes into account the thread history
+        - Sets up the factual content that follows in the template
+
+        Args:
+            state: DetectedState with context data
+            customer_message: The candidate's last message
+            threads: Thread history
+            instructions: Additional instructions for personalization
+            max_length: Max characters for personalization (soft limit)
+
+        Returns:
+            Personalized text (1-3 sentences)
+        """
+        # Format thread history for context
+        thread_history = self._format_thread_history_for_personalization(threads)
+
+        # Get state context
+        state_name = state.name
+        state_description = state.description if hasattr(state, 'description') else state_name
+
+        # Build the system prompt
+        system_prompt = """Tu es un assistant de CAB Formations, organisme de formation VTC.
+
+Tu dois rédiger une COURTE introduction personnalisée (1 à 3 phrases maximum) pour une réponse email.
+
+Cette introduction doit:
+1. Reconnaître la demande ou préoccupation spécifique du candidat
+2. Être empathique et professionnelle
+3. Préparer le terrain pour les informations factuelles qui suivront
+
+RÈGLES STRICTES:
+- NE JAMAIS inventer de dates, numéros de dossier, identifiants ou informations factuelles
+- NE JAMAIS mentionner de montants (prix, frais)
+- NE JAMAIS promettre quoi que ce soit de spécifique
+- Être concis: 1 à 3 phrases, pas plus
+- Utiliser un ton professionnel mais chaleureux
+- Ne pas répéter le sujet de l'email
+- Ne pas commencer par "Je" ou "Nous"
+
+TERMES INTERDITS (ne jamais utiliser):
+- "Evalbox", "BFS", "deal", "CRM", "CAS", "workflow"
+- Tout jargon technique interne
+
+FORMAT DE SORTIE:
+Écris UNIQUEMENT le texte de personnalisation, sans guillemets, sans préfixe, sans explication."""
+
+        # Build user prompt
+        user_prompt = f"""## CONTEXTE
+
+**État détecté du dossier**: {state_description}
+
+**Dernier message du candidat**:
+{customer_message}
+
+---
+
+## HISTORIQUE DES ÉCHANGES:
+
+{thread_history}
+
+---
+
+## INSTRUCTION SPÉCIFIQUE:
+{instructions if instructions else "Rédige une introduction adaptée à la situation."}
+
+---
+
+Génère maintenant la personnalisation (1-3 phrases):"""
+
+        try:
+            response = self.anthropic_client.messages.create(
+                model=self.personalization_model,
+                max_tokens=200,
+                temperature=0.3,  # Low temperature for consistency
+                system=system_prompt,
+                messages=[{"role": "user", "content": user_prompt}]
+            )
+
+            personalization = response.content[0].text.strip()
+
+            # Safety: truncate if too long
+            if len(personalization) > max_length * 2:
+                # Find last sentence end before limit
+                truncated = personalization[:max_length * 2]
+                last_period = max(truncated.rfind('.'), truncated.rfind('!'), truncated.rfind('?'))
+                if last_period > 0:
+                    personalization = truncated[:last_period + 1]
+
+            logger.info(f"  ✅ Personnalisation générée ({len(personalization)} caractères)")
+            return personalization
+
+        except Exception as e:
+            logger.error(f"  ❌ Erreur génération personnalisation: {e}")
+            # Fallback to a generic but appropriate response
+            return "Nous avons bien reçu votre message et nous vous remercions de votre patience."
+
+    def _format_thread_history_for_personalization(self, threads: list) -> str:
+        """Format thread history for personalization prompt."""
+        if not threads:
+            return "(Premier contact - aucun historique)"
+
+        lines = []
+
+        # Sort by date
+        sorted_threads = sorted(
+            threads,
+            key=lambda t: t.get('createdTime', '') or t.get('created_time', '') or '',
+            reverse=False
+        )
+
+        # Show last 5 exchanges max to avoid context overflow
+        recent_threads = sorted_threads[-5:] if len(sorted_threads) > 5 else sorted_threads
+
+        for i, thread in enumerate(recent_threads, 1):
+            direction = thread.get('direction', 'unknown')
+            created_time = thread.get('createdTime', '') or thread.get('created_time', '')
+
+            # Format date
+            date_str = ""
+            if created_time:
+                try:
+                    from datetime import datetime
+                    if 'T' in str(created_time):
+                        dt = datetime.fromisoformat(str(created_time).replace('Z', '+00:00'))
+                    else:
+                        dt = datetime.strptime(str(created_time), "%Y-%m-%d %H:%M:%S")
+                    date_str = dt.strftime("%d/%m/%Y")
+                except:
+                    date_str = ""
+
+            # Sender
+            sender = "CANDIDAT" if direction == 'in' else "CAB Formations" if direction == 'out' else "?"
+
+            # Content (truncated)
+            content = thread.get('content', '') or thread.get('summary', '') or thread.get('plainText', '') or ''
+            content = content.strip()
+            if len(content) > 500:
+                content = content[:500] + "..."
+
+            lines.append(f"[{date_str}] {sender}:\n{content}\n")
+
+        return "\n".join(lines) if lines else "(Aucun contenu)"
 
     def _create_crm_note(
         self,
