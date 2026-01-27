@@ -1,5 +1,24 @@
 {{> salutation_personnalisee}}
-{{> confirmation_session}}
+{{#if session_preference}}
+<b>Votre préférence a bien été notée</b><br>
+Vous souhaitez suivre la formation <b>{{#if session_preference_soir}}du soir{{else}}du jour{{/if}}</b>.<br>
+<br>
+{{/if}}
+{{#if sessions_proposees}}
+<b>Sessions disponibles{{#if session_preference}} ({{session_preference}}){{/if}}</b><br>
+Voici les sessions correspondantes :<br>
+<br>
+{{#each sessions_proposees}}
+{{#if (eq this.type "jour")}}☀️{{else}}🌙{{/if}} <b>{{this.nom}}</b><br>
+&nbsp;&nbsp;&nbsp;&nbsp;Du <b>{{this.debut}}</b> au <b>{{this.fin}}</b><br>
+&nbsp;&nbsp;&nbsp;&nbsp;Horaires : {{this.horaires}}<br>
+<br>
+{{/each}}
+Merci de nous confirmer la session qui vous convient pour que nous puissions finaliser votre inscription.<br>
+{{else}}
+Nous vous contacterons prochainement pour vous proposer les sessions correspondantes.<br>
+{{/if}}
+<br>
 {{> acces_elearning_rappel}}
 {{> verifier_spams}}
 {{> signature}}

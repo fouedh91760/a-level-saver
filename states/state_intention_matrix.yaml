@@ -1218,62 +1218,72 @@ matrix:
       - proposition_rafraichissement
 
   "SESSION_NON_ASSIGNEE:CONFIRMATION_SESSION":
-    template: "confirmation_session.md"
+    template: "confirmation_session.html"
     crm_update:
-      - field: Session_choisie
-        value: "{{confirmed_session}}"
+      - field: Preference_horaire
+        value: "{{session_preference}}"
+        condition: "session_preference != null"
     blocks:
       - confirmation_session
+      - sessions_formation
       - prochaines_etapes
 
   # --- CONFIRMATION_SESSION pour états avec date d'examen ---
+  # Note: On enregistre la préférence (jour/soir) mais PAS Session_choisie
+  # tant que le candidat n'a pas confirmé une session spécifique
   "DATE_EXAMEN_VIDE:CONFIRMATION_SESSION":
-    template: "confirmation_session.md"
+    template: "confirmation_session.html"
     crm_update:
-      - field: Session_choisie
-        value: "{{confirmed_session}}"
+      - field: Preference_horaire
+        value: "{{session_preference}}"
+        condition: "session_preference != null"
     blocks:
       - confirmation_session
-      - prochaines_dates_examen
+      - sessions_formation
       - prochaines_etapes
 
   "EXAM_DATE_ASSIGNED_WAITING:CONFIRMATION_SESSION":
-    template: "confirmation_session.md"
+    template: "confirmation_session.html"
     crm_update:
-      - field: Session_choisie
-        value: "{{confirmed_session}}"
+      - field: Preference_horaire
+        value: "{{session_preference}}"
+        condition: "session_preference != null"
     blocks:
       - confirmation_session
+      - sessions_formation
       - prochaines_etapes
 
   "DATE_FUTURE_DOSSIER_SYNC:CONFIRMATION_SESSION":
-    template: "confirmation_session.md"
+    template: "confirmation_session.html"
     crm_update:
-      - field: Session_choisie
-        value: "{{confirmed_session}}"
+      - field: Preference_horaire
+        value: "{{session_preference}}"
+        condition: "session_preference != null"
     blocks:
       - confirmation_session
-      - statut_dossier_synchronise
+      - sessions_formation
       - prochaines_etapes
 
   "DATE_FUTURE_VALIDE_CMA:CONFIRMATION_SESSION":
-    template: "confirmation_session.md"
+    template: "confirmation_session.html"
     crm_update:
-      - field: Session_choisie
-        value: "{{confirmed_session}}"
+      - field: Preference_horaire
+        value: "{{session_preference}}"
+        condition: "session_preference != null"
     blocks:
       - confirmation_session
-      - convocation_a_venir
+      - sessions_formation
       - prochaines_etapes
 
   "PRET_A_PAYER:CONFIRMATION_SESSION":
-    template: "confirmation_session.md"
+    template: "confirmation_session.html"
     crm_update:
-      - field: Session_choisie
-        value: "{{confirmed_session}}"
+      - field: Preference_horaire
+        value: "{{session_preference}}"
+        condition: "session_preference != null"
     blocks:
       - confirmation_session
-      - statut_pret_a_payer
+      - sessions_formation
       - prochaines_etapes
 
   # --- RESULTAT × Intentions ---
