@@ -1,0 +1,14 @@
+{{> salutation_personnalisee}}
+<b>Vos identifiants ExamT3P</b><br>
+{{#if identifiant_examt3p}}
+Voici vos identifiants pour acceder a votre espace ExamT3P :<br>
+<br>
+<b>Identifiant :</b> {{identifiant_examt3p}}<br>
+<b>Mot de passe :</b> {{mot_de_passe_examt3p}}<br>
+<br>
+Vous pouvez telecharger votre convocation sur : <a href="https://www.exament3p.fr">www.exament3p.fr</a><br>
+{{else}}
+Nous n'avons pas vos identifiants ExamT3P dans notre systeme. Pourriez-vous nous les communiquer ?<br>
+{{/if}}
+<br>
+{{> signature}}

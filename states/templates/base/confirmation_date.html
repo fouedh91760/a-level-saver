@@ -1,0 +1,13 @@
+{{> salutation_personnalisee}}
+<b>Votre choix a bien ete enregistre</b><br>
+Vous avez choisi la date d'examen du <b>{{date_examen}}</b>.<br>
+<br>
+{{#if session_preference}}
+Nous avons egalement note votre preference pour la formation <b>{{#if session_preference_soir}}du soir{{else}}du jour{{/if}}</b>.<br>
+<br>
+{{/if}}
+Nous vous tiendrons informe de l'avancement de votre dossier.<br>
+<br>
+{{> acces_elearning_rappel}}
+{{> verifier_spams}}
+{{> signature}}

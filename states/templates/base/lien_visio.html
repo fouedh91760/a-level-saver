@@ -1,0 +1,14 @@
+{{> salutation_personnalisee}}
+<b>Lien de formation visio</b><br>
+{{#if session_choisie}}
+Votre session de formation est prevue prochainement.<br>
+<br>
+Le lien de connexion Zoom vous sera envoye par email quelques jours avant le debut de la formation.<br>
+{{else}}
+Pour recevoir le lien de formation visio, vous devez d'abord confirmer votre session de formation.<br>
+<br>
+Merci de nous indiquer si vous preferez les cours du jour ou du soir.<br>
+{{/if}}
+<br>
+{{> verifier_spams}}
+{{> signature}}

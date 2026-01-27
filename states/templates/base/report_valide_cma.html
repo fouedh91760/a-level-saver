@@ -1,0 +1,20 @@
+{{> salutation_personnalisee}}
+<b>Demande de report</b><br>
+Votre dossier est valide par la CMA pour l'examen du <b>{{date_examen}}</b>.<br>
+<br>
+{{#if cloture_passed}}
+La date de cloture des inscriptions est passee. Un report n'est possible qu'en cas de force majeure avec justificatif.<br>
+{{else}}
+Un report est encore possible avant la date de cloture.<br>
+<br>
+<b>Attention :</b> le report peut entrainer des frais supplementaires.<br>
+{{/if}}
+<br>
+{{#if prochaines_dates}}
+<b>Prochaines dates disponibles :</b><br>
+{{#each prochaines_dates}}
+- <b>{{this.date}}</b> (departement {{this.departement}})<br>
+{{/each}}
+<br>
+{{/if}}
+{{> signature}}

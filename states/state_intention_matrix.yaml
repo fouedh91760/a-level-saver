@@ -435,7 +435,7 @@ states:
       method: "crm"
       condition: "count(deals where Amount=20 and Stage=GAGNÉ) > 1"
     response:
-      template: "doublon_uber.md"
+      template: "doublon_uber.html"
       blocks:
         - inscription_autonome
         - formation_payante
@@ -454,7 +454,7 @@ states:
         - "Stage contains 'ATTENTE'"
         - "Amount == 20"
     response:
-      template: "prospect_uber.md"
+      template: "prospect.html"
       blocks:
         - explication_offre
         - etapes_inscription
@@ -482,7 +482,7 @@ states:
       method: "crm"
       condition: "Stage == 'PERDU'"
     response:
-      template: "deal_perdu.md"
+      template: "deal_perdu.html"
 
   # ---------------------------------------------------------------------------
   # PHASE 2: ÉLIGIBILITÉ UBER (si CLIENT_UBER_20)
@@ -499,7 +499,7 @@ states:
         - "Stage contains 'GAGN'"
         - "Date_Dossier_re_u is null"
     response:
-      template: "uber_cas_a.md"
+      template: "uber_cas_a.html"
       blocks:
         - explication_offre
         - etapes_finalisation
@@ -523,7 +523,7 @@ states:
         - "Date_Dossier_re_u is not null"
         - "today < Date_Dossier_re_u + 1 day"
     response:
-      template: "uber_verif_en_cours.md"
+      template: "uber_verif_en_cours.html"
 
   UBER_CAS_D_COMPTE_UBER_FALSE:
     id: "U03"
@@ -538,7 +538,7 @@ states:
         - "today >= Date_Dossier_re_u + 1 day"
         - "Compte_Uber == false"
     response:
-      template: "uber_cas_d.md"
+      template: "uber_cas_d.html"
       blocks:
         - verification_email
         - contact_uber_support
@@ -559,7 +559,7 @@ states:
         - "Compte_Uber == true"
         - "ELIGIBLE == false"
     response:
-      template: "uber_cas_e.md"
+      template: "uber_cas_e.html"
       blocks:
         - explication_non_eligible
         - contact_uber_support
@@ -580,7 +580,7 @@ states:
         - "Date_Dossier_re_u > 2025-05-19"
         - "Date_test_selection is null"
     response:
-      template: "uber_cas_b.md"
+      template: "uber_cas_b.html"
       blocks:
         - rappel_test_selection
         - lien_test
@@ -617,7 +617,7 @@ states:
       method: "examt3p"
       condition: "compte_existe == false"
     response:
-      template: "examt3p_pas_de_compte.md"
+      template: "no_compte_examt3p.html"
       blocks:
         - explication_creation_compte
         - prochaines_dates
@@ -637,7 +637,7 @@ states:
         - "crm.IDENTIFIANT_EVALBOX is null"
         - "credentials_not_in_threads"
     response:
-      template: "credentials_inconnus.md"
+      template: "credentials_inconnus.html"
       blocks:
         - demande_identifiants
         - explication_besoin
@@ -653,7 +653,7 @@ states:
         - "compte_existe == true"
         - "connection_test_success == false"
     response:
-      template: "credentials_invalid.md"
+      template: "credentials_invalid.html"
       blocks:
         - erreur_connexion
         - verification_identifiants
@@ -683,7 +683,7 @@ states:
       method: "crm"
       condition: "Date_examen_VTC is null"
     response:
-      template: "date_examen_vide.md"
+      template: "date_examen_vide.html"
       dynamic_blocks:
         - prochaines_dates:
             source: "date_examen_vtc_helper.get_next_exam_dates()"
@@ -708,7 +708,7 @@ states:
         - "Date_examen_VTC.Date_Examen < today"
         - "Evalbox not in ['VALIDE CMA', 'Dossier Synchronisé']"
     response:
-      template: "date_passee_non_valide.md"
+      template: "date_passee_non_valide.html"
       dynamic_blocks:
         - prochaines_dates:
             source: "date_examen_vtc_helper.get_next_exam_dates()"
@@ -722,7 +722,7 @@ states:
       method: "crm"
       condition: "Evalbox == 'Refusé CMA'"
     response:
-      template: "refus_cma.md"
+      template: "refus_cma.html"
       dynamic_blocks:
         - pieces_refusees:
             source: "examt3p_data.documents_refuses"
@@ -743,11 +743,11 @@ states:
         - "Date_examen_VTC.Date_Examen > today"
         - "Evalbox == 'VALIDE CMA'"
     response:
-      template: "valide_cma.md"
+      template: "valide_cma.html"
       conditional_blocks:
         - examen_imminent_sans_convoc:
             condition: "days_until_exam <= 7"
-            template: "valide_cma_report_auto.md"
+            template: "valide_cma_report_auto.html"
         - convoc_devrait_etre_arrivee:
             condition: "7 < days_until_exam <= 10"
             content: "verifier_spams"
@@ -766,7 +766,7 @@ states:
         - "Date_examen_VTC.Date_Examen > today"
         - "Evalbox == 'Dossier Synchronisé'"
     response:
-      template: "dossier_synchronise.md"
+      template: "dossier_synchronise.html"
       blocks:
         - instruction_en_cours
         - surveiller_emails
@@ -783,7 +783,7 @@ states:
         - "Date_examen_VTC.Date_Examen > today"
         - "Evalbox not in ['VALIDE CMA', 'Dossier Synchronisé', 'Refusé CMA', 'Convoc CMA reçue', 'Pret a payer']"
     response:
-      template: "date_future_en_attente.md"
+      template: "date_future_en_attente.html"
       ai_section: "personnalisation"
 
   DATE_PASSEE_EXAMEN_PASSE:
@@ -796,11 +796,11 @@ states:
         - "Date_examen_VTC.Date_Examen < today"
         - "Evalbox in ['VALIDE CMA', 'Dossier Synchronisé']"
     response:
-      template: "examen_passe.md"
+      template: "examen_passe.html"
       conditional_blocks:
         - indices_non_passe:
             condition: "threads_contain_not_passed_indicators"
-            template: "clarification_examen.md"
+            template: "clarification_examen.html"
       ai_section: "personnalisation"
 
   DEADLINE_RATEE:
@@ -814,7 +814,7 @@ states:
         - "Date_examen_VTC.Date_Cloture_Inscription < today"
         - "Evalbox not in ['VALIDE CMA', 'Dossier Synchronisé']"
     response:
-      template: "deadline_ratee.md"
+      template: "deadline_ratee.html"
       dynamic_blocks:
         - prochaines_dates:
             source: "date_examen_vtc_helper.get_next_exam_dates()"
@@ -828,7 +828,7 @@ states:
       method: "crm"
       condition: "Evalbox == 'Convoc CMA reçue'"
     response:
-      template: "convocation_recue.md"
+      template: "convoc_cma_recue.html"
       blocks:
         - identifiants_examt3p
         - lien_plateforme
@@ -844,7 +844,7 @@ states:
       method: "crm"
       condition: "Evalbox in ['Pret a payer', 'Pret a payer par cheque']"
     response:
-      template: "pret_a_payer.md"
+      template: "pret_a_payer.html"
       blocks:
         - paiement_en_cours
         - surveiller_emails
@@ -859,7 +859,7 @@ states:
       method: "crm"
       condition: "Evalbox == 'Dossier crée'"
     response:
-      template: "dossier_cree.md"
+      template: "dossier_cree.html"
       blocks:
         - documents_a_completer
         - statut_actuel
@@ -873,7 +873,7 @@ states:
       method: "crm"
       condition: "Evalbox == 'Documents manquants'"
     response:
-      template: "docs_manquants.md"
+      template: "docs_manquants.html"
     routing:
       department: "Refus CMA"
 
@@ -885,7 +885,7 @@ states:
       method: "crm"
       condition: "Evalbox == 'Documents refusés'"
     response:
-      template: "docs_refuses.md"
+      template: "docs_refuses.html"
     routing:
       department: "Refus CMA"
 
@@ -927,7 +927,7 @@ states:
         - "Session.Date_fin < today"
         - "Date_examen_VTC.Date_Examen > today"
     response:
-      template: "rafraichissement_session.md"
+      template: "rafraichissement_session.html"
       blocks:
         - proposition_rafraichissement_gratuit
         - prochaines_sessions
@@ -945,7 +945,7 @@ states:
       method: "crm"
       condition: "Resultat == 'ADMIS'"
     response:
-      template: "resultat_admis.md"
+      template: "resultat_admis.html"
       blocks:
         - felicitations
         - prochaines_etapes_carte_vtc
@@ -959,7 +959,7 @@ states:
       method: "crm"
       condition: "Resultat == 'NON ADMIS'"
     response:
-      template: "resultat_non_admis.md"
+      template: "resultat_non_admis.html"
       blocks:
         - empathie
         - proposition_reinscription
@@ -974,7 +974,7 @@ states:
       method: "crm"
       condition: "Resultat == 'ADMISSIBLE'"
     response:
-      template: "resultat_admissible.md"
+      template: "resultat_admissible.html"
       blocks:
         - felicitations_theorique
         - info_pratique
@@ -988,7 +988,7 @@ states:
       method: "crm"
       condition: "Resultat == 'NON ADMISSIBLE'"
     response:
-      template: "resultat_non_admissible.md"
+      template: "resultat_non_admissible.html"
       blocks:
         - empathie
         - proposition_reinscription
@@ -1002,7 +1002,7 @@ states:
       method: "crm"
       condition: "Resultat in ['ABSENT TH', 'ABSENT PR']"
     response:
-      template: "resultat_absent.md"
+      template: "resultat_absent.html"
       blocks:
         - constatation_absence
         - options_reinscription
@@ -1024,7 +1024,7 @@ states:
     applies_to_intention:
       - REPORT_DATE
     response:
-      template: "report_bloque_force_majeure.md"
+      template: "report_bloque.html"
       blocks:
         - explication_blocage
         - procedure_force_majeure
@@ -1041,7 +1041,7 @@ matrix:
   # --- REFUS_PARTAGE_CREDENTIALS (priorité maximale, s'applique à tout état) ---
   "*:REFUS_PARTAGE_CREDENTIALS":
     priority: 95
-    template: "credentials_refused_security.md"
+    template: "credentials_refused_security.html"
     blocks:
       - comprendre_besoin_identifiants
       - alternative_autonomie
@@ -1050,54 +1050,54 @@ matrix:
 
   # --- PROSPECT_UBER_20 × Intentions ---
   "PROSPECT_UBER_20:DEMANDE_INFOS_OFFRE":
-    template: "prospect_uber.md"
+    template: "prospect.html"
     blocks:
       - explication_offre_complete
       - etapes_inscription
       - sessions_disponibles
 
   "PROSPECT_UBER_20:DEMANDE_DATE_EXAMEN":
-    template: "prospect_demande_dates.md"
+    template: "prospect_demande_dates.html"
     blocks:
       - explication_apres_paiement
       - regions_disponibles
 
   "PROSPECT_UBER_20:CONFIRMATION_PAIEMENT":
-    template: "prospect_confirmation_paiement.md"
+    template: "prospect_confirmation_paiement.html"
     blocks:
       - verification_paiement
       - prochaines_etapes
 
   # --- UBER_CAS_A × Intentions ---
   "UBER_CAS_A_DOCS_MANQUANTS:STATUT_DOSSIER":
-    template: "uber_cas_a.md"
+    template: "uber_cas_a.html"
     override_blocks:
       - statut_en_attente_docs
       - etapes_finalisation
 
   "UBER_CAS_A_DOCS_MANQUANTS:DEMANDE_DATE_EXAMEN":
-    template: "uber_cas_a_bloque.md"
+    template: "uber_cas_a_bloque.html"
     blocks:
       - blocage_dates
       - etapes_finalisation
 
   # --- UBER_CAS_B × Intentions ---
   "UBER_CAS_B_TEST_NON_PASSE:STATUT_DOSSIER":
-    template: "uber_cas_b.md"
+    template: "uber_cas_b.html"
     override_blocks:
       - statut_en_attente_test
       - lien_test
 
   # --- EXAMT3P_CREDENTIALS_INVALIDES × Intentions ---
   "EXAMT3P_CREDENTIALS_INVALIDES:DEMANDE_IDENTIFIANTS":
-    template: "credentials_invalid.md"
+    template: "credentials_invalid.html"
     blocks:
       - erreur_detectee
       - verification_identifiants
       - demande_nouveaux_identifiants
 
   "EXAMT3P_CREDENTIALS_INVALIDES:PROBLEME_CONNEXION_EXAMT3P":
-    template: "credentials_invalid.md"
+    template: "credentials_invalid.html"
     blocks:
       - erreur_detectee
       - mot_de_passe_oublie
@@ -1105,13 +1105,13 @@ matrix:
 
   # --- DATE_EXAMEN_VIDE × Intentions ---
   "DATE_EXAMEN_VIDE:DEMANDE_DATE_EXAMEN":
-    template: "propose_dates.md"
+    template: "propose_dates.html"
     dynamic_blocks:
       - prochaines_dates
       - sessions_formation
 
   "DATE_EXAMEN_VIDE:CONFIRMATION_DATE_EXAMEN":
-    template: "confirmation_date.md"
+    template: "confirmation_date.html"
     crm_update:
       - field: Date_examen_VTC
         value: "{{confirmed_date}}"
@@ -1120,7 +1120,7 @@ matrix:
       - prochaines_etapes
 
   "DATE_EXAMEN_VIDE:DEMANDE_AUTRES_DATES":
-    template: "propose_dates_elargies.md"
+    template: "propose_dates_elargies.html"
     dynamic_blocks:
       - toutes_dates_disponibles:
           filter: "none"
@@ -1128,7 +1128,7 @@ matrix:
 
   # --- DATE_FUTURE_VALIDE_CMA × Intentions ---
   "DATE_FUTURE_VALIDE_CMA:DEMANDE_CONVOCATION":
-    template: "attente_convocation.md"
+    template: "attente_convocation.html"
     conditional_blocks:
       - convoc_imminente:
           condition: "days_until_exam <= 10"
@@ -1136,7 +1136,7 @@ matrix:
           condition: "days_until_exam > 10"
 
   "DATE_FUTURE_VALIDE_CMA:REPORT_DATE":
-    template: "report_valide_cma.md"
+    template: "report_valide_cma.html"
     conditional_blocks:
       - report_possible:
           condition: "Date_Cloture_Inscription >= today"
@@ -1145,37 +1145,37 @@ matrix:
             - avertissement_frais
       - report_bloque:
           condition: "Date_Cloture_Inscription < today"
-          template: "report_bloque_force_majeure.md"
+          template: "report_bloque.html"
 
   # --- CONVOC_CMA_RECUE × Intentions ---
   "CONVOC_CMA_RECUE:DEMANDE_IDENTIFIANTS":
-    template: "convocation_identifiants.md"
+    template: "convocation_identifiants.html"
     blocks:
       - identifiants_examt3p
       - lien_telechargement_convoc
       - instructions_jour_j
 
   "CONVOC_CMA_RECUE:DEMANDE_CONVOCATION":
-    template: "convocation_recue.md"
+    template: "convoc_cma_recue.html"
     blocks:
       - ou_trouver_convoc
       - identifiants_examt3p
       - instructions_impression
 
   "CONVOC_CMA_RECUE:REPORT_DATE":
-    template: "report_bloque_force_majeure.md"
+    template: "report_bloque.html"
     # Convocation reçue = clôture passée = blocage
 
   # --- EVALBOX_REFUSE_CMA × Intentions ---
   "EVALBOX_REFUSE_CMA:STATUT_DOSSIER":
-    template: "refus_cma.md"
+    template: "refus_cma.html"
     dynamic_blocks:
       - pieces_refusees_details
       - procedure_correction
       - prochaine_date_report
 
   "EVALBOX_REFUSE_CMA:DOCUMENT_QUESTION":
-    template: "refus_cma_docs.md"
+    template: "refus_cma_docs.html"
     dynamic_blocks:
       - pieces_refusees_details
       - comment_corriger
@@ -1183,28 +1183,28 @@ matrix:
 
   # --- DEADLINE_RATEE × Intentions ---
   "DEADLINE_RATEE:STATUT_DOSSIER":
-    template: "deadline_ratee.md"
+    template: "deadline_ratee.html"
     blocks:
       - explication_deadline
       - report_automatique
       - prochaines_dates
 
   "DEADLINE_RATEE:REPORT_DATE":
-    template: "deadline_ratee_report.md"
+    template: "deadline_ratee_report.html"
     blocks:
       - report_deja_effectue
       - prochaines_dates
 
   # --- BLOCAGE_MODIFICATION_DATE × Intentions ---
   "BLOCAGE_MODIFICATION_DATE:REPORT_DATE":
-    template: "report_bloque_force_majeure.md"
+    template: "report_bloque.html"
     blocks:
       - explication_blocage
       - procedure_force_majeure
       - documents_requis
 
   "BLOCAGE_MODIFICATION_DATE:FORCE_MAJEURE_REPORT":
-    template: "report_force_majeure_procedure.md"
+    template: "report_force_majeure_procedure.html"
     blocks:
       - accuse_reception
       - documents_attendus
@@ -1212,7 +1212,7 @@ matrix:
 
   # --- SESSION × Intentions ---
   "SESSION_ASSIGNEE_PASSEE:DEMANDE_DATE_VISIO":
-    template: "rafraichissement_session.md"
+    template: "rafraichissement_session.html"
     blocks:
       - formation_terminee
       - proposition_rafraichissement
@@ -1288,25 +1288,25 @@ matrix:
 
   # --- RESULTAT × Intentions ---
   "RESULTAT_ADMIS:RESULTAT_EXAMEN":
-    template: "resultat_admis.md"
+    template: "resultat_admis.html"
     blocks:
       - felicitations
       - prochaines_etapes_carte_vtc
 
   "RESULTAT_ADMIS:QUESTION_CARTE_VTC":
-    template: "resultat_admis_carte.md"
+    template: "resultat_admis_carte.html"
     blocks:
       - procedure_carte_vtc
       - delais
 
   "RESULTAT_NON_ADMIS:RESULTAT_EXAMEN":
-    template: "resultat_non_admis.md"
+    template: "resultat_non_admis.html"
     blocks:
       - empathie
       - options_reinscription
 
   "RESULTAT_NON_ADMIS:DEMANDE_REINSCRIPTION":
-    template: "reinscription.md"
+    template: "reinscription.html"
     blocks:
       - procedure_reinscription
       - tarifs
@@ -1314,13 +1314,13 @@ matrix:
 
   # --- Intentions génériques (fallback par intention) ---
   "*:DEMANDE_APPEL_TEL":
-    template: "demande_appel.md"
+    template: "demande_appel.html"
     blocks:
       - communication_email_uniquement
       - proposition_aide_email
 
   "*:RECLAMATION":
-    template: "reclamation.md"
+    template: "reclamation.html"
     tone: "apologetic_reassuring"
     blocks:
       - accusé_reception
@@ -1329,7 +1329,7 @@ matrix:
     escalation: true
 
   "*:DEMANDE_REMBOURSEMENT":
-    template: "demande_remboursement.md"
+    template: "demande_remboursement.html"
     routing:
       department: "Comptabilité"
     blocks:
@@ -1337,35 +1337,35 @@ matrix:
       - transfert_comptabilite
 
   "*:REMERCIEMENT":
-    template: "remerciement.md"
+    template: "remerciement.html"
     response_type: "simple"
     blocks:
       - de_rien
       - a_disposition
 
   "*:SALUTATION":
-    template: "salutation.md"
+    template: "salutation.html"
     response_type: "ask_clarification"
     blocks:
       - salutation
       - demande_precision
 
   "*:MESSAGE_CONFUS":
-    template: "message_confus.md"
+    template: "message_confus.html"
     response_type: "ask_clarification"
     blocks:
       - demande_reformulation
       - exemples_questions
 
   "*:DEMANDE_ELEARNING_ACCESS":
-    template: "elearning_access.md"
+    template: "elearning_access.html"
     blocks:
       - identifiant_email_inscription
       - mot_de_passe_oublie
       - lien_elearning
 
   "*:DEMANDE_LIEN_VISIO":
-    template: "lien_visio.md"
+    template: "lien_visio.html"
     conditional_blocks:
       - session_confirmee:
           condition: "Session is not null"
@@ -1377,7 +1377,7 @@ matrix:
             - confirmation_session_requise
 
   "*:SIGNALE_PAS_RECU_EMAIL":
-    template: "pas_recu_email.md"
+    template: "pas_recu_email.html"
     blocks:
       - verifier_spams
       - renvoi_information
@@ -1460,22 +1460,22 @@ blocks_registry:
 
   # --- Statuts Dossier CMA ---
   statut_dossier_cree:
-    file: "blocks/statut_dossier_cree.md"
+    file: "blocks/statut_dossier_cree.html"
     description: "Dossier en cours de constitution"
   statut_dossier_synchronise:
-    file: "blocks/statut_dossier_synchronise.md"
+    file: "blocks/statut_dossier_synchronise.html"
     description: "Dossier en cours d'instruction"
   statut_pret_a_payer:
-    file: "blocks/statut_pret_a_payer.md"
+    file: "blocks/statut_pret_a_payer.html"
     description: "Dossier validé, attente paiement"
   statut_en_attente_paiement:
     file: "blocks/statut_en_attente_paiement.md"
     description: "En attente de paiement"
   statut_valide_cma:
-    file: "blocks/statut_valide_cma.md"
+    file: "blocks/statut_valide_cma.html"
     description: "Paiement effectué, validé"
   statut_refus_cma:
-    file: "blocks/statut_refus_cma.md"
+    file: "blocks/statut_refus_cma.html"
     description: "Documents refusés par CMA"
     variables: ["documents_refuses", "date_cloture", "date_examen"]
 
@@ -1557,10 +1557,10 @@ blocks_registry:
 
   # --- Résultats ---
   resultat_admis:
-    file: "blocks/resultat_admis.md"
+    file: "blocks/resultat_admis.html"
     description: "Félicitations réussite"
   resultat_non_admis:
-    file: "blocks/resultat_non_admis.md"
+    file: "blocks/resultat_non_admis.html"
     description: "Encouragement échec"
   reinscription_examen:
     file: "blocks/reinscription_examen.md"
@@ -1574,7 +1574,7 @@ blocks_registry:
     file: "blocks/report_possible.md"
     description: "Report encore possible"
   report_bloque_force_majeure:
-    file: "blocks/report_bloque_force_majeure.md"
+    file: "blocks/report_bloque.html"
     description: "Report bloqué"
 
   # --- Compte ExamT3P ---

@@ -1,0 +1,16 @@
+{{> salutation_personnalisee}}
+<b>Proposition de rafraichissement</b><br>
+Nous avons constate que votre formation s'est terminee mais votre examen est prevu ulterieurement.<br>
+<br>
+Pour maximiser vos chances de reussite, nous vous proposons <b>gratuitement</b> de rejoindre une nouvelle session de formation pour rafraichir vos connaissances.<br>
+<br>
+{{#if sessions_proposees}}
+<b>Sessions disponibles :</b><br>
+{{#each sessions_proposees}}
+- <b>{{this.nom}}</b> : du {{this.debut}} au {{this.fin}}<br>
+{{/each}}
+<br>
+{{/if}}
+Merci de nous confirmer si vous souhaitez beneficier de ce rafraichissement.<br>
+<br>
+{{> signature}}

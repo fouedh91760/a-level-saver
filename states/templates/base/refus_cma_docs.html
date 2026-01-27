@@ -1,0 +1,17 @@
+{{> salutation_personnalisee}}
+<b>Documents refuses par la CMA</b><br>
+Certains documents de votre dossier ont ete refuses par la Chambre des Metiers.<br>
+<br>
+Connectez-vous sur <a href="https://www.exament3p.fr">www.exament3p.fr</a> pour voir le detail des documents concernes et les corriger.<br>
+<br>
+{{#if identifiant_examt3p}}
+<b>Vos identifiants :</b><br>
+Identifiant : {{identifiant_examt3p}}<br>
+Mot de passe : {{mot_de_passe_examt3p}}<br>
+<br>
+{{/if}}
+{{#if date_cloture}}
+<b>Attention :</b> la date limite de correction est le <b>{{date_cloture}}</b>.<br>
+<br>
+{{/if}}
+{{> signature}}

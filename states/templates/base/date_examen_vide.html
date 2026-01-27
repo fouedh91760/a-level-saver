@@ -1,0 +1,15 @@
+{{> salutation_personnalisee}}
+<b>Choisissez votre date d'examen</b><br>
+Votre dossier est en cours de traitement. Il est temps de choisir votre date d'examen VTC.<br>
+<br>
+{{#if prochaines_dates}}
+<b>Prochaines dates disponibles :</b><br>
+{{#each prochaines_dates}}
+- <b>{{this.date}}</b> (departement {{this.departement}}) - cloture : {{this.cloture}}<br>
+{{/each}}
+<br>
+{{/if}}
+Merci de nous indiquer la date qui vous convient.<br>
+<br>
+{{> acces_elearning_rappel}}
+{{> signature}}

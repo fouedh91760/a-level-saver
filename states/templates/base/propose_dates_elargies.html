@@ -1,0 +1,17 @@
+{{> salutation_personnalisee}}
+<b>Toutes les dates disponibles</b><br>
+Voici l'ensemble des dates d'examen disponibles, tous departements confondus :<br>
+<br>
+{{#if prochaines_dates}}
+{{#each prochaines_dates}}
+- <b>{{this.date}}</b> (departement {{this.departement}}) - cloture : {{this.cloture}}<br>
+{{/each}}
+<br>
+{{/if}}
+{{#unless compte_existe}}
+<b>Note :</b> Comme vous n'avez pas encore de compte ExamT3P, vous pouvez choisir n'importe quel departement.<br>
+<br>
+{{/unless}}
+Merci de nous indiquer la date qui vous convient.<br>
+<br>
+{{> signature}}

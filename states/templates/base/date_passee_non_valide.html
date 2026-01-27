@@ -1,0 +1,14 @@
+{{> salutation_personnalisee}}
+<b>Report necessaire</b><br>
+La date d'examen initialement prevue ({{date_examen}}) est passee et votre dossier n'a pas pu etre valide a temps.<br>
+<br>
+{{#if prochaines_dates}}
+<b>Prochaines dates disponibles :</b><br>
+{{#each prochaines_dates}}
+- <b>{{this.date}}</b> (departement {{this.departement}}) - cloture : {{this.cloture}}<br>
+{{/each}}
+<br>
+{{/if}}
+Merci de nous indiquer la nouvelle date qui vous convient.<br>
+<br>
+{{> signature}}
