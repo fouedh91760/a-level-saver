@@ -42,14 +42,23 @@ from knowledge_base.scenarios_mapping import (
     SCENARIOS
 )
 
+# State Engine - Architecture State-Driven
+from src.state_engine import StateDetector, TemplateEngine, ResponseValidator, CRMUpdater
+
 logger = logging.getLogger(__name__)
 
 
 class DOCTicketWorkflow:
     """Complete workflow orchestrator for DOC tickets."""
 
-    def __init__(self):
-        """Initialize workflow with all required components."""
+    def __init__(self, use_state_engine: bool = True):
+        """
+        Initialize workflow with all required components.
+
+        Args:
+            use_state_engine: If True, use State Engine for deterministic responses.
+                              If False, use legacy ResponseGeneratorAgent (AI-driven).
+        """
         self.desk_client = ZohoDeskClient()
         self.crm_client = ZohoCRMClient()
         self.response_generator = ResponseGeneratorAgent()
@@ -58,6 +67,21 @@ class DOCTicketWorkflow:
         self.dispatcher = TicketDispatcherAgent()
         self.crm_update_agent = CRMUpdateAgent()
         self.triage_agent = TriageAgent()
+
+        # State Engine - Architecture State-Driven
+        self.use_state_engine = use_state_engine
+        if use_state_engine:
+            self.state_detector = StateDetector()
+            self.template_engine = TemplateEngine()
+            self.response_validator = ResponseValidator()
+            self.state_crm_updater = CRMUpdater(crm_client=self.crm_client)
+            logger.info("✅ State Engine initialized (deterministic mode)")
+        else:
+            self.state_detector = None
+            self.template_engine = None
+            self.response_validator = None
+            self.state_crm_updater = None
+            logger.info("⚠️  State Engine disabled (legacy AI mode)")
 
         logger.info("✅ DOCTicketWorkflow initialized")
 
@@ -1350,12 +1374,19 @@ L'équipe Cab Formations"""
         analysis_result: Dict
     ) -> Dict:
         """
-        Run AGENT RÉDACTEUR - Generate response with Claude + RAG.
+        Run AGENT RÉDACTEUR - Generate response.
 
-        Returns response_result from ResponseGeneratorAgent.
+        If State Engine is enabled:
+            Uses deterministic state detection + templates + validation.
+
+        If State Engine is disabled (legacy mode):
+            Uses ResponseGeneratorAgent with Claude + RAG.
+
+        Returns response_result dict.
         """
         # Get ticket info
         ticket = self.desk_client.get_ticket(ticket_id)
+        ticket_subject = ticket.get('subject', '')
 
         # Extract customer message with proper content extraction
         from src.utils.text_utils import get_clean_thread_content
@@ -1366,11 +1397,29 @@ L'équipe Cab Formations"""
                 customer_message = get_clean_thread_content(thread)
                 break
 
+        # ================================================================
+        # STATE ENGINE MODE (Deterministic)
+        # ================================================================
+        if self.use_state_engine:
+            logger.info("  🎯 Mode: STATE ENGINE (deterministic)")
+            return self._run_state_driven_response(
+                ticket_id=ticket_id,
+                triage_result=triage_result,
+                analysis_result=analysis_result,
+                customer_message=customer_message,
+                ticket_subject=ticket_subject
+            )
+
+        # ================================================================
+        # LEGACY MODE (AI-driven with ResponseGeneratorAgent)
+        # ================================================================
+        logger.info("  🤖 Mode: LEGACY (ResponseGeneratorAgent + Claude)")
+
         # Generate response with FULL THREAD HISTORY
         # Le générateur doit voir TOUT l'historique pour ne pas répéter
         # et adapter sa réponse au contexte complet des échanges
         response_result = self.response_generator.generate_with_validation_loop(
-            ticket_subject=ticket.get('subject', ''),
+            ticket_subject=ticket_subject,
             customer_message=customer_message,
             crm_data=analysis_result.get('deal_data'),
             exament3p_data=analysis_result.get('exament3p_data'),
@@ -1384,6 +1433,170 @@ L'équipe Cab Formations"""
             triage_result=triage_result,  # Intention détectée par IA (REPORT_DATE, etc.)
             uber_case_alert=analysis_result.get('uber_case_alert')  # Alerte Uber CAS D/E à inclure
         )
+
+        return response_result
+
+    def _run_state_driven_response(
+        self,
+        ticket_id: str,
+        triage_result: Dict,
+        analysis_result: Dict,
+        customer_message: str,
+        ticket_subject: str
+    ) -> Dict:
+        """
+        Run State-Driven response generation (deterministic).
+
+        Uses:
+        1. StateDetector → Detect candidate state from context
+        2. TemplateEngine → Generate response from templates
+        3. ResponseValidator → Validate response (forbidden terms, etc.)
+        4. CRMUpdater → Determine CRM updates (pattern matching)
+
+        Args:
+            ticket_id: Ticket ID
+            triage_result: Result from triage step (contains detected_intent)
+            analysis_result: Result from analysis step (contains all data)
+            customer_message: Candidate's message content
+            ticket_subject: Ticket subject
+
+        Returns:
+            response_result dict compatible with current workflow
+        """
+        logger.info("  🎯 STATE ENGINE: Détection de l'état...")
+
+        # ================================================================
+        # STEP 1: Detect State
+        # ================================================================
+        deal_data = analysis_result.get('deal_data', {})
+        examt3p_data = analysis_result.get('exament3p_data', {})
+
+        detected_state = self.state_detector.detect_state(
+            deal_data=deal_data,
+            examt3p_data=examt3p_data,
+            triage_result=triage_result
+        )
+
+        state_id = detected_state.state_id
+        state_name = detected_state.state_name
+        priority = detected_state.priority
+
+        logger.info(f"  ✅ État détecté: {state_id} - {state_name} (priorité {priority})")
+
+        # Log context for debugging
+        ctx = detected_state.context_data
+        logger.debug(f"     Evalbox: {ctx.get('evalbox')}")
+        logger.debug(f"     Uber case: {ctx.get('uber_case')}")
+        logger.debug(f"     Date case: {ctx.get('date_case')}")
+        logger.debug(f"     Intent: {ctx.get('detected_intent')}")
+
+        # ================================================================
+        # STEP 2: Generate Response from Template
+        # ================================================================
+        logger.info("  📝 STATE ENGINE: Génération de la réponse...")
+
+        # Prepare data sources for template
+        data_sources = {
+            'deal_data': deal_data,
+            'examt3p_data': examt3p_data,
+            'date_examen_vtc_data': analysis_result.get('date_examen_vtc_result', {}),
+            'session_data': analysis_result.get('session_data', {}),
+            'uber_eligibility_data': analysis_result.get('uber_eligibility_result', {}),
+            'training_exam_consistency_data': analysis_result.get('training_exam_consistency_result', {}),
+            'ticket_subject': ticket_subject,
+            'customer_message': customer_message,
+            'threads': analysis_result.get('threads', []),
+        }
+
+        response_text = self.template_engine.generate_response(
+            state=detected_state,
+            data_sources=data_sources
+        )
+
+        logger.info(f"  ✅ Réponse générée ({len(response_text)} caractères)")
+
+        # ================================================================
+        # STEP 3: Validate Response
+        # ================================================================
+        logger.info("  🔍 STATE ENGINE: Validation de la réponse...")
+
+        validation_result = self.response_validator.validate(
+            response_text=response_text,
+            state=detected_state,
+            context_data=data_sources
+        )
+
+        if validation_result.is_valid:
+            logger.info("  ✅ Validation OK")
+        else:
+            logger.warning(f"  ⚠️ Validation échouée: {len(validation_result.errors)} erreur(s)")
+            for error in validation_result.errors:
+                logger.warning(f"     - {error}")
+
+            # Log warnings too
+            for warning in validation_result.warnings:
+                logger.info(f"     ⚡ {warning}")
+
+        # ================================================================
+        # STEP 4: Determine CRM Updates (Deterministic)
+        # ================================================================
+        logger.info("  📊 STATE ENGINE: Détermination des mises à jour CRM...")
+
+        # Get proposed sessions/dates for CRM updates
+        proposed_sessions = []
+        session_data = analysis_result.get('session_data', {})
+        for option in session_data.get('proposed_options', []):
+            for sess in option.get('sessions', []):
+                proposed_sessions.append(sess)
+
+        proposed_dates = analysis_result.get('date_examen_vtc_result', {}).get('next_dates', [])
+
+        crm_update_result = self.state_crm_updater.determine_updates(
+            state=detected_state,
+            candidate_message=customer_message,
+            proposed_sessions=proposed_sessions,
+            proposed_dates=proposed_dates
+        )
+
+        crm_updates = crm_update_result.updates_applied
+
+        if crm_updates:
+            logger.info(f"  ✅ Mises à jour CRM déterminées: {list(crm_updates.keys())}")
+        else:
+            logger.info("  ✅ Aucune mise à jour CRM nécessaire")
+
+        if crm_update_result.updates_blocked:
+            for field, reason in crm_update_result.updates_blocked.items():
+                logger.warning(f"  🔒 {field} bloqué: {reason}")
+
+        # ================================================================
+        # BUILD RESPONSE RESULT (compatible with current workflow)
+        # ================================================================
+        response_result = {
+            'response_text': response_text,
+            'detected_scenarios': [state_id],
+            'crm_updates': crm_updates,
+            'requires_crm_update': len(crm_updates) > 0,
+            'should_stop_workflow': detected_state.template_config.get('stop_workflow', False),
+            'validation': {
+                state_id: {
+                    'compliant': validation_result.is_valid,
+                    'errors': validation_result.errors,
+                    'warnings': validation_result.warnings,
+                    'missing_blocks': [],
+                    'forbidden_terms_found': validation_result.forbidden_terms_found,
+                }
+            },
+            # State Engine specific metadata
+            'state_engine': {
+                'state_id': state_id,
+                'state_name': state_name,
+                'priority': priority,
+                'context': ctx,
+                'crm_updates_blocked': crm_update_result.updates_blocked,
+                'crm_updates_skipped': crm_update_result.updates_skipped,
+            }
+        }
 
         return response_result
 
@@ -1668,7 +1881,7 @@ Réponds UNIQUEMENT avec ce format, rien d'autre."""
             self.dispatcher.close()
         if hasattr(self, 'crm_update_agent') and hasattr(self.crm_update_agent, 'close'):
             self.crm_update_agent.close()
-        # ExamT3PAgent and TriageAgent don't have close() method, skip them
+        # ExamT3PAgent, TriageAgent, and State Engine components don't have close() method
 
 
 def test_workflow():
@@ -1677,15 +1890,24 @@ def test_workflow():
     print("TEST DOC TICKET WORKFLOW")
     print("=" * 80)
 
-    workflow = DOCTicketWorkflow()
+    # Test with State Engine enabled (default)
+    print("\n🎯 Testing with State Engine (deterministic mode)...")
+    workflow = DOCTicketWorkflow(use_state_engine=True)
 
-    # Test with a real ticket ID (would need actual ticket)
-    # For now, just show structure is correct
     print("\n✅ Workflow initialized successfully")
+    print(f"   Mode: {'STATE ENGINE (deterministic)' if workflow.use_state_engine else 'LEGACY (AI-driven)'}")
+
     print("\n📋 Workflow stages:")
     print("  1. AGENT TRIEUR (triage with STOP & GO)")
     print("  2. AGENT ANALYSTE (6-source data extraction)")
-    print("  3. AGENT RÉDACTEUR (Claude + RAG response generation)")
+    if workflow.use_state_engine:
+        print("  3. STATE ENGINE (deterministic response generation)")
+        print("     - StateDetector → Detect candidate state")
+        print("     - TemplateEngine → Generate from templates")
+        print("     - ResponseValidator → Validate response")
+        print("     - CRMUpdater → Deterministic CRM updates")
+    else:
+        print("  3. AGENT RÉDACTEUR (Claude + RAG response generation)")
     print("  4. CRM NOTE (mandatory before draft)")
     print("  5. TICKET UPDATE (status, tags)")
     print("  6. DEAL UPDATE (if scenario requires)")
@@ -1693,12 +1915,18 @@ def test_workflow():
     print("  8. FINAL VALIDATION")
 
     print("\n🎯 To run with a real ticket:")
+    print("  # State Engine mode (default - deterministic)")
+    print("  workflow = DOCTicketWorkflow(use_state_engine=True)")
     print("  workflow.process_ticket(")
     print("    ticket_id='198709000445353417',")
     print("    auto_create_draft=False,")
     print("    auto_update_crm=False,")
     print("    auto_update_ticket=False")
     print("  )")
+    print("")
+    print("  # Legacy mode (AI-driven)")
+    print("  workflow = DOCTicketWorkflow(use_state_engine=False)")
+    print("  workflow.process_ticket(...)")
 
     workflow.close()
 
