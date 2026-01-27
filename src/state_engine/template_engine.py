@@ -2,51 +2,86 @@
 TemplateEngine - Génération contrôlée des réponses à partir de templates.
 
 Ce module génère les réponses en combinant:
-1. Des templates structurés (blocs fixes)
-2. Des placeholders remplacés par des données réelles
-3. Des sections IA contraintes (personnalisation uniquement)
+1. Des templates structurés (blocs fixes) depuis states/templates/base/
+2. Des blocs réutilisables depuis states/blocks/
+3. Des placeholders remplacés par des données réelles
+4. Des sections IA contraintes (personnalisation uniquement)
+
+Syntaxe Handlebars supportée:
+- {{variable}} : Remplacement de variable
+- {{> bloc_name}} : Inclusion de bloc (partial)
+- {{#if condition}}...{{else}}...{{/if}} : Conditionnel
+- {{#unless condition}}...{{/unless}} : Conditionnel inverse
+- {{#each items}}...{{/each}} : Boucle
 
 L'IA n'intervient QUE pour la personnalisation, pas pour le contenu factuel.
 """
 
 import logging
 import re
+import yaml
 from pathlib import Path
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional, List, Tuple
 from datetime import datetime
 
 from .state_detector import DetectedState
 
 logger = logging.getLogger(__name__)
 
-# Chemin vers les templates
-TEMPLATES_PATH = Path(__file__).parent.parent.parent / "states" / "templates"
+# Chemins vers les ressources
+STATES_PATH = Path(__file__).parent.parent.parent / "states"
+TEMPLATES_BASE_PATH = STATES_PATH / "templates" / "base"
+BLOCKS_PATH = STATES_PATH / "blocks"
+MATRIX_PATH = STATES_PATH / "state_intention_matrix.yaml"
 
 
 class TemplateEngine:
     """
     Génère les réponses à partir des templates et de l'état détecté.
 
-    Principes:
-    1. Les données factuelles (dates, identifiants, etc.) viennent des placeholders
-    2. L'IA génère UNIQUEMENT les sections de personnalisation
-    3. La structure de la réponse est définie par le template
+    Architecture:
+    1. Charge state_intention_matrix.yaml pour blocks_registry et base_templates
+    2. Sélectionne le template de base selon l'état (via for_evalbox, for_uber_case, etc.)
+    3. Charge les blocs depuis states/blocks/
+    4. Parse la syntaxe Handlebars ({{> partial}}, {{#if}}, etc.)
+    5. Remplace les placeholders par les données réelles
     """
 
-    def __init__(self, templates_path: Optional[Path] = None):
+    def __init__(self, states_path: Optional[Path] = None):
         """
         Initialise le TemplateEngine.
 
         Args:
-            templates_path: Chemin vers le dossier des templates (optionnel)
+            states_path: Chemin vers le dossier states (optionnel)
         """
-        self.templates_path = templates_path or TEMPLATES_PATH
+        self.states_path = states_path or STATES_PATH
+        self.templates_base_path = self.states_path / "templates" / "base"
+        self.blocks_path = self.states_path / "blocks"
+        self.matrix_path = self.states_path / "state_intention_matrix.yaml"
+
+        # Caches
         self.templates_cache: Dict[str, str] = {}
+        self.blocks_cache: Dict[str, str] = {}
 
-        # S'assurer que le dossier existe
-        self.templates_path.mkdir(parents=True, exist_ok=True)
+        # Charger la matrice état×intention
+        self.matrix = self._load_matrix()
+        self.blocks_registry = self.matrix.get('blocks_registry', {})
+        self.base_templates = self.matrix.get('base_templates', {})
 
-        logger.info(f"TemplateEngine initialisé avec templates_path={self.templates_path}")
+        logger.info(f"TemplateEngine initialisé: {len(self.blocks_registry)} blocs, {len(self.base_templates)} templates")
+
+    def _load_matrix(self) -> Dict[str, Any]:
+        """Charge state_intention_matrix.yaml."""
+        try:
+            if self.matrix_path.exists():
+                with open(self.matrix_path, 'r', encoding='utf-8') as f:
+                    return yaml.safe_load(f) or {}
+            else:
+                logger.warning(f"Matrice non trouvée: {self.matrix_path}")
+                return {}
+        except Exception as e:
+            logger.error(f"Erreur chargement matrice: {e}")
+            return {}
 
     def generate_response(
         self,
@@ -66,249 +101,404 @@ class TemplateEngine:
                 'template_used': str,
                 'placeholders_replaced': List[str],
                 'ai_sections_generated': List[str],
-                'alerts_included': List[str]
+                'alerts_included': List[str],
+                'blocks_included': List[str]
             }
         """
-        response_config = state.response_config
         context = state.context_data
 
-        # Déterminer le template à utiliser
-        template_name = self._select_template(response_config, context)
+        # 1. Sélectionner le template de base approprié
+        template_key, template_config = self._select_base_template(state, context)
 
-        if not template_name:
-            logger.warning(f"Pas de template pour l'état {state.name}")
+        if not template_key:
+            logger.warning(f"Pas de template pour l'état {state.name}, utilisation fallback")
             return self._generate_fallback_response(state, ai_generator)
 
-        # Charger le template
-        template_content = self._load_template(template_name)
+        # 2. Charger le template
+        template_file = template_config.get('file', f'templates/base/{template_key}.html')
+        template_content = self._load_template(template_file)
 
         if not template_content:
-            logger.warning(f"Template {template_name} non trouvé")
+            logger.warning(f"Template {template_file} non trouvé, utilisation fallback")
             return self._generate_fallback_response(state, ai_generator)
 
-        # Préparer les données pour les placeholders
+        # 3. Préparer les données pour les placeholders et conditions
         placeholder_data = self._prepare_placeholder_data(state)
 
-        # Remplacer les placeholders
-        response_text, replaced = self._replace_placeholders(
-            template_content, placeholder_data
-        )
+        # 4. Parser et résoudre le template (partials, conditionnels, boucles)
+        blocks_included = []
+        response_text = self._parse_template(template_content, placeholder_data, blocks_included)
 
-        # Générer les sections IA si nécessaire
+        # 5. Remplacer les placeholders simples restants
+        response_text, replaced = self._replace_placeholders(response_text, placeholder_data)
+
+        # 6. Générer les sections IA si nécessaire
         ai_sections = []
+        response_config = state.response_config
         ai_section_name = response_config.get('ai_section')
-        if ai_section_name and ai_generator:
-            ai_content = self._generate_ai_section(
-                state, ai_section_name, ai_generator
-            )
+        if ai_section_name and ai_generator and f"{{{{{ai_section_name}}}}}" in response_text:
+            ai_content = self._generate_ai_section(state, ai_section_name, ai_generator)
             if ai_content:
-                response_text = response_text.replace(
-                    f"{{{{{ai_section_name}}}}}", ai_content
-                )
+                response_text = response_text.replace(f"{{{{{ai_section_name}}}}}", ai_content)
                 ai_sections.append(ai_section_name)
 
-        # Ajouter les alertes
+        # 7. Ajouter les alertes
         alerts_included = []
         for alert in state.alerts:
             alert_content = self._generate_alert_content(alert, context)
             if alert_content:
                 response_text = self._insert_alert(
-                    response_text, alert_content, alert.get('position', 'after_main')
+                    response_text, alert_content, alert.get('position', 'before_signature')
                 )
                 alerts_included.append(alert.get('id', alert.get('type')))
 
-        # Nettoyer les placeholders non remplacés
+        # 8. Nettoyer
         response_text = self._cleanup_unresolved_placeholders(response_text)
-
-        # Supprimer les commentaires BLOCK du texte final
-        response_text = self._strip_block_comments(response_text)
+        response_text = self._strip_comments(response_text)
 
         return {
             'response_text': response_text.strip(),
-            'template_used': template_name,
+            'template_used': template_key,
+            'template_file': template_file,
             'placeholders_replaced': replaced,
             'ai_sections_generated': ai_sections,
-            'alerts_included': alerts_included
+            'alerts_included': alerts_included,
+            'blocks_included': blocks_included
         }
 
-    def _select_template(
+    def _select_base_template(
         self,
-        response_config: Dict[str, Any],
+        state: DetectedState,
         context: Dict[str, Any]
-    ) -> Optional[str]:
-        """Sélectionne le template approprié selon les conditions."""
-        # Vérifier les variantes conditionnelles
-        variants = response_config.get('template_variants', [])
-        for variant in variants:
-            condition = variant.get('condition', '')
-            if self._evaluate_template_condition(condition, context):
-                return variant.get('template')
+    ) -> Tuple[Optional[str], Dict[str, Any]]:
+        """
+        Sélectionne le template de base approprié selon l'état et le contexte.
 
-        # Template par défaut
-        return response_config.get('template')
+        Ordre de priorité:
+        1. for_condition (conditions spéciales)
+        2. for_intention (intention détectée)
+        3. for_uber_case (cas Uber)
+        4. for_resultat (résultat examen)
+        5. for_evalbox (statut Evalbox)
+        6. Fallback par nom d'état
+        """
+        evalbox = context.get('evalbox', '')
+        uber_case = self._determine_uber_case(context)
+        resultat = context.get('deal_data', {}).get('Resultat', '')
+        intention = context.get('detected_intent', '')
 
-    def _evaluate_template_condition(
-        self,
-        condition: str,
-        context: Dict[str, Any]
-    ) -> bool:
-        """Évalue une condition de sélection de template."""
-        if not condition or condition == 'default':
-            return True
+        # Chercher dans base_templates
+        for template_key, config in self.base_templates.items():
+            # Condition spéciale
+            if 'for_condition' in config:
+                condition = config['for_condition']
+                if self._evaluate_condition(condition, context):
+                    return template_key, config
 
-        # Conditions simples
-        if 'days_until_exam' in condition:
-            days = context.get('days_until_exam')
-            if days is None:
-                return False
+            # Intention
+            if 'for_intention' in config:
+                if intention == config['for_intention']:
+                    return template_key, config
 
-            if '>' in condition:
-                threshold = int(re.search(r'>\s*(\d+)', condition).group(1))
-                if '<=' in condition:
-                    return days <= threshold
-                return days > threshold
-            elif '<' in condition:
-                threshold = int(re.search(r'<\s*(\d+)', condition).group(1))
-                if '>=' in condition:
-                    return days >= threshold
-                return days < threshold
+            # Cas Uber
+            if 'for_uber_case' in config:
+                if uber_case == config['for_uber_case']:
+                    return template_key, config
 
-        if 'can_modify_exam_date' in condition:
-            can_modify = context.get('can_modify_exam_date', True)
-            if '== true' in condition:
-                return can_modify
-            if '== false' in condition:
-                return not can_modify
+            # Résultat examen
+            if 'for_resultat' in config:
+                if resultat == config['for_resultat']:
+                    return template_key, config
 
-        if 'mentions_force_majeure' in condition:
-            intent_context = context.get('intent_context', {})
-            mentions = intent_context.get('mentions_force_majeure', False)
-            if '== true' in condition:
-                return mentions
-            if '== false' in condition:
-                return not mentions
+            # Evalbox (le plus courant)
+            if 'for_evalbox' in config:
+                if evalbox == config['for_evalbox']:
+                    return template_key, config
 
-        if 'evalbox' in condition:
-            evalbox = context.get('evalbox', '')
-            if '==' in condition:
-                expected = condition.split('==')[1].strip().strip("'\"")
-                return evalbox == expected
+        # Fallback: chercher par nom d'état normalisé
+        state_name_normalized = state.name.lower().replace('_', '-')
+        for template_key, config in self.base_templates.items():
+            if template_key.lower() == state_name_normalized:
+                return template_key, config
 
-        return False
+        return None, {}
 
-    def _load_template(self, template_name: str) -> Optional[str]:
+    def _determine_uber_case(self, context: Dict[str, Any]) -> str:
+        """Détermine le cas Uber (A, B, D, E, ELIGIBLE, NOT_UBER)."""
+        if not context.get('is_uber_20_deal'):
+            return 'NOT_UBER'
+
+        if not context.get('date_dossier_recu'):
+            return 'A'
+
+        if not context.get('compte_uber', True):
+            return 'D'
+
+        if not context.get('eligible_uber', True):
+            return 'E'
+
+        if not context.get('date_test_selection'):
+            return 'B'
+
+        return 'ELIGIBLE'
+
+    def _load_template(self, template_path: str) -> Optional[str]:
         """Charge un template depuis le cache ou le fichier."""
-        if template_name in self.templates_cache:
-            return self.templates_cache[template_name]
+        if template_path in self.templates_cache:
+            return self.templates_cache[template_path]
 
-        template_path = self.templates_path / template_name
+        # Construire le chemin complet
+        full_path = self.states_path / template_path
 
-        if not template_path.exists():
-            # Essayer de créer un template par défaut
-            default_content = self._create_default_template(template_name)
-            if default_content:
-                self.templates_cache[template_name] = default_content
-                return default_content
-            return None
+        if not full_path.exists():
+            # Essayer avec le path direct
+            full_path = self.templates_base_path / Path(template_path).name
+            if not full_path.exists():
+                logger.warning(f"Template non trouvé: {template_path}")
+                return None
 
         try:
-            content = template_path.read_text(encoding='utf-8')
-            self.templates_cache[template_name] = content
+            content = full_path.read_text(encoding='utf-8')
+            self.templates_cache[template_path] = content
             return content
         except Exception as e:
-            logger.error(f"Erreur lecture template {template_name}: {e}")
+            logger.error(f"Erreur lecture template {template_path}: {e}")
             return None
 
-    def _create_default_template(self, template_name: str) -> Optional[str]:
-        """Crée un template par défaut basé sur le nom."""
-        # Templates par défaut pour les états courants
-        default_templates = {
-            'general_response.md': """Bonjour {{prenom}},
+    def _load_block(self, block_name: str) -> Optional[str]:
+        """Charge un bloc depuis le cache ou le fichier."""
+        if block_name in self.blocks_cache:
+            return self.blocks_cache[block_name]
 
-{{personnalisation}}
+        # Chercher dans le registry
+        block_config = self.blocks_registry.get(block_name, {})
+        block_file = block_config.get('file', f'blocks/{block_name}.md')
 
-Bien cordialement,
-L'équipe CAB Formations""",
+        # Construire le chemin
+        full_path = self.states_path / block_file
 
-            'propose_dates.md': """Bonjour {{prenom}},
+        if not full_path.exists():
+            # Essayer avec le path direct dans blocks/
+            full_path = self.blocks_path / f"{block_name}.md"
+            if not full_path.exists():
+                logger.warning(f"Bloc non trouvé: {block_name}")
+                return None
 
-{{personnalisation}}
+        try:
+            content = full_path.read_text(encoding='utf-8')
+            self.blocks_cache[block_name] = content
+            return content
+        except Exception as e:
+            logger.error(f"Erreur lecture bloc {block_name}: {e}")
+            return None
 
-Voici les prochaines dates d'examen disponibles :
+    def _parse_template(
+        self,
+        template: str,
+        context: Dict[str, Any],
+        blocks_included: List[str]
+    ) -> str:
+        """
+        Parse le template et résout les partials, conditionnels, boucles.
 
-{{dates_proposees}}
+        Ordre de traitement:
+        1. {{> partial}} - Inclusion de blocs
+        2. {{#if}}...{{else}}...{{/if}} - Conditionnels
+        3. {{#unless}}...{{/unless}} - Conditionnels inverses
+        4. {{#each}}...{{/each}} - Boucles
+        """
+        result = template
 
-Merci de nous indiquer la date qui vous convient.
+        # 1. Résoudre les partials ({{> bloc_name}})
+        result = self._resolve_partials(result, context, blocks_included)
 
-Bien cordialement,
-L'équipe CAB Formations""",
+        # 2. Résoudre les conditionnels {{#if}}
+        result = self._resolve_if_blocks(result, context)
 
-            'identifiants_examt3p.md': """Bonjour {{prenom}},
+        # 3. Résoudre les conditionnels inverses {{#unless}}
+        result = self._resolve_unless_blocks(result, context)
 
-{{personnalisation}}
+        # 4. Résoudre les boucles {{#each}}
+        result = self._resolve_each_blocks(result, context)
 
-Voici vos identifiants pour accéder à la plateforme ExamT3P :
+        return result
 
-**Identifiant :** {{identifiant_examt3p}}
-**Mot de passe :** {{mot_de_passe_examt3p}}
+    def _resolve_partials(
+        self,
+        template: str,
+        context: Dict[str, Any],
+        blocks_included: List[str]
+    ) -> str:
+        """Résout les {{> bloc_name}} en chargeant et injectant les blocs."""
+        result = template
 
-🔗 Lien de connexion : https://www.intras.fr
+        # Pattern pour {{> bloc_name}}
+        pattern = r'\{\{>\s*(\w+)\s*\}\}'
 
-⚠️ **Important** : Si vous ne trouvez pas l'email, vérifiez vos spams/courriers indésirables.
+        while True:
+            match = re.search(pattern, result)
+            if not match:
+                break
 
-Bien cordialement,
-L'équipe CAB Formations""",
+            block_name = match.group(1)
+            block_content = self._load_block(block_name)
 
-            'convocation_received.md': """Bonjour {{prenom}},
+            if block_content:
+                # Résoudre récursivement les partials dans le bloc
+                block_content = self._resolve_partials(block_content, context, blocks_included)
+                # Résoudre les conditionnels dans le bloc
+                block_content = self._resolve_if_blocks(block_content, context)
+                block_content = self._resolve_unless_blocks(block_content, context)
 
-{{personnalisation}}
+                result = result[:match.start()] + block_content + result[match.end():]
+                blocks_included.append(block_name)
+            else:
+                # Bloc non trouvé, supprimer le placeholder
+                logger.warning(f"Bloc {block_name} non trouvé, suppression du placeholder")
+                result = result[:match.start()] + result[match.end():]
 
-Votre convocation pour l'examen du **{{date_examen_formatted}}** est disponible !
+        return result
 
-**Pour la télécharger :**
-1. Connectez-vous sur https://www.intras.fr
-2. Identifiant : {{identifiant_examt3p}}
-3. Mot de passe : {{mot_de_passe_examt3p}}
-4. Téléchargez et imprimez votre convocation
+    def _resolve_if_blocks(self, template: str, context: Dict[str, Any]) -> str:
+        """Résout les {{#if condition}}...{{else}}...{{/if}}."""
+        result = template
 
-**Le jour de l'examen, n'oubliez pas :**
-- Votre convocation imprimée
-- Une pièce d'identité en cours de validité
+        # Pattern pour {{#if condition}}...{{/if}} avec optionnel {{else}}
+        # Note: non-greedy pour gérer les blocs imbriqués
+        pattern = r'\{\{#if\s+(\w+)\s*\}\}(.*?)(?:\{\{else\}\}(.*?))?\{\{/if\}\}'
 
-Bonne chance ! 🍀
+        while True:
+            match = re.search(pattern, result, re.DOTALL)
+            if not match:
+                break
 
-Bien cordialement,
-L'équipe CAB Formations""",
+            condition_var = match.group(1)
+            if_content = match.group(2) or ''
+            else_content = match.group(3) or ''
 
-            'confirmation_session.md': """Bonjour {{prenom}},
+            # Évaluer la condition
+            condition_value = self._get_context_value(condition_var, context)
 
-{{personnalisation}}
+            if condition_value:
+                replacement = if_content
+            else:
+                replacement = else_content
 
-Votre choix de session a bien été enregistré :
+            result = result[:match.start()] + replacement + result[match.end():]
 
-**{{session_choisie}}**
-Du {{date_debut_formation}} au {{date_fin_formation}}
+        return result
 
-Vous recevrez un email de rappel avant le début de la formation.
+    def _resolve_unless_blocks(self, template: str, context: Dict[str, Any]) -> str:
+        """Résout les {{#unless condition}}...{{else}}...{{/unless}}."""
+        result = template
 
-Bien cordialement,
-L'équipe CAB Formations""",
+        pattern = r'\{\{#unless\s+(\w+)\s*\}\}(.*?)(?:\{\{else\}\}(.*?))?\{\{/unless\}\}'
 
-            'statut_dossier.md': """Bonjour {{prenom}},
+        while True:
+            match = re.search(pattern, result, re.DOTALL)
+            if not match:
+                break
 
-{{personnalisation}}
+            condition_var = match.group(1)
+            unless_content = match.group(2) or ''
+            else_content = match.group(3) or ''
 
-**Statut actuel de votre dossier :**
+            # Évaluer la condition (inversée pour unless)
+            condition_value = self._get_context_value(condition_var, context)
 
-{{statut_actuel}}
+            if not condition_value:
+                replacement = unless_content
+            else:
+                replacement = else_content
 
-{{prochaines_etapes}}
+            result = result[:match.start()] + replacement + result[match.end():]
 
-Bien cordialement,
-L'équipe CAB Formations""",
-        }
+        return result
 
-        return default_templates.get(template_name)
+    def _resolve_each_blocks(self, template: str, context: Dict[str, Any]) -> str:
+        """Résout les {{#each items}}...{{/each}}."""
+        result = template
+
+        pattern = r'\{\{#each\s+(\w+)\s*\}\}(.*?)\{\{/each\}\}'
+
+        while True:
+            match = re.search(pattern, result, re.DOTALL)
+            if not match:
+                break
+
+            items_var = match.group(1)
+            item_template = match.group(2)
+
+            items = self._get_context_value(items_var, context)
+
+            if items and isinstance(items, list):
+                rendered_items = []
+                for item in items:
+                    rendered_item = item_template
+                    # Remplacer {{this.property}} ou {{this}}
+                    if isinstance(item, dict):
+                        for key, value in item.items():
+                            rendered_item = rendered_item.replace(f"{{{{this.{key}}}}}", str(value))
+                    else:
+                        rendered_item = rendered_item.replace("{{this}}", str(item))
+                    rendered_items.append(rendered_item)
+                replacement = ''.join(rendered_items)
+            else:
+                replacement = ''
+
+            result = result[:match.start()] + replacement + result[match.end():]
+
+        return result
+
+    def _get_context_value(self, key: str, context: Dict[str, Any]) -> Any:
+        """Récupère une valeur du contexte, avec support des clés imbriquées."""
+        # Mapping des variables de template vers le contexte
+        # Variables booléennes courantes
+        if key == 'uber_20':
+            return context.get('is_uber_20_deal', False)
+        if key == 'can_choose_other_department':
+            return not context.get('compte_existe', True)
+        if key == 'session_choisie':
+            return context.get('session_assigned', False)
+        if key == 'compte_existe':
+            return context.get('compte_existe', False)
+        if key == 'identifiant_examt3p':
+            return context.get('examt3p_data', {}).get('identifiant', '')
+        if key == 'mot_de_passe_examt3p':
+            return context.get('examt3p_data', {}).get('mot_de_passe', '')
+
+        # Chercher directement dans le contexte
+        if key in context:
+            return context[key]
+
+        # Chercher dans deal_data
+        deal_data = context.get('deal_data', {})
+        if key in deal_data:
+            return deal_data[key]
+
+        # Chercher dans examt3p_data
+        examt3p_data = context.get('examt3p_data', {})
+        if key in examt3p_data:
+            return examt3p_data[key]
+
+        return None
+
+    def _evaluate_condition(self, condition: str, context: Dict[str, Any]) -> bool:
+        """Évalue une condition de type 'variable == value'."""
+        if '==' in condition:
+            parts = condition.split('==')
+            if len(parts) == 2:
+                var_name = parts[0].strip()
+                expected = parts[1].strip().strip("'\"")
+                actual = self._get_context_value(var_name, context)
+
+                if expected.lower() == 'true':
+                    return actual == True
+                if expected.lower() == 'false':
+                    return actual == False
+                return str(actual) == expected
+
+        return False
 
     def _prepare_placeholder_data(self, state: DetectedState) -> Dict[str, Any]:
         """Prépare les données pour remplacer les placeholders."""
@@ -355,33 +545,34 @@ L'équipe CAB Formations""",
             'evalbox_status': context.get('evalbox', ''),
             'num_dossier_cma': examt3p_data.get('num_dossier', ''),
 
-            # Prochaines étapes (à personnaliser selon l'état)
+            # Numéro de dossier
+            'num_dossier': examt3p_data.get('num_dossier', ''),
+
+            # Prochaines étapes
             'prochaines_etapes': self._get_prochaines_etapes(state),
+
+            # Booléens pour les conditions (aussi disponibles comme placeholders)
+            'uber_20': context.get('is_uber_20_deal', False),
+            'can_choose_other_department': not context.get('compte_existe', True),
+            'session_assigned': context.get('session_assigned', False),
+            'compte_existe': context.get('compte_existe', False),
         }
 
     def _extract_prenom(self, deal_data: Dict[str, Any]) -> str:
         """Extrait le prénom du candidat."""
-        # Priorité 1: First_Name explicite
         first_name = deal_data.get('First_Name', '')
         if first_name and first_name.strip():
             return first_name.strip().capitalize()
 
-        # Priorité 2: Parser Deal_Name (format: "CODE [CODE] Prénom Nom")
         deal_name = deal_data.get('Deal_Name', '')
         if deal_name:
-            # Codes à ignorer dans Deal_Name (préfixes internes)
             internal_codes = {'BFS', 'NP', 'CPF', 'UBER', 'VISIO', 'PRES', 'TEST', 'VIP'}
-
             parts = deal_name.split()
-            # Trouver le premier mot qui n'est pas un code
             for part in parts:
-                # Ignorer si c'est un code connu (tout en majuscules courtes)
                 if part.upper() in internal_codes:
                     continue
-                # Ignorer si c'est un code générique (2-3 lettres majuscules)
                 if len(part) <= 3 and part.isupper():
                     continue
-                # C'est probablement le prénom
                 return part.capitalize()
 
         return ''
@@ -397,24 +588,25 @@ L'équipe CAB Formations""",
             return str(date_str)
 
     def _format_dates_list(self, dates: List[Dict]) -> str:
-        """Formate une liste de dates d'examen."""
+        """Formate une liste de dates d'examen en HTML."""
         if not dates:
-            return "Aucune date disponible pour le moment."
+            return "<p>Aucune date disponible pour le moment.</p>"
 
         lines = []
-        for i, date_info in enumerate(dates[:5], 1):  # Max 5 dates
+        for i, date_info in enumerate(dates[:5], 1):
             date_str = date_info.get('Date_Examen', '')
             formatted = self._format_date(date_str)
+            dept = date_info.get('Departement', '')
             cloture = date_info.get('Date_Cloture_Inscription', '')
             cloture_formatted = self._format_date(cloture) if cloture else ''
 
-            line = f"📅 **{formatted}**"
+            line = f"<li><b>{formatted}</b> (département {dept})"
             if cloture_formatted:
-                line += f" (clôture : {cloture_formatted})"
-
+                line += f" - clôture : {cloture_formatted}"
+            line += "</li>"
             lines.append(line)
 
-        return "\n".join(lines)
+        return f"<ul>{''.join(lines)}</ul>"
 
     def _format_session(self, session: Any) -> str:
         """Formate les infos de session."""
@@ -427,14 +619,14 @@ L'équipe CAB Formations""",
     def _format_statut(self, evalbox: str) -> str:
         """Formate le statut Evalbox pour affichage."""
         statut_mapping = {
-            'Dossier crée': '📝 Dossier en cours de création',
-            'Pret a payer': '💳 Dossier prêt pour paiement CMA',
-            'Dossier Synchronisé': '🔄 Dossier transmis à la CMA (instruction en cours)',
-            'VALIDE CMA': '✅ Dossier validé par la CMA',
-            'Convoc CMA reçue': '📨 Convocation disponible',
-            'Refusé CMA': '❌ Document(s) refusé(s) par la CMA',
+            'Dossier crée': 'Dossier en cours de création',
+            'Pret a payer': 'Dossier prêt pour paiement CMA',
+            'Dossier Synchronisé': 'Dossier transmis à la CMA (instruction en cours)',
+            'VALIDE CMA': 'Dossier validé par la CMA',
+            'Convoc CMA reçue': 'Convocation disponible',
+            'Refusé CMA': 'Document(s) refusé(s) par la CMA',
         }
-        return statut_mapping.get(evalbox, f"📋 {evalbox}" if evalbox else "Statut inconnu")
+        return statut_mapping.get(evalbox, evalbox or "Statut inconnu")
 
     def _get_prochaines_etapes(self, state: DetectedState) -> str:
         """Génère les prochaines étapes selon l'état."""
@@ -451,8 +643,8 @@ L'équipe CAB Formations""",
         self,
         template: str,
         data: Dict[str, Any]
-    ) -> tuple:
-        """Remplace les placeholders dans le template."""
+    ) -> Tuple[str, List[str]]:
+        """Remplace les placeholders simples {{variable}} dans le template."""
         replaced = []
         result = template
 
@@ -461,9 +653,15 @@ L'équipe CAB Formations""",
 
         for match in re.finditer(pattern, template):
             placeholder = match.group(1)
+            # Ignorer les blocs spéciaux (personnalisation, etc.)
+            if placeholder in ['personnalisation', 'full_response']:
+                continue
             if placeholder in data and data[placeholder]:
-                result = result.replace(f"{{{{{placeholder}}}}}", str(data[placeholder]))
-                replaced.append(placeholder)
+                value = data[placeholder]
+                # Ne pas convertir les booléens en string ici (déjà gérés par conditionnels)
+                if not isinstance(value, bool):
+                    result = result.replace(f"{{{{{placeholder}}}}}", str(value))
+                    replaced.append(placeholder)
 
         return result, replaced
 
@@ -477,7 +675,6 @@ L'équipe CAB Formations""",
         response_config = state.response_config
         ai_instructions = response_config.get('ai_instructions', '')
 
-        # Si c'est une section full_response, utiliser l'IA pour tout
         if section_name == 'full_response':
             return ai_generator(
                 state=state,
@@ -485,11 +682,10 @@ L'équipe CAB Formations""",
                 max_length=500
             )
 
-        # Sinon, générer juste la personnalisation
         return ai_generator(
             state=state,
             instructions=ai_instructions,
-            max_length=100  # 2-3 phrases max
+            max_length=100
         )
 
     def _generate_alert_content(
@@ -497,28 +693,24 @@ L'équipe CAB Formations""",
         alert: Dict[str, Any],
         context: Dict[str, Any]
     ) -> Optional[str]:
-        """Génère le contenu d'une alerte."""
+        """Génère le contenu HTML d'une alerte."""
         alert_type = alert.get('type', '')
 
         if alert_type == 'uber_case_d':
             return """
----
-⚠️ **Information importante concernant votre compte Uber**
-
-Nous avons constaté que l'adresse email utilisée pour votre inscription n'est pas reconnue par Uber comme un compte chauffeur actif.
-
-Veuillez vérifier que vous utilisez la même adresse email que votre compte **Uber Driver** (pas Uber client). Si le problème persiste, contactez le support Uber via l'application.
----"""
+<hr>
+<p><b>Information importante concernant votre compte Uber</b></p>
+<p>Nous avons constaté que l'adresse email utilisée pour votre inscription n'est pas reconnue par Uber comme un compte chauffeur actif.</p>
+<p>Veuillez vérifier que vous utilisez la même adresse email que votre compte <b>Uber Driver</b> (pas Uber client). Si le problème persiste, contactez le support Uber via l'application.</p>
+<hr>"""
 
         if alert_type == 'uber_case_e':
             return """
----
-⚠️ **Information importante concernant votre éligibilité Uber**
-
-Selon les informations d'Uber, votre profil n'est pas éligible à l'offre partenariat. Nous n'avons pas de visibilité sur les raisons de cette décision.
-
-Nous vous invitons à contacter le support Uber via l'application **Uber Driver** (Compte → Aide) pour comprendre votre situation.
----"""
+<hr>
+<p><b>Information importante concernant votre éligibilité Uber</b></p>
+<p>Selon les informations d'Uber, votre profil n'est pas éligible à l'offre partenariat. Nous n'avons pas de visibilité sur les raisons de cette décision.</p>
+<p>Nous vous invitons à contacter le support Uber via l'application <b>Uber Driver</b> (Compte → Aide) pour comprendre votre situation.</p>
+<hr>"""
 
         return None
 
@@ -526,33 +718,38 @@ Nous vous invitons à contacter le support Uber via l'application **Uber Driver*
         self,
         response: str,
         alert_content: str,
-        position: str = 'after_main'
+        position: str = 'before_signature'
     ) -> str:
-        """Insère une alerte dans la réponse."""
+        """Insère une alerte dans la réponse HTML."""
         if position == 'before_signature':
-            # Insérer avant "Bien cordialement"
-            if 'Bien cordialement' in response:
-                return response.replace(
-                    'Bien cordialement',
-                    f"{alert_content}\n\nBien cordialement"
-                )
+            # Chercher la signature (bloc signature ou "Bien cordialement")
+            signature_patterns = [
+                r'(<p[^>]*>.*?(?:cordialement|équipe cab).*?</p>)',
+                r'(Bien cordialement)',
+                r'(L\'équipe CAB)',
+            ]
+            for pattern in signature_patterns:
+                match = re.search(pattern, response, re.IGNORECASE | re.DOTALL)
+                if match:
+                    return response[:match.start()] + alert_content + "\n" + response[match.start():]
 
-        # Par défaut, ajouter à la fin avant la signature
+        # Fallback: ajouter à la fin
         return response.rstrip() + "\n" + alert_content
 
     def _cleanup_unresolved_placeholders(self, response: str) -> str:
         """Nettoie les placeholders non remplacés."""
-        # Remplacer les placeholders vides par une chaîne vide
-        cleaned = re.sub(r'\{\{\w+\}\}', '', response)
+        # Supprimer les placeholders vides (sauf personnalisation qu'on garde pour debug)
+        cleaned = re.sub(r'\{\{(?!personnalisation)\w+\}\}', '', response)
         # Nettoyer les lignes vides multiples
         cleaned = re.sub(r'\n{3,}', '\n\n', cleaned)
+        # Nettoyer les paragraphes vides
+        cleaned = re.sub(r'<p>\s*</p>', '', cleaned)
         return cleaned
 
-    def _strip_block_comments(self, response: str) -> str:
-        """Supprime les commentaires BLOCK du texte final."""
-        # Supprimer les marqueurs <!-- BLOCK: xxx --> et <!-- /BLOCK -->
-        cleaned = re.sub(r'<!--\s*BLOCK:\s*\w+\s*-->\n?', '', response)
-        cleaned = re.sub(r'<!--\s*/BLOCK\s*-->\n?', '', cleaned)
+    def _strip_comments(self, response: str) -> str:
+        """Supprime les commentaires HTML du texte final."""
+        # Supprimer les commentaires <!-- ... -->
+        cleaned = re.sub(r'<!--.*?-->', '', response, flags=re.DOTALL)
         # Nettoyer les lignes vides multiples
         cleaned = re.sub(r'\n{3,}', '\n\n', cleaned)
         return cleaned.strip()
@@ -563,17 +760,19 @@ Nous vous invitons à contacter le support Uber via l'application **Uber Driver*
         ai_generator: Optional[callable]
     ) -> Dict[str, Any]:
         """Génère une réponse de fallback quand pas de template."""
-        # Utiliser le template général
-        general_template = self._create_default_template('general_response.md')
         placeholder_data = self._prepare_placeholder_data(state)
+        prenom = placeholder_data.get('prenom', 'Bonjour')
 
-        response_text, replaced = self._replace_placeholders(
-            general_template or "Bonjour,\n\n{{personnalisation}}\n\nBien cordialement,\nL'équipe CAB Formations",
-            placeholder_data
-        )
+        fallback_template = f"""<p>Bonjour {prenom},</p>
 
-        # Générer la personnalisation via IA
+<p>{{{{personnalisation}}}}</p>
+
+<p>Bien cordialement,<br>
+L'équipe CAB Formations</p>"""
+
+        response_text = fallback_template
         ai_sections = []
+
         if ai_generator:
             ai_content = ai_generator(
                 state=state,
@@ -587,7 +786,9 @@ Nous vous invitons à contacter le support Uber via l'application **Uber Driver*
         return {
             'response_text': self._cleanup_unresolved_placeholders(response_text),
             'template_used': 'fallback',
-            'placeholders_replaced': replaced,
+            'template_file': None,
+            'placeholders_replaced': ['prenom'],
             'ai_sections_generated': ai_sections,
-            'alerts_included': []
+            'alerts_included': [],
+            'blocks_included': []
         }
