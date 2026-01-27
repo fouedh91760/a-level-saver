@@ -1,0 +1,1269 @@
+# =============================================================================
+# CANDIDATE STATES - Source Unique de Vérité
+# =============================================================================
+# Ce fichier définit TOUS les états possibles d'un candidat dans le processus
+# d'inscription VTC. Chaque état a:
+# - Une condition de détection (déterministe)
+# - Un template de réponse
+# - Des mises à jour CRM (ou null)
+# - Des règles de validation
+#
+# IMPORTANT: Les états sont évalués par ordre de priorité (1 = plus prioritaire)
+# Le premier état dont les conditions sont satisfaites est sélectionné.
+# =============================================================================
+
+version: "1.0"
+last_updated: "2026-01-27"
+
+# =============================================================================
+# CONFIGURATION GLOBALE
+# =============================================================================
+config:
+  forbidden_terms:
+    - "BFS"
+    - "Evalbox"
+    - "CDJ"
+    - "CDS"
+    - "20€"
+    - "Montreuil"
+    - "lookup"
+    - "CRM"
+    - "deal"
+    - "API"
+
+  required_blocks_global:
+    - "salutation"
+    - "signature"
+
+  ai_constraints:
+    max_personalization_sentences: 3
+    tone: "professionnel et empathique"
+    forbidden_inventions:
+      - "dates"
+      - "montants"
+      - "identifiants"
+      - "numéros de dossier"
+
+# =============================================================================
+# ÉTATS DE TRIAGE (Priorité 1-99)
+# Ces états sont évalués EN PREMIER et peuvent stopper le workflow
+# =============================================================================
+states:
+
+  # ---------------------------------------------------------------------------
+  # T1: SPAM
+  # ---------------------------------------------------------------------------
+  SPAM:
+    id: "T1"
+    priority: 1
+    description: "Message spam/publicité - Clôturer sans réponse"
+    category: "triage"
+
+    detection:
+      method: "triage_agent"  # Détecté par TriageAgent
+      triage_action: "SPAM"
+
+    workflow:
+      action: "STOP"
+      close_ticket: true
+      add_crm_note: false
+
+    response:
+      generate: false  # Pas de réponse
+
+  # ---------------------------------------------------------------------------
+  # T2: ROUTE vers autre département
+  # ---------------------------------------------------------------------------
+  ROUTE_DEPARTMENT:
+    id: "T2"
+    priority: 2
+    description: "Ticket à transférer vers un autre département"
+    category: "triage"
+
+    detection:
+      method: "triage_agent"
+      triage_action: "ROUTE"
+
+    workflow:
+      action: "TRANSFER"
+      # target_department est déterminé par TriageAgent
+
+    response:
+      generate: false  # Pas de réponse, juste transfert
+
+  # ---------------------------------------------------------------------------
+  # T3: DOUBLON UBER 20€
+  # ---------------------------------------------------------------------------
+  DUPLICATE_UBER:
+    id: "T3"
+    priority: 3
+    description: "Candidat a déjà utilisé l'offre Uber 20€"
+    category: "triage"
+
+    detection:
+      method: "deal_linking_agent"
+      condition: "has_duplicate_uber_offer == true"
+
+    workflow:
+      action: "RESPOND_AND_STOP"
+
+    response:
+      template: "duplicate_uber.md"
+      blocks_required:
+        - "salutation"
+        - "explication_offre_unique"
+        - "options_alternatives"
+        - "signature"
+      blocks_forbidden:
+        - "dates_examen"
+        - "sessions_formation"
+      ai_section: "personnalisation"
+      ai_instructions: "Reformuler avec empathie que l'offre a déjà été utilisée. 2 phrases max."
+
+    crm_updates: null
+
+  # ---------------------------------------------------------------------------
+  # T4: CANDIDAT NON TROUVÉ
+  # ---------------------------------------------------------------------------
+  CANDIDATE_NOT_FOUND:
+    id: "T4"
+    priority: 4
+    description: "Aucun deal trouvé pour cet email"
+    category: "triage"
+
+    detection:
+      method: "deal_linking_agent"
+      condition: "deal_id == null AND routing_action == 'NEEDS_CLARIFICATION'"
+
+    workflow:
+      action: "RESPOND_AND_STOP"
+
+    response:
+      template: "candidate_not_found.md"
+      blocks_required:
+        - "salutation"
+        - "demande_informations"
+        - "signature"
+      blocks_forbidden:
+        - "dates_examen"
+        - "identifiants"
+      ai_section: "personnalisation"
+      ai_instructions: "Introduction empathique demandant de vérifier l'email d'inscription. 1-2 phrases."
+
+    crm_updates: null
+
+# =============================================================================
+# ÉTATS D'ANALYSE - CREDENTIALS (Priorité 100-199)
+# =============================================================================
+
+  # ---------------------------------------------------------------------------
+  # A0: REFUS PARTAGE CREDENTIALS (Préoccupation sécurité)
+  # ---------------------------------------------------------------------------
+  CREDENTIALS_REFUSED_SECURITY:
+    id: "A0"
+    priority: 95  # Plus haute priorité que CREDENTIALS_INVALID
+    description: "Le candidat refuse de partager ses identifiants pour raison de sécurité"
+    category: "analysis"
+
+    detection:
+      method: "intent"
+      condition: "detected_intent == 'REFUS_PARTAGE_CREDENTIALS'"
+
+    workflow:
+      action: "RESPOND"
+      skip_date_analysis: true
+      skip_session_analysis: true
+
+    response:
+      template: "credentials_refused_security.md"
+      blocks_required:
+        - "salutation"
+        - "comprendre_besoin_identifiants"
+        - "alternative_autonomie"
+        - "signature"
+      blocks_forbidden:
+        - "demande_identifiants_directe"  # NE PAS redemander les identifiants !
+      ai_section: "personnalisation"
+      ai_instructions: "Valider la préoccupation sécurité du candidat. Être rassurant et compréhensif. 1-2 phrases max."
+
+    crm_updates: null
+
+  # ---------------------------------------------------------------------------
+  # A1: IDENTIFIANTS INVALIDES
+  # ---------------------------------------------------------------------------
+  CREDENTIALS_INVALID:
+    id: "A1"
+    priority: 100
+    description: "Identifiants ExamT3P invalides ou manquants"
+    category: "analysis"
+
+    detection:
+      method: "credentials_helper"
+      conditions:
+        any_of:
+          - "compte_existe == false AND should_respond_to_candidate == true"
+          - "connection_test_success == false"
+
+    workflow:
+      action: "RESPOND"
+      skip_date_analysis: true
+      skip_session_analysis: true
+
+    response:
+      template: "credentials_invalid.md"
+      blocks_required:
+        - "salutation"
+        - "explication_probleme_identifiants"
+        - "instructions_recuperation"
+        - "warning_spam"
+        - "signature"
+      blocks_forbidden:
+        - "dates_examen"
+        - "sessions_formation"
+      ai_section: "personnalisation"
+      ai_instructions: "Phrase empathique sur le problème d'accès. 1 phrase max."
+
+    crm_updates: null
+
+  # ---------------------------------------------------------------------------
+  # A2: EXAMT3P DOWN (technique)
+  # ---------------------------------------------------------------------------
+  EXAMT3P_DOWN:
+    id: "A2"
+    priority: 101
+    description: "Erreur technique ExamT3P - intervention manuelle requise"
+    category: "analysis"
+
+    detection:
+      method: "examt3p_agent"
+      condition: "extraction_failed == true AND error_type == 'technical'"
+
+    workflow:
+      action: "STOP"
+      status: "STOPPED_EXAMT3P_FAILED"
+      alert_internal: true
+
+    response:
+      generate: false  # Intervention manuelle requise
+
+    crm_updates: null
+
+  # ---------------------------------------------------------------------------
+  # A3: DOUBLE COMPTE PAYÉ
+  # ---------------------------------------------------------------------------
+  DOUBLE_ACCOUNT_PAID:
+    id: "A3"
+    priority: 102
+    description: "Deux comptes ExamT3P payés détectés"
+    category: "analysis"
+
+    detection:
+      method: "credentials_helper"
+      condition: "duplicate_payment_alert == true"
+
+    workflow:
+      action: "STOP"
+      alert_internal: true
+      alert_message: "URGENT: Double paiement ExamT3P détecté - vérification manuelle requise"
+
+    response:
+      generate: false  # Intervention manuelle requise
+
+    crm_updates: null
+
+# =============================================================================
+# ÉTATS ÉLIGIBILITÉ UBER (Priorité 200-299)
+# =============================================================================
+
+  # ---------------------------------------------------------------------------
+  # U-PROSPECT: En attente de paiement initial
+  # ---------------------------------------------------------------------------
+  UBER_PROSPECT:
+    id: "U-PROSPECT"
+    priority: 200
+    description: "Candidat prospect Uber - paiement 20€ non effectué"
+    category: "uber_eligibility"
+
+    detection:
+      method: "uber_eligibility_helper"
+      condition: "case == 'PROSPECT'"
+
+    workflow:
+      action: "RESPOND"
+      skip_date_analysis: true
+      skip_session_analysis: true
+
+    response:
+      template: "uber_prospect.md"
+      blocks_required:
+        - "salutation"
+        - "explication_offre"
+        - "call_to_action_paiement"
+        - "signature"
+      blocks_forbidden:
+        - "dates_examen"
+        - "sessions_formation"
+        - "identifiants"
+      ai_section: "personnalisation"
+      ai_instructions: "Encourager à finaliser le paiement. Ton motivant. 2 phrases max."
+
+    crm_updates: null
+
+  # ---------------------------------------------------------------------------
+  # U-A: Documents non envoyés
+  # ---------------------------------------------------------------------------
+  UBER_DOCS_MISSING:
+    id: "U-A"
+    priority: 201
+    description: "Uber 20€ payé mais documents non envoyés"
+    category: "uber_eligibility"
+
+    detection:
+      method: "uber_eligibility_helper"
+      condition: "case == 'A'"
+
+    workflow:
+      action: "RESPOND"
+      skip_date_analysis: true
+      skip_session_analysis: true
+
+    response:
+      template: "uber_case_a.md"
+      blocks_required:
+        - "salutation"
+        - "confirmation_paiement"
+        - "liste_documents_requis"
+        - "instructions_envoi"
+        - "signature"
+      blocks_forbidden:
+        - "dates_examen"
+        - "sessions_formation"
+      ai_section: "personnalisation"
+      ai_instructions: "Remercier pour le paiement et encourager l'envoi des documents. 2 phrases max."
+
+    crm_updates: null
+
+  # ---------------------------------------------------------------------------
+  # U-B: Test de sélection non passé
+  # ---------------------------------------------------------------------------
+  UBER_TEST_MISSING:
+    id: "U-B"
+    priority: 202
+    description: "Documents envoyés mais test de sélection non passé"
+    category: "uber_eligibility"
+
+    detection:
+      method: "uber_eligibility_helper"
+      condition: "case == 'B'"
+
+    workflow:
+      action: "RESPOND"
+      skip_date_analysis: true
+      skip_session_analysis: true
+
+    response:
+      template: "uber_case_b.md"
+      blocks_required:
+        - "salutation"
+        - "confirmation_documents"
+        - "instructions_test"
+        - "lien_test"
+        - "signature"
+      blocks_forbidden:
+        - "dates_examen"
+        - "sessions_formation"
+      ai_section: "personnalisation"
+      ai_instructions: "Encourager à passer le test de sélection. 2 phrases max."
+
+    crm_updates: null
+
+  # ---------------------------------------------------------------------------
+  # U-D: Compte Uber non vérifié (ALERTE, pas blocage)
+  # ---------------------------------------------------------------------------
+  UBER_ACCOUNT_NOT_VERIFIED:
+    id: "U-D"
+    priority: 203
+    description: "Compte Uber Driver non vérifié après J+1"
+    category: "uber_eligibility"
+
+    detection:
+      method: "uber_eligibility_helper"
+      condition: "case == 'D'"
+
+    workflow:
+      action: "RESPOND_WITH_ALERT"
+      # Continue le workflow normal mais ajoute une alerte dans la réponse
+
+    response:
+      alert_template: "uber_case_d_alert.md"
+      alert_position: "after_main_content"
+      ai_section: null  # Pas de personnalisation sur l'alerte
+
+    crm_updates: null
+
+  # ---------------------------------------------------------------------------
+  # U-E: Non éligible selon Uber (ALERTE, pas blocage)
+  # ---------------------------------------------------------------------------
+  UBER_NOT_ELIGIBLE:
+    id: "U-E"
+    priority: 204
+    description: "Non éligible selon vérification Uber"
+    category: "uber_eligibility"
+
+    detection:
+      method: "uber_eligibility_helper"
+      condition: "case == 'E'"
+
+    workflow:
+      action: "RESPOND_WITH_ALERT"
+      # Continue le workflow normal mais ajoute une alerte dans la réponse
+
+    response:
+      alert_template: "uber_case_e_alert.md"
+      alert_position: "after_main_content"
+      ai_section: null
+
+    crm_updates: null
+
+# =============================================================================
+# ÉTATS DATE EXAMEN (Priorité 300-399)
+# =============================================================================
+
+  # ---------------------------------------------------------------------------
+  # D-1: Date examen vide
+  # ---------------------------------------------------------------------------
+  EXAM_DATE_EMPTY:
+    id: "D-1"
+    priority: 300
+    description: "Pas de date d'examen assignée - proposer dates"
+    category: "date_examen"
+
+    detection:
+      method: "date_examen_helper"
+      condition: "case == 1"
+
+    workflow:
+      action: "RESPOND"
+
+    response:
+      template: "propose_dates.md"
+      blocks_required:
+        - "salutation"
+        - "explication_situation"
+        - "dates_proposees"
+        - "date_cloture"
+        - "call_to_action_choix"
+        - "signature"
+      blocks_forbidden:
+        - "confirmation_inscription"
+      ai_section: "personnalisation"
+      ai_instructions: "Introduction contextuelle selon le message du candidat. 2 phrases max."
+
+      # Données injectées automatiquement
+      data_injections:
+        - "next_dates"  # Liste des dates proposées
+        - "alternative_department_dates"  # Si can_choose_other_department
+
+    crm_updates: null  # On PROPOSE, on ne met pas à jour
+
+  # ---------------------------------------------------------------------------
+  # D-2: Date passée + dossier non validé
+  # ---------------------------------------------------------------------------
+  EXAM_DATE_PAST_NOT_VALIDATED:
+    id: "D-2"
+    priority: 301
+    description: "Date d'examen passée, dossier non validé - proposer nouvelles dates"
+    category: "date_examen"
+
+    detection:
+      method: "date_examen_helper"
+      condition: "case == 2"
+
+    workflow:
+      action: "RESPOND"
+
+    response:
+      template: "propose_dates_past.md"
+      blocks_required:
+        - "salutation"
+        - "explication_date_passee"
+        - "dates_proposees"
+        - "call_to_action_choix"
+        - "signature"
+      blocks_forbidden:
+        - "confirmation_inscription"
+      ai_section: "personnalisation"
+      ai_instructions: "Phrase empathique sur la situation. 1 phrase max."
+
+      data_injections:
+        - "next_dates"
+
+    crm_updates: null
+
+  # ---------------------------------------------------------------------------
+  # D-3: Refusé CMA
+  # ---------------------------------------------------------------------------
+  REFUSED_CMA:
+    id: "D-3"
+    priority: 302
+    description: "Dossier refusé par la CMA - pièces à corriger"
+    category: "date_examen"
+
+    detection:
+      method: "date_examen_helper"
+      condition: "case == 3"
+
+    workflow:
+      action: "RESPOND"
+
+    response:
+      template: "refused_cma.md"
+      blocks_required:
+        - "salutation"
+        - "explication_refus"
+        - "pieces_refusees_details"
+        - "prochaine_date_auto"
+        - "date_limite_correction"
+        - "instructions_correction"
+        - "signature"
+      blocks_forbidden: []
+      ai_section: "personnalisation"
+      ai_instructions: "Phrase rassurante sur la possibilité de corriger. 1 phrase max."
+
+      data_injections:
+        - "pieces_refusees_details"  # Nom, motif, solution
+        - "next_dates"  # Prochaine date (1 seule)
+        - "date_cloture"  # De la prochaine session
+
+    crm_updates: null
+
+  # ---------------------------------------------------------------------------
+  # D-4: VALIDE CMA + date future
+  # ---------------------------------------------------------------------------
+  VALIDE_CMA_WAITING_CONVOC:
+    id: "D-4"
+    priority: 303
+    description: "Dossier validé par CMA - convocation à venir"
+    category: "date_examen"
+
+    detection:
+      method: "date_examen_helper"
+      condition: "case == 4"
+
+    workflow:
+      action: "RESPOND"
+
+    response:
+      # Le template varie selon days_until_exam (géré par TemplateEngine)
+      template: "valide_cma.md"
+      template_variants:
+        - condition: "days_until_exam > 10"
+          template: "valide_cma_normal.md"
+        - condition: "days_until_exam <= 10 AND days_until_exam > 7"
+          template: "valide_cma_check_spam.md"
+        - condition: "days_until_exam <= 7"
+          template: "valide_cma_report_auto.md"
+
+      blocks_required:
+        - "salutation"
+        - "confirmation_validation"
+        - "info_convocation"
+        - "signature"
+      blocks_forbidden:
+        - "dates_proposees"  # Pas de proposition, c'est validé
+      ai_section: "personnalisation"
+      ai_instructions: "Féliciter pour la validation. 1 phrase max."
+
+      data_injections:
+        - "date_examen"
+        - "days_until_exam"
+
+    crm_updates: null
+
+  # ---------------------------------------------------------------------------
+  # D-5: Dossier Synchronisé (instruction en cours)
+  # ---------------------------------------------------------------------------
+  DOSSIER_SYNCHRONIZED:
+    id: "D-5"
+    priority: 304
+    description: "Dossier transmis à la CMA - instruction en cours"
+    category: "date_examen"
+
+    detection:
+      method: "date_examen_helper"
+      condition: "case == 5"
+
+    workflow:
+      action: "RESPOND"
+
+    response:
+      template: "dossier_synchronise.md"
+      blocks_required:
+        - "salutation"
+        - "confirmation_transmission"
+        - "explication_instruction"
+        - "warning_emails"
+        - "date_limite"
+        - "signature"
+      blocks_forbidden: []
+      ai_section: "personnalisation"
+      ai_instructions: "Rassurer sur le processus en cours. 1 phrase max."
+
+      data_injections:
+        - "date_examen"
+        - "date_cloture"
+
+    crm_updates: null
+
+  # ---------------------------------------------------------------------------
+  # D-6: Date future + autre statut (en attente)
+  # ---------------------------------------------------------------------------
+  EXAM_DATE_ASSIGNED_WAITING:
+    id: "D-6"
+    priority: 305
+    description: "Date assignée, en attente de synchronisation"
+    category: "date_examen"
+
+    detection:
+      method: "date_examen_helper"
+      condition: "case == 6"
+
+    workflow:
+      action: "RESPOND"
+      # Pas de blocage, réponse normale selon l'intention du candidat
+
+    response:
+      # Ce cas ne génère PAS de message spécifique sur la date
+      # La réponse dépend de l'intention détectée
+      include_date_info: false
+      ai_section: null
+
+    crm_updates: null
+
+  # ---------------------------------------------------------------------------
+  # D-7: Date passée + dossier validé (examen passé?)
+  # ---------------------------------------------------------------------------
+  EXAM_DATE_PAST_VALIDATED:
+    id: "D-7"
+    priority: 306
+    description: "Date passée avec dossier validé - vérifier si examen passé"
+    category: "date_examen"
+
+    detection:
+      method: "date_examen_helper"
+      condition: "case == 7"
+
+    workflow:
+      action: "RESPOND"
+      # Vérifie les indices dans les threads
+
+    response:
+      template_variants:
+        - condition: "has_indices_not_passed == true"
+          template: "clarification_exam.md"
+        - condition: "has_indices_not_passed == false"
+          template: null  # Pas de message spécifique, considéré comme passé
+
+      blocks_required:
+        - "salutation"
+        - "question_clarification"
+        - "signature"
+      ai_section: "personnalisation"
+      ai_instructions: "Demander avec tact si l'examen a été passé. 1-2 phrases."
+
+    crm_updates: null
+
+  # ---------------------------------------------------------------------------
+  # D-8: Deadline ratée
+  # ---------------------------------------------------------------------------
+  DEADLINE_MISSED:
+    id: "D-8"
+    priority: 307
+    description: "Date de clôture passée - report automatique"
+    category: "date_examen"
+
+    detection:
+      method: "date_examen_helper"
+      condition: "case == 8"
+
+    workflow:
+      action: "RESPOND"
+
+    response:
+      template: "deadline_missed.md"
+      blocks_required:
+        - "salutation"
+        - "explication_deadline"
+        - "info_report_auto"
+        - "dates_proposees"
+        - "call_to_action"
+        - "signature"
+      blocks_forbidden: []
+      ai_section: "personnalisation"
+      ai_instructions: "Phrase empathique sur le report. 1 phrase max."
+
+      data_injections:
+        - "date_examen_manquee"
+        - "date_cloture_passee"
+        - "next_dates"
+
+    crm_updates: null
+
+  # ---------------------------------------------------------------------------
+  # D-9: Convocation reçue
+  # ---------------------------------------------------------------------------
+  CONVOCATION_RECEIVED:
+    id: "D-9"
+    priority: 308
+    description: "Convocation disponible - transmettre identifiants"
+    category: "date_examen"
+
+    detection:
+      method: "date_examen_helper"
+      condition: "case == 9"
+
+    workflow:
+      action: "RESPOND"
+
+    response:
+      template: "convocation_received.md"
+      blocks_required:
+        - "salutation"
+        - "annonce_convocation"
+        - "identifiants_examt3p"
+        - "instructions_telechargement"
+        - "rappel_jour_j"
+        - "souhait_bonne_chance"
+        - "signature"
+      blocks_forbidden: []
+      ai_section: "personnalisation"
+      ai_instructions: "Féliciter et souhaiter bonne chance. 1-2 phrases."
+
+      data_injections:
+        - "date_examen"
+        - "identifiant_examt3p"
+        - "mot_de_passe_examt3p"
+
+    crm_updates: null
+
+  # ---------------------------------------------------------------------------
+  # D-10: Prêt à payer
+  # ---------------------------------------------------------------------------
+  READY_TO_PAY:
+    id: "D-10"
+    priority: 309
+    description: "Dossier prêt pour paiement CMA"
+    category: "date_examen"
+
+    detection:
+      method: "date_examen_helper"
+      condition: "case == 10"
+
+    workflow:
+      action: "RESPOND"
+
+    response:
+      template: "ready_to_pay.md"
+      blocks_required:
+        - "salutation"
+        - "confirmation_dossier_complet"
+        - "info_paiement"
+        - "prochaines_etapes"
+        - "warning_emails"
+        - "signature"
+      blocks_forbidden: []
+      ai_section: "personnalisation"
+      ai_instructions: "Rassurer sur l'avancement. 1 phrase max."
+
+      data_injections:
+        - "date_examen"
+        - "date_cloture"
+
+    crm_updates: null
+
+# =============================================================================
+# ÉTATS INTENTION CANDIDAT (Priorité 400-499)
+# Ces états modifient le comportement selon l'intention détectée
+# NOTE: Les intentions se COMBINENT avec l'état principal du candidat
+# =============================================================================
+
+  # ---------------------------------------------------------------------------
+  # I1: Demande de report de date
+  # ---------------------------------------------------------------------------
+  REPORT_DATE_REQUEST:
+    id: "I1"
+    priority: 400
+    description: "Candidat demande à reporter sa date d'examen"
+    category: "intention"
+
+    detection:
+      method: "triage_agent"
+      condition: "detected_intent == 'REPORT_DATE'"
+
+    workflow:
+      action: "RESPOND"
+      # Vérifie si report possible selon règle B1
+
+    response:
+      template_variants:
+        - condition: "can_modify_exam_date == true"
+          template: "report_date_possible.md"
+        - condition: "can_modify_exam_date == false AND mentions_force_majeure == true"
+          template: "report_date_force_majeure.md"
+        - condition: "can_modify_exam_date == false AND mentions_force_majeure == false"
+          template: "report_date_blocked.md"
+
+      blocks_required:
+        - "salutation"
+        - "reponse_demande_report"
+        - "signature"
+      ai_section: "personnalisation"
+      ai_instructions: "Adapter le ton selon urgence et force majeure. 2 phrases max."
+
+      data_injections:
+        - "date_examen_actuelle"
+        - "next_dates"  # Si report possible
+        - "date_cloture"
+
+    crm_updates: null  # Report = action manuelle ou choix candidat
+
+  # ---------------------------------------------------------------------------
+  # I2: Confirmation de session de formation
+  # ---------------------------------------------------------------------------
+  CONFIRMATION_SESSION:
+    id: "I2"
+    priority: 401
+    description: "Candidat confirme son choix de session de formation"
+    category: "intention"
+
+    detection:
+      method: "triage_agent"
+      condition: "detected_intent == 'CONFIRMATION_SESSION'"
+
+    workflow:
+      action: "RESPOND_AND_UPDATE_CRM"
+
+    response:
+      template: "confirmation_session.md"
+      blocks_required:
+        - "salutation"
+        - "confirmation_choix"
+        - "details_session"
+        - "prochaines_etapes"
+        - "signature"
+      blocks_forbidden: []
+      ai_section: "personnalisation"
+      ai_instructions: "Confirmer le choix avec enthousiasme. 1 phrase max."
+
+      data_injections:
+        - "session_choisie"
+        - "date_debut_formation"
+        - "horaires"
+
+    # Mise à jour CRM déterministe
+    crm_updates:
+      method: "extract_session_choice"  # Fonction déterministe
+      fields:
+        - field: "Session"
+          source: "detected_session_id"
+        - field: "Preference_horaire"
+          source: "detected_preference"  # jour/soir
+
+  # ---------------------------------------------------------------------------
+  # I3: Demande d'identifiants ExamT3P
+  # ---------------------------------------------------------------------------
+  DEMANDE_IDENTIFIANTS:
+    id: "I3"
+    priority: 402
+    description: "Candidat demande ses identifiants ExamT3P (mot de passe oublié, etc.)"
+    category: "intention"
+
+    detection:
+      method: "triage_agent"
+      condition: "detected_intent == 'DEMANDE_IDENTIFIANTS'"
+
+    workflow:
+      action: "RESPOND"
+
+    response:
+      template: "identifiants_examt3p.md"
+      blocks_required:
+        - "salutation"
+        - "identifiants_examt3p"
+        - "warning_spam"
+        - "lien_plateforme"
+        - "signature"
+      blocks_forbidden: []
+      ai_section: "personnalisation"
+      ai_instructions: "Phrase d'introduction contextuelle. 1 phrase max."
+
+      data_injections:
+        - "identifiant_examt3p"
+        - "mot_de_passe_examt3p"
+
+    crm_updates: null
+
+  # ---------------------------------------------------------------------------
+  # I4: Question sur le statut du dossier
+  # ---------------------------------------------------------------------------
+  STATUT_DOSSIER:
+    id: "I4"
+    priority: 403
+    description: "Candidat demande où en est son dossier"
+    category: "intention"
+
+    detection:
+      method: "triage_agent"
+      condition: "detected_intent == 'STATUT_DOSSIER'"
+
+    workflow:
+      action: "RESPOND"
+      # Combine avec l'état date_examen pour donner le statut complet
+
+    response:
+      template: "statut_dossier.md"
+      blocks_required:
+        - "salutation"
+        - "statut_actuel"
+        - "prochaines_etapes"
+        - "signature"
+      blocks_forbidden: []
+      ai_section: "personnalisation"
+      ai_instructions: "Résumer le statut de manière claire et rassurante. 2 phrases max."
+
+      data_injections:
+        - "evalbox_status"
+        - "date_examen"
+        - "session_formation"
+        - "num_dossier_cma"
+
+    crm_updates: null
+
+  # ---------------------------------------------------------------------------
+  # I5: Question sur le paiement
+  # ---------------------------------------------------------------------------
+  CONFIRMATION_PAIEMENT:
+    id: "I5"
+    priority: 404
+    description: "Candidat demande confirmation de paiement ou facture"
+    category: "intention"
+
+    detection:
+      method: "triage_agent"
+      condition: "detected_intent == 'CONFIRMATION_PAIEMENT'"
+
+    workflow:
+      action: "RESPOND"
+
+    response:
+      template: "confirmation_paiement.md"
+      blocks_required:
+        - "salutation"
+        - "confirmation_paiement"
+        - "signature"
+      blocks_forbidden: []
+      ai_section: "personnalisation"
+      ai_instructions: "Confirmer le paiement si effectué. 1 phrase max."
+
+      data_injections:
+        - "montant_paye"
+        - "date_paiement"
+        - "stage"
+
+    crm_updates: null
+
+  # ---------------------------------------------------------------------------
+  # I6: Question sur les documents
+  # ---------------------------------------------------------------------------
+  DOCUMENT_QUESTION:
+    id: "I6"
+    priority: 405
+    description: "Candidat pose une question sur les documents"
+    category: "intention"
+
+    detection:
+      method: "triage_agent"
+      condition: "detected_intent == 'DOCUMENT_QUESTION'"
+
+    workflow:
+      action: "RESPOND"
+      # Combine avec l'état pour savoir si refus CMA ou question générale
+
+    response:
+      template_variants:
+        - condition: "evalbox == 'Refusé CMA'"
+          template: "documents_refuses.md"
+        - condition: "has_documents_manquants == true"
+          template: "documents_manquants.md"
+        - condition: "default"
+          template: "documents_general.md"
+
+      blocks_required:
+        - "salutation"
+        - "reponse_documents"
+        - "signature"
+      ai_section: "personnalisation"
+      ai_instructions: "Répondre à la question spécifique du candidat. 2 phrases max."
+
+      data_injections:
+        - "documents_status"
+        - "pieces_refusees_details"
+        - "documents_manquants"
+
+    crm_updates: null
+
+  # ---------------------------------------------------------------------------
+  # I7: Question sur le résultat d'examen
+  # ---------------------------------------------------------------------------
+  RESULTAT_EXAMEN:
+    id: "I7"
+    priority: 406
+    description: "Candidat demande son résultat d'examen"
+    category: "intention"
+
+    detection:
+      method: "triage_agent"
+      condition: "detected_intent == 'RESULTAT_EXAMEN'"
+
+    workflow:
+      action: "RESPOND"
+
+    response:
+      template_variants:
+        - condition: "exam_passed == true"
+          template: "resultat_admis.md"
+        - condition: "exam_passed == false"
+          template: "resultat_echec.md"
+        - condition: "exam_result_unknown == true"
+          template: "resultat_attente.md"
+
+      blocks_required:
+        - "salutation"
+        - "info_resultat"
+        - "signature"
+      ai_section: "personnalisation"
+      ai_instructions: "Adapter le ton selon le résultat (félicitations ou encouragement). 2 phrases max."
+
+      data_injections:
+        - "date_examen"
+        - "resultat"
+
+    crm_updates: null
+
+  # ---------------------------------------------------------------------------
+  # I8: Question générale
+  # ---------------------------------------------------------------------------
+  QUESTION_GENERALE:
+    id: "I8"
+    priority: 407
+    description: "Autre question générale du candidat"
+    category: "intention"
+
+    detection:
+      method: "triage_agent"
+      condition: "detected_intent == 'QUESTION_GENERALE'"
+
+    workflow:
+      action: "RESPOND"
+
+    response:
+      template: "question_generale.md"
+      blocks_required:
+        - "salutation"
+        - "signature"
+      ai_section: "full_response"
+      ai_instructions: |
+        Répondre à la question du candidat de manière contextuelle.
+        Utiliser les données disponibles (CRM, ExamT3P).
+        Ne jamais inventer de dates, montants ou identifiants.
+
+    crm_updates: null
+
+  # ---------------------------------------------------------------------------
+  # I9: Confirmation de date d'examen
+  # ---------------------------------------------------------------------------
+  CONFIRMATION_DATE_EXAMEN:
+    id: "I9"
+    priority: 408
+    description: "Candidat confirme son choix de date d'examen"
+    category: "intention"
+
+    detection:
+      method: "triage_agent"
+      conditions:
+        any_of:
+          - "detected_intent == 'CONFIRMATION_DATE'"
+          - "message contains date confirmation pattern"
+
+    workflow:
+      action: "RESPOND_AND_UPDATE_CRM"
+
+    response:
+      template: "confirmation_date_examen.md"
+      blocks_required:
+        - "salutation"
+        - "confirmation_date"
+        - "prochaines_etapes"
+        - "signature"
+      ai_section: "personnalisation"
+      ai_instructions: "Confirmer la date choisie. 1 phrase max."
+
+      data_injections:
+        - "date_examen_choisie"
+        - "date_cloture"
+        - "sessions_proposees"
+
+    crm_updates:
+      method: "extract_date_choice"
+      fields:
+        - field: "Date_examen_VTC"
+          source: "detected_date_id"  # ID de la session d'examen
+
+# =============================================================================
+# ÉTATS COHÉRENCE (Priorité 500-599)
+# =============================================================================
+
+  # ---------------------------------------------------------------------------
+  # C1: Formation manquée + examen imminent
+  # ---------------------------------------------------------------------------
+  TRAINING_MISSED_EXAM_IMMINENT:
+    id: "C1"
+    priority: 500
+    description: "Formation manquée alors que l'examen est imminent"
+    category: "consistency"
+
+    detection:
+      method: "training_exam_consistency_helper"
+      condition: "training_missed == true AND days_until_exam < 14"
+
+    workflow:
+      action: "RESPOND"
+
+    response:
+      template: "training_missed.md"
+      blocks_required:
+        - "salutation"
+        - "constat_situation"
+        - "option_a_maintenir"
+        - "option_b_reporter"
+        - "signature"
+      blocks_forbidden: []
+      ai_section: "personnalisation"
+      ai_instructions: "Présenter les options de manière neutre. 2 phrases max."
+
+      data_injections:
+        - "date_examen"
+        - "session_manquee"
+        - "lien_elearning"
+
+    crm_updates: null
+
+  # ---------------------------------------------------------------------------
+  # C2: Session de rafraîchissement proposée
+  # ---------------------------------------------------------------------------
+  REFRESH_SESSION_AVAILABLE:
+    id: "C2"
+    priority: 501
+    description: "Formation terminée mais examen futur - proposer rafraîchissement"
+    category: "consistency"
+
+    detection:
+      method: "session_helper"
+      condition: "current_session_is_past == true AND date_examen > today"
+
+    workflow:
+      action: "RESPOND"
+      # Ajoute la proposition de rafraîchissement à la réponse normale
+
+    response:
+      include_refresh_offer: true
+      template_addon: "refresh_session_offer.md"
+
+    crm_updates: null
+
+  # ---------------------------------------------------------------------------
+  # C3: Dossier non reçu (Deal 20€ uniquement)
+  # ---------------------------------------------------------------------------
+  DOSSIER_NOT_RECEIVED:
+    id: "C3"
+    priority: 502
+    description: "Deal Uber 20€ sans dossier reçu - candidat doit finaliser inscription"
+    category: "consistency"
+
+    detection:
+      method: "workflow"
+      conditions:
+        all_of:
+          - "deal_amount == 20"
+          - "Date_Dossier_re_u == null"
+          - "evalbox NOT IN ['VALIDE CMA', 'Convoc CMA reçue', 'Dossier Synchronisé', 'Pret a payer', 'Refusé CMA']"
+
+    workflow:
+      action: "RESPOND"
+      skip_date_analysis: true
+      skip_session_analysis: true
+
+    response:
+      # Redirige vers CAS A Uber (même traitement)
+      use_state: "UBER_DOCS_MISSING"
+
+    crm_updates: null
+
+# =============================================================================
+# ÉTATS BLOCAGE (Priorité 600-699)
+# =============================================================================
+
+  # ---------------------------------------------------------------------------
+  # B1: Modification date bloquée (VALIDE CMA + clôture passée)
+  # ---------------------------------------------------------------------------
+  DATE_MODIFICATION_BLOCKED:
+    id: "B1"
+    priority: 600
+    description: "Modification de date impossible - dossier validé et clôture passée"
+    category: "blocking"
+
+    detection:
+      method: "crm_update_agent"
+      condition: "can_modify_exam_date == false"
+
+    workflow:
+      action: "BLOCK_UPDATE"
+      # Ne pas appliquer la mise à jour CRM demandée
+
+    response:
+      # Inclure dans la réponse une explication du blocage
+      alert_template: "date_modification_blocked_alert.md"
+      alert_position: "in_context"
+
+    crm_updates: null  # BLOQUÉ
+
+# =============================================================================
+# ÉTAT PAR DÉFAUT (Priorité 999)
+# =============================================================================
+
+  GENERAL:
+    id: "DEFAULT"
+    priority: 999
+    description: "État par défaut - réponse contextuelle"
+    category: "default"
+
+    detection:
+      method: "fallback"
+      condition: "no_other_state_matched"
+
+    workflow:
+      action: "RESPOND"
+
+    response:
+      template: "general_response.md"
+      blocks_required:
+        - "salutation"
+        - "signature"
+      ai_section: "full_response"
+      ai_instructions: |
+        Répondre au message du candidat de manière contextuelle.
+        Utiliser les données CRM et ExamT3P disponibles.
+        Ne jamais inventer de dates, montants ou identifiants.
+        Rester professionnel et empathique.
+
+    crm_updates: null

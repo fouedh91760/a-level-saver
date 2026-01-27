@@ -1,0 +1,719 @@
+"""
+StateDetector - Détection déterministe de l'état du candidat.
+
+Ce module remplace la logique dispersée dans les helpers par une détection
+centralisée et déterministe basée sur candidate_states.yaml.
+
+L'état est déterminé par:
+1. Les données CRM (deal_data)
+2. Les données ExamT3P (examt3p_data)
+3. Le résultat du triage (triage_result)
+4. Le résultat du deal linking (linking_result)
+
+L'IA n'intervient PAS dans la détection d'état.
+"""
+
+import logging
+import yaml
+from pathlib import Path
+from datetime import datetime, date
+from typing import Dict, Any, Optional, List, Tuple
+from dataclasses import dataclass, field
+
+logger = logging.getLogger(__name__)
+
+# Chemin vers le fichier de configuration des états
+STATES_CONFIG_PATH = Path(__file__).parent.parent.parent / "states" / "candidate_states.yaml"
+
+
+@dataclass
+class DetectedState:
+    """Représente un état détecté pour un candidat."""
+    id: str
+    name: str
+    priority: int
+    category: str
+    description: str
+    workflow_action: str
+    response_config: Dict[str, Any]
+    crm_updates_config: Optional[Dict[str, Any]]
+    detection_reason: str
+    # Données contextuelles pour le template
+    context_data: Dict[str, Any] = field(default_factory=dict)
+    # Alertes à inclure (Uber D/E, etc.)
+    alerts: List[Dict[str, Any]] = field(default_factory=list)
+    # Intention détectée (si applicable)
+    detected_intent: Optional[str] = None
+    intent_context: Dict[str, Any] = field(default_factory=dict)
+
+
+class StateDetector:
+    """
+    Détecte l'état du candidat de manière déterministe.
+
+    Ordre d'évaluation (par priorité):
+    1. États de triage (T1-T4): SPAM, ROUTE, DUPLICATE_UBER, CANDIDATE_NOT_FOUND
+    2. États d'analyse (A1-A3): CREDENTIALS_INVALID, EXAMT3P_DOWN, DOUBLE_ACCOUNT
+    3. États Uber (U-*): PROSPECT, CAS A/B/D/E
+    4. États date examen (D-1 à D-10)
+    5. États intention (I1-I9): selon l'intention détectée par le triage
+    6. États cohérence (C1-C3): TRAINING_MISSED, REFRESH_SESSION, DOSSIER_NOT_RECEIVED
+    7. États blocage (B1): DATE_MODIFICATION_BLOCKED
+    8. État par défaut (GENERAL)
+    """
+
+    def __init__(self, config_path: Optional[Path] = None):
+        """
+        Initialise le StateDetector.
+
+        Args:
+            config_path: Chemin vers candidate_states.yaml (optionnel)
+        """
+        self.config_path = config_path or STATES_CONFIG_PATH
+        self.states_config = self._load_config()
+        self.config = self.states_config.get('config', {})
+        self.states = self.states_config.get('states', {})
+
+        # Trier les états par priorité
+        self._sorted_states = sorted(
+            self.states.items(),
+            key=lambda x: x[1].get('priority', 999)
+        )
+
+        logger.info(f"StateDetector initialisé avec {len(self.states)} états")
+
+    def _load_config(self) -> Dict[str, Any]:
+        """Charge la configuration YAML."""
+        try:
+            with open(self.config_path, 'r', encoding='utf-8') as f:
+                return yaml.safe_load(f)
+        except Exception as e:
+            logger.error(f"Erreur chargement config états: {e}")
+            return {'states': {}, 'config': {}}
+
+    def detect_state(
+        self,
+        deal_data: Dict[str, Any],
+        examt3p_data: Dict[str, Any],
+        triage_result: Dict[str, Any],
+        linking_result: Dict[str, Any],
+        threads_data: Optional[List[Dict]] = None
+    ) -> DetectedState:
+        """
+        Détecte l'état principal du candidat.
+
+        Args:
+            deal_data: Données du deal CRM
+            examt3p_data: Données ExamT3P
+            triage_result: Résultat du triage (action, intent, etc.)
+            linking_result: Résultat du deal linking
+            threads_data: Threads du ticket (optionnel)
+
+        Returns:
+            DetectedState avec toutes les informations nécessaires
+        """
+        logger.info("🔍 Détection d'état en cours...")
+
+        # Contexte pour l'évaluation des conditions
+        context = self._build_context(
+            deal_data, examt3p_data, triage_result, linking_result, threads_data
+        )
+
+        # Collecter les alertes (Uber D/E, etc.)
+        alerts = self._collect_alerts(context)
+
+        # Évaluer chaque état par ordre de priorité
+        for state_name, state_config in self._sorted_states:
+            if self._matches_state(state_name, state_config, context):
+                logger.info(f"✅ État détecté: {state_name} (priorité {state_config.get('priority')})")
+
+                return self._create_detected_state(
+                    state_name, state_config, context, alerts
+                )
+
+        # Fallback: état GENERAL
+        logger.info("ℹ️ Aucun état spécifique - utilisation de GENERAL")
+        return self._create_detected_state(
+            'GENERAL', self.states.get('GENERAL', {}), context, alerts
+        )
+
+    def _build_context(
+        self,
+        deal_data: Dict[str, Any],
+        examt3p_data: Dict[str, Any],
+        triage_result: Dict[str, Any],
+        linking_result: Dict[str, Any],
+        threads_data: Optional[List[Dict]]
+    ) -> Dict[str, Any]:
+        """Construit le contexte pour l'évaluation des conditions."""
+        today = date.today()
+
+        # Extraire les champs importants du deal
+        evalbox = deal_data.get('Evalbox', '')
+        date_examen = self._extract_date_examen(deal_data)
+        date_cloture = self._extract_date_cloture(deal_data)
+        amount = deal_data.get('Amount', 0)
+        stage = deal_data.get('Stage', '')
+
+        # Calculer les jours jusqu'à l'examen
+        days_until_exam = None
+        if date_examen:
+            try:
+                exam_date_obj = datetime.strptime(date_examen, '%Y-%m-%d').date()
+                days_until_exam = (exam_date_obj - today).days
+            except:
+                pass
+
+        # Vérifier si la clôture est passée
+        cloture_passed = False
+        if date_cloture:
+            try:
+                cloture_date_obj = datetime.strptime(date_cloture, '%Y-%m-%d').date()
+                cloture_passed = cloture_date_obj < today
+            except:
+                pass
+
+        context = {
+            # Données brutes
+            'deal_data': deal_data,
+            'examt3p_data': examt3p_data,
+            'triage_result': triage_result,
+            'linking_result': linking_result,
+            'threads_data': threads_data or [],
+
+            # Champs CRM extraits
+            'evalbox': evalbox,
+            'date_examen': date_examen,
+            'date_cloture': date_cloture,
+            'amount': amount,
+            'stage': stage,
+            'deal_id': linking_result.get('deal_id'),
+
+            # Calculs
+            'today': today.isoformat(),
+            'days_until_exam': days_until_exam,
+            'cloture_passed': cloture_passed,
+            'date_examen_passed': days_until_exam is not None and days_until_exam < 0,
+            'date_examen_future': days_until_exam is not None and days_until_exam >= 0,
+
+            # Triage
+            'triage_action': triage_result.get('action', 'GO'),
+            'detected_intent': triage_result.get('detected_intent'),
+            'intent_context': triage_result.get('intent_context', {}),
+
+            # Deal linking
+            'has_duplicate_uber_offer': linking_result.get('has_duplicate_uber_offer', False),
+            'needs_clarification': linking_result.get('needs_clarification', False),
+
+            # ExamT3P
+            'compte_existe': examt3p_data.get('compte_existe', False),
+            'connection_test_success': examt3p_data.get('connection_test_success', False),
+            'should_respond_to_candidate': examt3p_data.get('should_respond_to_candidate', False),
+            'duplicate_payment_alert': examt3p_data.get('duplicate_payment_alert', False),
+            'statut_dossier_examt3p': examt3p_data.get('statut_dossier', ''),
+
+            # Uber spécifique
+            'is_uber_20_deal': amount == 20 and 'GAGN' in str(stage).upper(),
+            'is_uber_prospect': amount == 20 and 'ATTENTE' in str(stage).upper(),
+            'date_dossier_recu': deal_data.get('Date_Dossier_re_u'),
+            'date_test_selection': deal_data.get('Date_test_selection'),
+            'compte_uber': deal_data.get('Compte_Uber', False),
+            'eligible_uber': deal_data.get('ELIGIBLE', False),
+
+            # Session
+            'session_assigned': deal_data.get('Session') is not None,
+            'preference_horaire': deal_data.get('Preference_horaire'),
+        }
+
+        # Calculer can_modify_exam_date (règle B1)
+        context['can_modify_exam_date'] = self._can_modify_exam_date(context)
+
+        return context
+
+    def _extract_date_examen(self, deal_data: Dict[str, Any]) -> Optional[str]:
+        """Extrait la date d'examen au format YYYY-MM-DD."""
+        date_examen_vtc = deal_data.get('Date_examen_VTC')
+        if not date_examen_vtc:
+            return None
+
+        # Si c'est un lookup, extraire la date
+        if isinstance(date_examen_vtc, dict):
+            # Le nom contient souvent la date
+            name = date_examen_vtc.get('name', '')
+            # Essayer d'extraire une date du nom ou récupérer via API
+            return None  # À implémenter si nécessaire
+
+        return str(date_examen_vtc)[:10] if date_examen_vtc else None
+
+    def _extract_date_cloture(self, deal_data: Dict[str, Any]) -> Optional[str]:
+        """Extrait la date de clôture au format YYYY-MM-DD."""
+        # La date de clôture peut être dans les données de session
+        # Pour l'instant, retourner None - sera enrichi par le workflow
+        return None
+
+    def _can_modify_exam_date(self, context: Dict[str, Any]) -> bool:
+        """
+        Vérifie si la date d'examen peut être modifiée.
+
+        Règle B1: NE PAS modifier si:
+        - Evalbox ∈ {"VALIDE CMA", "Convoc CMA reçue"}
+        - ET Date_Cloture_Inscription < aujourd'hui
+        """
+        evalbox = context.get('evalbox', '')
+        blocking_statuses = {'VALIDE CMA', 'Convoc CMA reçue'}
+
+        if evalbox not in blocking_statuses:
+            return True
+
+        if context.get('cloture_passed'):
+            return False
+
+        return True
+
+    def _collect_alerts(self, context: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Collecte les alertes à inclure dans la réponse (Uber D/E, etc.)."""
+        alerts = []
+
+        # Alerte Uber D: Compte non vérifié
+        if self._is_uber_case_d(context):
+            alerts.append({
+                'type': 'uber_case_d',
+                'id': 'U-D',
+                'title': 'Compte Uber non vérifié',
+                'template': 'uber_case_d_alert.md',
+                'priority': 'warning'
+            })
+
+        # Alerte Uber E: Non éligible
+        if self._is_uber_case_e(context):
+            alerts.append({
+                'type': 'uber_case_e',
+                'id': 'U-E',
+                'title': 'Non éligible selon Uber',
+                'template': 'uber_case_e_alert.md',
+                'priority': 'warning'
+            })
+
+        # Alerte compte personnel potentiel
+        if context['examt3p_data'].get('potential_personal_account'):
+            alerts.append({
+                'type': 'personal_account',
+                'title': 'Compte personnel potentiel détecté',
+                'priority': 'info'
+            })
+
+        return alerts
+
+    def _is_uber_case_d(self, context: Dict[str, Any]) -> bool:
+        """Vérifie si c'est le CAS D Uber (compte non vérifié)."""
+        if not context.get('is_uber_20_deal'):
+            return False
+
+        date_dossier = context.get('date_dossier_recu')
+        if not date_dossier:
+            return False
+
+        # Vérification faite si J+1 passé
+        try:
+            from datetime import timedelta
+            dossier_date = datetime.strptime(str(date_dossier)[:10], '%Y-%m-%d').date()
+            verification_date = dossier_date + timedelta(days=1)
+            today = date.today()
+
+            if today < verification_date:
+                return False  # Vérification pas encore faite
+        except:
+            return False
+
+        return not context.get('compte_uber', False)
+
+    def _is_uber_case_e(self, context: Dict[str, Any]) -> bool:
+        """Vérifie si c'est le CAS E Uber (non éligible)."""
+        if not context.get('is_uber_20_deal'):
+            return False
+
+        if self._is_uber_case_d(context):
+            return False  # D est prioritaire sur E
+
+        date_dossier = context.get('date_dossier_recu')
+        if not date_dossier:
+            return False
+
+        # Vérification faite si J+1 passé
+        try:
+            from datetime import timedelta
+            dossier_date = datetime.strptime(str(date_dossier)[:10], '%Y-%m-%d').date()
+            verification_date = dossier_date + timedelta(days=1)
+            today = date.today()
+
+            if today < verification_date:
+                return False
+        except:
+            return False
+
+        return not context.get('eligible_uber', False)
+
+    def _matches_state(
+        self,
+        state_name: str,
+        state_config: Dict[str, Any],
+        context: Dict[str, Any]
+    ) -> bool:
+        """
+        Vérifie si le contexte correspond à un état donné.
+
+        Chaque état a une méthode de détection spécifique.
+        """
+        detection = state_config.get('detection', {})
+        method = detection.get('method', '')
+
+        # Dispatch selon la méthode de détection
+        if method == 'intent':
+            return self._match_intent_state(state_name, detection, context)
+        elif method == 'triage_agent':
+            return self._match_triage_state(state_name, detection, context)
+        elif method == 'deal_linking_agent':
+            return self._match_linking_state(state_name, detection, context)
+        elif method == 'credentials_helper':
+            return self._match_credentials_state(state_name, detection, context)
+        elif method == 'examt3p_agent':
+            return self._match_examt3p_state(state_name, detection, context)
+        elif method == 'uber_eligibility_helper':
+            return self._match_uber_state(state_name, detection, context)
+        elif method == 'date_examen_helper':
+            return self._match_date_examen_state(state_name, detection, context)
+        elif method == 'training_exam_consistency_helper':
+            return self._match_consistency_state(state_name, detection, context)
+        elif method == 'session_helper':
+            return self._match_session_state(state_name, detection, context)
+        elif method == 'crm_update_agent':
+            return self._match_blocking_state(state_name, detection, context)
+        elif method == 'workflow':
+            return self._match_workflow_state(state_name, detection, context)
+        elif method == 'fallback':
+            return True  # État par défaut
+
+        return False
+
+    def _match_intent_state(
+        self, state_name: str, detection: Dict, context: Dict
+    ) -> bool:
+        """Match les états basés sur l'intention détectée par le Triage Agent."""
+        condition = detection.get('condition', '')
+
+        if 'detected_intent' in condition:
+            # Format: "detected_intent == 'REFUS_PARTAGE_CREDENTIALS'"
+            expected_intent = condition.split('==')[1].strip().strip("'\"")
+            actual_intent = context.get('detected_intent')
+            return actual_intent == expected_intent
+
+        return False
+
+    def _match_triage_state(
+        self, state_name: str, detection: Dict, context: Dict
+    ) -> bool:
+        """Match les états basés sur le triage."""
+        triage_action = detection.get('triage_action')
+        condition = detection.get('condition', '')
+
+        if triage_action:
+            return context.get('triage_action') == triage_action
+
+        if 'detected_intent' in condition:
+            expected_intent = condition.split('==')[1].strip().strip("'\"")
+            return context.get('detected_intent') == expected_intent
+
+        return False
+
+    def _match_linking_state(
+        self, state_name: str, detection: Dict, context: Dict
+    ) -> bool:
+        """Match les états basés sur le deal linking."""
+        condition = detection.get('condition', '')
+
+        if 'has_duplicate_uber_offer' in condition:
+            return context.get('has_duplicate_uber_offer', False)
+
+        if 'needs_clarification' in condition or 'deal_id == null' in condition:
+            return context.get('needs_clarification', False)
+
+        return False
+
+    def _match_credentials_state(
+        self, state_name: str, detection: Dict, context: Dict
+    ) -> bool:
+        """Match les états basés sur les credentials."""
+        conditions = detection.get('conditions', {})
+        condition = detection.get('condition', '')
+
+        # État A1: Identifiants invalides
+        if state_name == 'CREDENTIALS_INVALID':
+            if not context.get('compte_existe') and context.get('should_respond_to_candidate'):
+                return True
+            if not context.get('connection_test_success') and context.get('should_respond_to_candidate'):
+                return True
+
+        # État A3: Double compte payé
+        if 'duplicate_payment_alert' in condition:
+            return context.get('duplicate_payment_alert', False)
+
+        return False
+
+    def _match_examt3p_state(
+        self, state_name: str, detection: Dict, context: Dict
+    ) -> bool:
+        """Match les états basés sur ExamT3P."""
+        # État A2: ExamT3P down
+        if state_name == 'EXAMT3P_DOWN':
+            examt3p = context.get('examt3p_data', {})
+            return examt3p.get('extraction_failed') and examt3p.get('error_type') == 'technical'
+
+        return False
+
+    def _match_uber_state(
+        self, state_name: str, detection: Dict, context: Dict
+    ) -> bool:
+        """Match les états Uber."""
+        condition = detection.get('condition', '')
+
+        # Extraire le cas attendu
+        if 'case ==' in condition:
+            expected_case = condition.split('==')[1].strip().strip("'\"")
+            actual_case = self._determine_uber_case(context)
+            return actual_case == expected_case
+
+        return False
+
+    def _determine_uber_case(self, context: Dict[str, Any]) -> str:
+        """Détermine le cas Uber (PROSPECT, A, B, D, E, ELIGIBLE, NOT_UBER)."""
+        # PROSPECT
+        if context.get('is_uber_prospect'):
+            return 'PROSPECT'
+
+        # NOT_UBER
+        if not context.get('is_uber_20_deal'):
+            return 'NOT_UBER'
+
+        # CAS A: Documents non envoyés
+        if not context.get('date_dossier_recu'):
+            return 'A'
+
+        # CAS D et E (après vérification J+1)
+        if self._is_uber_case_d(context):
+            return 'D'
+        if self._is_uber_case_e(context):
+            return 'E'
+
+        # CAS B: Test sélection non passé (si obligatoire)
+        if not context.get('date_test_selection'):
+            # Vérifier si test obligatoire (dossier après 19/05/2025)
+            date_dossier = context.get('date_dossier_recu')
+            if date_dossier:
+                try:
+                    dossier_date = datetime.strptime(str(date_dossier)[:10], '%Y-%m-%d').date()
+                    test_mandatory_from = date(2025, 5, 19)
+                    if dossier_date > test_mandatory_from:
+                        return 'B'
+                except:
+                    pass
+
+        return 'ELIGIBLE'
+
+    def _match_date_examen_state(
+        self, state_name: str, detection: Dict, context: Dict
+    ) -> bool:
+        """Match les états date examen (D-1 à D-10)."""
+        condition = detection.get('condition', '')
+
+        if 'case ==' not in condition:
+            return False
+
+        expected_case = int(condition.split('==')[1].strip())
+        actual_case = self._determine_date_examen_case(context)
+
+        return actual_case == expected_case
+
+    def _determine_date_examen_case(self, context: Dict[str, Any]) -> int:
+        """
+        Détermine le cas date examen (1-10).
+
+        CAS 1: Date vide
+        CAS 2: Date passée + non validé
+        CAS 3: Refusé CMA
+        CAS 4: VALIDE CMA + date future
+        CAS 5: Dossier Synchronisé
+        CAS 6: Date future + autre statut
+        CAS 7: Date passée + validé
+        CAS 8: Deadline ratée
+        CAS 9: Convoc reçue
+        CAS 10: Prêt à payer
+        """
+        evalbox = context.get('evalbox', '')
+        date_examen = context.get('date_examen')
+        date_examen_passed = context.get('date_examen_passed', False)
+        date_examen_future = context.get('date_examen_future', False)
+        cloture_passed = context.get('cloture_passed', False)
+
+        # CAS 1: Date vide
+        if not date_examen:
+            return 1
+
+        # CAS 3: Refusé CMA
+        if evalbox == 'Refusé CMA':
+            return 3
+
+        # CAS 9: Convoc reçue
+        if evalbox == 'Convoc CMA reçue':
+            return 9
+
+        # CAS 10: Prêt à payer
+        if evalbox in ['Pret a payer', 'Pret a payer par cheque']:
+            return 10
+
+        # CAS 4: VALIDE CMA + date future
+        if evalbox == 'VALIDE CMA' and date_examen_future:
+            return 4
+
+        # CAS 5: Dossier Synchronisé
+        if evalbox == 'Dossier Synchronisé' and date_examen_future:
+            return 5
+
+        # CAS 7: Date passée + validé
+        if date_examen_passed and evalbox in ['VALIDE CMA', 'Dossier Synchronisé']:
+            return 7
+
+        # CAS 8: Deadline ratée (date future mais clôture passée + non validé)
+        if date_examen_future and cloture_passed:
+            if evalbox not in ['VALIDE CMA', 'Dossier Synchronisé', 'Convoc CMA reçue']:
+                return 8
+
+        # CAS 2: Date passée + non validé
+        if date_examen_passed:
+            return 2
+
+        # CAS 6: Date future + autre statut
+        if date_examen_future:
+            return 6
+
+        return 1  # Fallback
+
+    def _match_consistency_state(
+        self, state_name: str, detection: Dict, context: Dict
+    ) -> bool:
+        """Match les états de cohérence."""
+        # C1: Formation manquée + examen imminent
+        if state_name == 'TRAINING_MISSED_EXAM_IMMINENT':
+            # À implémenter avec les données de session
+            pass
+
+        return False
+
+    def _match_session_state(
+        self, state_name: str, detection: Dict, context: Dict
+    ) -> bool:
+        """Match les états session."""
+        # C2: Refresh session available
+        if state_name == 'REFRESH_SESSION_AVAILABLE':
+            # À implémenter
+            pass
+
+        return False
+
+    def _match_blocking_state(
+        self, state_name: str, detection: Dict, context: Dict
+    ) -> bool:
+        """Match les états de blocage."""
+        # B1: Date modification blocked
+        if state_name == 'DATE_MODIFICATION_BLOCKED':
+            return not context.get('can_modify_exam_date', True)
+
+        return False
+
+    def _match_workflow_state(
+        self, state_name: str, detection: Dict, context: Dict
+    ) -> bool:
+        """Match les états basés sur conditions workflow."""
+        conditions = detection.get('conditions', {})
+        all_of = conditions.get('all_of', [])
+
+        # Évaluer toutes les conditions
+        for condition in all_of:
+            if not self._evaluate_condition(condition, context):
+                return False
+
+        return len(all_of) > 0
+
+    def _evaluate_condition(self, condition: str, context: Dict) -> bool:
+        """Évalue une condition simple."""
+        # Parser la condition (format: "field == value" ou "field NOT IN [...]")
+        if '==' in condition:
+            parts = condition.split('==')
+            field = parts[0].strip()
+            value = parts[1].strip()
+
+            # Évaluer
+            actual = context.get(field)
+
+            if value == 'null' or value == 'None':
+                return actual is None
+            elif value == 'true' or value == 'True':
+                return actual == True
+            elif value == 'false' or value == 'False':
+                return actual == False
+            elif value.isdigit():
+                return actual == int(value)
+            else:
+                return str(actual) == value.strip("'\"")
+
+        if 'NOT IN' in condition:
+            parts = condition.split('NOT IN')
+            field = parts[0].strip()
+            values_str = parts[1].strip()
+            # Parser la liste
+            values = [v.strip().strip("'\"") for v in values_str.strip('[]').split(',')]
+            actual = context.get(field)
+            return actual not in values
+
+        return False
+
+    def _create_detected_state(
+        self,
+        state_name: str,
+        state_config: Dict[str, Any],
+        context: Dict[str, Any],
+        alerts: List[Dict[str, Any]]
+    ) -> DetectedState:
+        """Crée un objet DetectedState à partir de la configuration."""
+        workflow = state_config.get('workflow', {})
+        response = state_config.get('response', {})
+
+        return DetectedState(
+            id=state_config.get('id', state_name),
+            name=state_name,
+            priority=state_config.get('priority', 999),
+            category=state_config.get('category', 'default'),
+            description=state_config.get('description', ''),
+            workflow_action=workflow.get('action', 'RESPOND'),
+            response_config=response,
+            crm_updates_config=state_config.get('crm_updates'),
+            detection_reason=f"État {state_name} détecté",
+            context_data=context,
+            alerts=alerts,
+            detected_intent=context.get('detected_intent'),
+            intent_context=context.get('intent_context', {})
+        )
+
+    def get_state_by_id(self, state_id: str) -> Optional[Dict[str, Any]]:
+        """Récupère un état par son ID."""
+        for state_name, state_config in self.states.items():
+            if state_config.get('id') == state_id:
+                return state_config
+        return None
+
+    def get_forbidden_terms(self) -> List[str]:
+        """Retourne la liste des termes interdits."""
+        return self.config.get('forbidden_terms', [])
+
+    def get_required_blocks_global(self) -> List[str]:
+        """Retourne les blocs obligatoires globaux."""
+        return self.config.get('required_blocks_global', [])
