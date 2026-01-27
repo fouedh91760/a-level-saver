@@ -1639,11 +1639,13 @@ base_templates:
 
   report_bloque:
     file: "templates/base/report_bloque.html"
+    for_intention: "REPORT_DATE"
     for_condition: "can_modify_exam_date == false"
-    blocks: [salutation_personnalisee, report_bloque_force_majeure, jour_examen_info, signature]
+    blocks: [salutation_personnalisee, empathie_force_majeure, report_bloque_force_majeure, signature]
 
   report_possible:
     file: "templates/base/report_possible.html"
+    for_intention: "REPORT_DATE"
     for_condition: "can_modify_exam_date == true"
     blocks: [salutation_personnalisee, report_possible, prochaines_dates_examen, signature]
 

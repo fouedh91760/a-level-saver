@@ -1,11 +1,12 @@
 <!-- TEMPLATE BASE: report_bloque -->
-<!-- État: VALIDE CMA + date clôture passée (report impossible) -->
-<!-- Blocs utilisés: salutation, report_bloque_force_majeure, jour_examen_info, signature -->
+<!-- État: VALIDE CMA + date clôture passée (demande de report) -->
+<!-- Blocs utilisés: salutation, empathie_force_majeure, report_bloque_force_majeure, signature -->
+<!-- Note: On ne donne PAS les infos jour examen car le candidat veut reporter -->
 
 {{> salutation_personnalisee}}
 
-{{> report_bloque_force_majeure}}
+{{> empathie_force_majeure}}
 
-{{> jour_examen_info}}
+{{> report_bloque_force_majeure}}
 
 {{> signature}}

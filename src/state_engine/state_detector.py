@@ -204,6 +204,14 @@ class StateDetector:
             'detected_intent': triage_result.get('detected_intent'),
             'intent_context': triage_result.get('intent_context', {}),
 
+            # Force majeure (extraites de intent_context pour les templates)
+            'mentions_force_majeure': triage_result.get('intent_context', {}).get('mentions_force_majeure', False),
+            'force_majeure_type': triage_result.get('intent_context', {}).get('force_majeure_type'),
+            'force_majeure_details': triage_result.get('intent_context', {}).get('force_majeure_details', ''),
+            'is_force_majeure_deces': triage_result.get('intent_context', {}).get('force_majeure_type') == 'death',
+            'is_force_majeure_medical': triage_result.get('intent_context', {}).get('force_majeure_type') == 'medical',
+            'is_force_majeure_accident': triage_result.get('intent_context', {}).get('force_majeure_type') == 'accident',
+
             # Deal linking
             'has_duplicate_uber_offer': linking_result.get('has_duplicate_uber_offer', False),
             'needs_clarification': linking_result.get('needs_clarification', False),
@@ -255,8 +263,24 @@ class StateDetector:
 
     def _extract_date_cloture(self, deal_data: Dict[str, Any]) -> Optional[str]:
         """Extrait la date de clôture au format YYYY-MM-DD."""
-        # La date de clôture peut être dans les données de session
-        # Pour l'instant, retourner None - sera enrichi par le workflow
+        import re
+
+        # 1. Chercher Date_Cloture_Inscription directement dans deal_data
+        date_cloture = deal_data.get('Date_Cloture_Inscription')
+        if date_cloture:
+            if isinstance(date_cloture, str):
+                # Si c'est déjà une date string (YYYY-MM-DD)
+                return date_cloture[:10]
+            return str(date_cloture)[:10]
+
+        # 2. Chercher dans le lookup Date_examen_VTC (données enrichies)
+        date_examen_vtc = deal_data.get('Date_examen_VTC')
+        if isinstance(date_examen_vtc, dict):
+            # Le lookup peut contenir Date_Cloture_Inscription
+            cloture = date_examen_vtc.get('Date_Cloture_Inscription')
+            if cloture:
+                return str(cloture)[:10]
+
         return None
 
     def _extract_departement(self, deal_data: Dict[str, Any]) -> Optional[str]:

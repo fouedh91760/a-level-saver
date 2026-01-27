@@ -366,14 +366,18 @@ class TemplateEngine:
         return result
 
     def _resolve_if_blocks(self, template: str, context: Dict[str, Any]) -> str:
-        """Résout les {{#if condition}}...{{else}}...{{/if}}."""
+        """Résout les {{#if condition}}...{{else}}...{{/if}} avec support des blocs imbriqués."""
         result = template
 
-        # Pattern pour {{#if condition}}...{{/if}} avec optionnel {{else}}
-        # Note: non-greedy pour gérer les blocs imbriqués
-        pattern = r'\{\{#if\s+(\w+)\s*\}\}(.*?)(?:\{\{else\}\}(.*?))?\{\{/if\}\}'
+        # Traiter les blocs de l'intérieur vers l'extérieur
+        # en cherchant les blocs {{#if}} qui ne contiennent pas d'autres {{#if}}
+        max_iterations = 100  # Sécurité contre les boucles infinies
 
-        while True:
+        for _ in range(max_iterations):
+            # Chercher un {{#if}} dont le contenu ne contient pas d'autres {{#if}}
+            # Pattern: {{#if var}} (contenu sans {{#if}}) {{/if}} ou avec {{else}}
+            pattern = r'\{\{#if\s+(\w+)\s*\}\}((?:(?!\{\{#if)(?!\{\{#unless).)*?)(?:\{\{else\}\}((?:(?!\{\{#if)(?!\{\{#unless).)*?))?\{\{/if\}\}'
+
             match = re.search(pattern, result, re.DOTALL)
             if not match:
                 break
@@ -599,6 +603,16 @@ class TemplateEngine:
             'can_choose_other_department': context.get('can_choose_other_department', False) or not context.get('compte_existe', True),
             'session_assigned': context.get('session_assigned', False),
             'compte_existe': context.get('compte_existe', False),
+            'can_modify_exam_date': context.get('can_modify_exam_date', True),
+            'cloture_passed': context.get('cloture_passed', False),
+
+            # Force majeure (pour les templates empathiques)
+            'mentions_force_majeure': context.get('mentions_force_majeure', False),
+            'force_majeure_type': context.get('force_majeure_type'),
+            'force_majeure_details': context.get('force_majeure_details', ''),
+            'is_force_majeure_deces': context.get('is_force_majeure_deces', False),
+            'is_force_majeure_medical': context.get('is_force_majeure_medical', False),
+            'is_force_majeure_accident': context.get('is_force_majeure_accident', False),
         }
 
     def _extract_prenom(self, deal_data: Dict[str, Any]) -> str:
