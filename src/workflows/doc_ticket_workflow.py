@@ -1545,7 +1545,7 @@ L'équipe Cab Formations"""
             'uber_case': uber_result.get('case', ''),
         })
 
-        # RECALCULATE can_modify_exam_date avec date_cloture enrichi
+        # RECALCULATE cloture_passed et can_modify_exam_date avec date_cloture enrichi
         # (le StateDetector n'a pas accès à date_cloture lors de la détection)
         date_cloture = date_examen_vtc_result.get('date_cloture')
         if date_cloture:
@@ -1557,14 +1557,31 @@ L'équipe Cab Formations"""
                     cloture_date = datetime.strptime(str(date_cloture)[:10], '%Y-%m-%d').date()
                 today = datetime.now().date()
                 cloture_passed = cloture_date < today
+
+                # Toujours mettre à jour cloture_passed (utilisé par d'autres logiques)
+                detected_state.context_data['cloture_passed'] = cloture_passed
+
+                # Recalculer can_modify_exam_date selon règle B1
                 evalbox = detected_state.context_data.get('evalbox', '')
                 blocking_statuses = {'VALIDE CMA', 'Convoc CMA reçue'}
                 if evalbox in blocking_statuses and cloture_passed:
                     detected_state.context_data['can_modify_exam_date'] = False
-                    detected_state.context_data['cloture_passed'] = True
                     logger.info(f"  ⚠️ can_modify_exam_date recalculé: False (clôture {date_cloture} passée)")
             except Exception as e:
                 logger.warning(f"  ⚠️ Erreur parsing date_cloture: {e}")
+
+        # LOAD next_dates si intention REPORT_DATE mais dates vides
+        # (CAS 9 et autres cas ne chargent pas next_dates par défaut)
+        detected_intent = detected_state.context_data.get('detected_intent', '')
+        next_dates = detected_state.context_data.get('next_dates', [])
+        if detected_intent == 'REPORT_DATE' and not next_dates:
+            from src.utils.date_examen_vtc_helper import get_next_exam_dates
+            departement = detected_state.context_data.get('departement')
+            if departement and self.crm_client:
+                logger.info(f"  📅 Chargement next_dates pour REPORT_DATE (dept {departement})...")
+                next_dates = get_next_exam_dates(self.crm_client, departement, limit=5)
+                detected_state.context_data['next_dates'] = next_dates
+                logger.info(f"  ✅ {len(next_dates)} date(s) chargées")
 
         # Create AI generator for personalization sections
         # This uses Sonnet to generate contextual personalization based on threads/message
