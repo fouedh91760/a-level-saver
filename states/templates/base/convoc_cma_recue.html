@@ -1,0 +1,21 @@
+<!-- TEMPLATE BASE: convoc_cma_recue -->
+<!-- État: Evalbox = "Convoc CMA reçue" (convocation disponible) -->
+<!-- Blocs utilisés: salutation, convocation_disponible, jour_examen_info, session si besoin, bonne_chance, signature -->
+
+{{> salutation_personnalisee}}
+
+{{> convocation_disponible}}
+
+{{> jour_examen_info}}
+
+{{#unless session_choisie}}
+{{> choix_session_formation}}
+{{else}}
+{{> session_formation_choisie}}
+{{/unless}}
+
+{{> acces_elearning_rappel}}
+
+{{> bonne_chance_examen}}
+
+{{> signature}}

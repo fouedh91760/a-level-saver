@@ -1,0 +1,21 @@
+<!-- TEMPLATE BASE: valide_cma -->
+<!-- État: Evalbox = "VALIDE CMA" (paiement effectué, en attente convocation) -->
+<!-- Blocs utilisés: salutation, statut_valide_cma, convocation_a_venir, jour_examen_info, choix_session si besoin, signature -->
+
+{{> salutation_personnalisee}}
+
+{{> statut_valide_cma}}
+
+{{> convocation_a_venir}}
+
+{{#unless session_choisie}}
+{{> choix_session_formation}}
+{{else}}
+{{> session_formation_choisie}}
+{{/unless}}
+
+{{> jour_examen_info}}
+
+{{> acces_elearning_rappel}}
+
+{{> signature}}
