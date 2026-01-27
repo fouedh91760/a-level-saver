@@ -37,20 +37,33 @@ grep -E "^  [A-Z_]+:" states/candidate_states.yaml | head -30
 ## Architecture des Agents
 
 ### 1. TriageAgent (`src/agents/triage_agent.py`) - PREMIER DANS LE WORKFLOW
-**Agent IA pour triage intelligent des tickets (GO/ROUTE/SPAM).**
+**Agent IA pour triage intelligent des tickets (GO/ROUTE/SPAM) + détection d'intention.**
 
 ```python
 from src.agents.triage_agent import TriageAgent
 
 agent = TriageAgent()
 result = agent.triage_ticket(ticket_id)
-# Retourne: action (GO/ROUTE/SPAM), target_department, reason, confidence
+# Retourne:
+#   action (GO/ROUTE/SPAM)
+#   target_department
+#   reason, confidence
+#   detected_intent (ex: "CONFIRMATION_SESSION", "REPORT_DATE")
+#   intent_context: {
+#       is_urgent, mentions_force_majeure, force_majeure_type,
+#       wants_earlier_date, session_preference ("jour"|"soir"|null)
+#   }
 ```
 
 **Actions possibles :**
 - `GO` : Ticket DOC valide, continuer le workflow
 - `ROUTE` : Transférer vers autre département (Contact, Partenariat, etc.)
 - `SPAM` : Spam/pub, clôturer sans réponse
+
+**Extraction automatique de contexte :**
+- `session_preference` : Extrait "jour" ou "soir" si le candidat mentionne sa préférence
+- `force_majeure_type` : Détecte "medical", "death", "accident", "childcare"
+- `wants_earlier_date` : Détecte si le candidat veut une date plus tôt
 
 ### 2. CRMUpdateAgent (`src/agents/crm_update_agent.py`) - RECOMMANDÉ
 **Agent spécialisé pour TOUTES les mises à jour CRM CAB Formations.**
@@ -301,10 +314,20 @@ result = analyze_session_situation(
     deal_data=deal_data,
     exam_dates=next_dates,  # Liste des dates d'examen
     threads=threads_data,
-    crm_client=crm_client
+    crm_client=crm_client,
+    triage_session_preference="soir"  # NOUVEAU - préférence extraite par TriageAgent
 )
-# Retourne: session_preference (jour/soir), proposed_options avec sessions IDs
+# Retourne: session_preference (jour/soir), proposed_options avec sessions IDs, message
 ```
+
+**Logique de sélection de session :**
+- **Si date d'examen existe** → Auto-sélection de la meilleure session correspondant à la préférence
+- **Si pas de date d'examen** → Proposition des dates + sessions associées, demande de confirmation
+
+**Priorité pour la préférence :**
+1. `triage_session_preference` (TriageAgent)
+2. `deal_data['Preference_horaire']` (CRM)
+3. Analyse IA des threads
 
 **Note :** Les sessions sont proposées même si la date d'examen est déjà assignée mais que `Session` est vide.
 
@@ -409,7 +432,9 @@ Next steps CAB:
 
 ## State Engine - Architecture État × Intention → Template
 
-### Principe
+### Principe Fondamental
+
+**Le Legacy fournit la LOGIQUE et les DONNÉES, le State Engine fournit le ROUTING et le RENDU.**
 
 Le système génère les réponses de manière **déterministe** :
 1. **ÉTAT** = situation factuelle du candidat (détecté depuis CRM/ExamT3P)
@@ -421,34 +446,126 @@ Le système génère les réponses de manière **déterministe** :
 | Fichier | Contenu |
 |---------|---------|
 | `states/candidate_states.yaml` | **~25 ÉTATS** (T1-T4, A0-A3, U01-U06, E01-E13, etc.) |
-| `states/state_intention_matrix.yaml` | **36 INTENTIONS** (I01-I36) + MATRICE État×Intention |
-| `states/templates/base/*.html` | Templates HTML par état |
+| `states/state_intention_matrix.yaml` | **37 INTENTIONS** (I01-I37) + MATRICE État×Intention |
+| `states/templates/base/*.html` | **62 Templates** HTML (tous en .html, pas .md) |
 | `states/blocks/*.md` | Blocs réutilisables (salutation, signature, etc.) |
 | `states/VARIABLES.md` | Documentation des variables Handlebars |
 
-### Détection d'Intent par TriageAgent
+### Détection d'Intent et Contexte par TriageAgent
 
 ```python
 triage_result = triage_agent.triage_ticket(ticket_id)
 # Retourne: action, detected_intent, intent_context
+
+# Structure de intent_context:
+{
+    "is_urgent": True | False,
+    "mentions_force_majeure": True | False,
+    "force_majeure_type": "medical" | "death" | "accident" | "childcare" | "other" | None,
+    "force_majeure_details": "description courte" | None,
+    "wants_earlier_date": True | False,
+    "session_preference": "jour" | "soir" | None  # NOUVEAU - extrait automatiquement
+}
 ```
+
+**Le TriageAgent extrait automatiquement `session_preference`** quand le candidat mentionne "cours du jour", "cours du soir", etc.
+
+### Intégration TriageAgent → session_helper
+
+```python
+# Le workflow passe la préférence du TriageAgent au session_helper
+session_data = analyze_session_situation(
+    deal_data=deal_data,
+    exam_dates=exam_dates,
+    threads=threads_data,
+    crm_client=crm_client,
+    triage_session_preference=triage_result.get('intent_context', {}).get('session_preference')
+)
+```
+
+**Priorité de détection de préférence :**
+1. TriageAgent (`session_preference` dans `intent_context`)
+2. Deal CRM (`Preference_horaire`)
+3. Threads (analyse IA du message)
 
 ### Syntaxe Templates (Handlebars)
 
 ```html
 {{variable}}                          <!-- Variable simple -->
+{{{variable}}}                        <!-- Variable HTML (non échappée) -->
 {{> bloc_name}}                       <!-- Inclusion de bloc -->
 {{#if condition}}...{{else}}...{{/if}} <!-- Conditionnel -->
 {{#unless condition}}...{{/unless}}   <!-- Conditionnel inverse -->
 {{#each items}}{{this.field}}{{/each}} <!-- Boucle -->
 ```
 
-### Logique de Sélection Template
+**Variables de session disponibles dans les templates :**
+```
+{{session_preference}}          <!-- "jour" ou "soir" -->
+{{session_preference_jour}}     <!-- true/false -->
+{{session_preference_soir}}     <!-- true/false -->
+{{session_message}}             <!-- Message pré-formaté du legacy -->
+{{#each sessions_proposees}}    <!-- Liste aplatie des sessions -->
+  {{this.nom}}                  <!-- Nom de la session -->
+  {{this.debut}}                <!-- Date début formatée -->
+  {{this.fin}}                  <!-- Date fin formatée -->
+  {{this.date_examen}}          <!-- Date examen associée -->
+  {{this.departement}}          <!-- Département -->
+  {{this.type}}                 <!-- "jour" ou "soir" -->
+  {{this.is_jour}}              <!-- true/false -->
+  {{this.is_soir}}              <!-- true/false -->
+{{/each}}
+```
 
-1. Chercher dans la matrice : `ÉTAT:INTENTION` → template spécifique
-2. Si pas trouvé : utiliser le template par défaut de l'ÉTAT
-3. Résoudre les blocs → conditionnels → placeholders
-4. Section `{{personnalisation}}` pour personnalisation IA uniquement
+### Logique de Sélection Template (TemplateEngine)
+
+L'ordre de priorité dans `_select_base_template()` :
+
+1. **PASS 0** : Matrice `STATE:INTENTION` (priorité maximale)
+   ```python
+   # Cherche "DATE_EXAMEN_VIDE:CONFIRMATION_SESSION" dans state_intention_matrix
+   matrix_key = f"{state.name}:{intention}"
+   if matrix_key in self.state_intention_matrix:
+       return config['template']  # ex: "confirmation_session.html"
+   ```
+
+2. **PASS 1** : Templates avec intention (`for_intention` + `for_condition`)
+3. **PASS 2** : Templates avec condition seule
+4. **PASS 3** : Cas Uber (A, B, D, E)
+5. **PASS 4** : Résultat examen
+6. **PASS 5** : Evalbox (statut dossier)
+7. **Fallback** : Par nom d'état normalisé
+
+### Transformation des Données Legacy → Template
+
+Le `TemplateEngine` utilise `_flatten_session_options()` pour transformer les données du legacy `session_helper` en format utilisable par les templates :
+
+```python
+# Input (legacy session_helper format):
+{
+    'proposed_options': [
+        {
+            'exam_info': {'Date_Examen': '2026-03-31', 'Departement': '75'},
+            'sessions': [
+                {'Name': 'cds-janvier', 'Date_d_but': '...', 'session_type': 'soir'}
+            ]
+        }
+    ]
+}
+
+# Output (template format - aplati):
+[
+    {
+        'date_examen': '31/03/2026',
+        'departement': '75',
+        'nom': 'Cours du soir',
+        'debut': '15/01/2026',
+        'fin': '25/01/2026',
+        'type': 'soir',
+        'is_soir': True
+    }
+]
+```
 
 ### Ajout d'un Nouvel Intent ou État
 
@@ -456,8 +573,23 @@ triage_result = triage_agent.triage_ticket(ticket_id)
 
 1. Vérifier qu'il n'existe pas (grep dans les YAML)
 2. Ajouter dans le fichier YAML approprié
-3. Créer/modifier le template si nécessaire
+3. Créer/modifier le template si nécessaire (en `.html`, pas `.md`)
 4. Tester avec un ticket réel
+
+### Vérification de la Couverture Templates
+
+```bash
+# Vérifier qu'aucun template ne manque
+python -c "
+import re, os
+with open('states/state_intention_matrix.yaml') as f:
+    templates = set(re.findall(r'template:\s*[\"']?([\\w_-]+\\.html)', f.read()))
+existing = set(os.listdir('states/templates/base'))
+missing = templates - existing
+print(f'Manquants: {len(missing)}')
+for t in sorted(missing): print(f'  - {t}')
+"
+```
 
 ---
 
@@ -599,10 +731,33 @@ python -c "from src.agents.response_generator_agent import ResponseGeneratorAgen
 
 ---
 
+## Intentions Spéciales (Routing Automatique)
+
+### DEMANDE_SUPPRESSION_DONNEES (I37) - RGPD
+**Demande de suppression de données personnelles → Route automatiquement vers département "Contact"**
+
+```yaml
+# Dans state_intention_matrix.yaml
+DEMANDE_SUPPRESSION_DONNEES:
+  id: "I37"
+  triggers:
+    - "suppression"
+    - "supprimer mes données"
+    - "droit à l'oubli"
+  routing: "Contact"
+  priority: 90
+```
+
+Le TriageAgent détecte automatiquement cette intention et retourne `action: ROUTE, target: Contact`.
+
+---
+
 ## À Faire Avant de Coder
 
 1. **Chercher dans les helpers** : `grep -r "fonction_recherchée" src/utils/`
 2. **Vérifier les agents** : `ls src/agents/`
 3. **Vérifier les alertes** : `cat alerts/active_alerts.yaml`
-4. **Lire ce fichier** : Les fonctions sont documentées ici
-5. **Ne pas dupliquer** : Si une fonction existe, l'utiliser !
+4. **Vérifier les intents existants** : `grep -E "^  [A-Z_]+:" states/state_intention_matrix.yaml`
+5. **Vérifier les templates existants** : `ls states/templates/base/`
+6. **Lire ce fichier** : Les fonctions sont documentées ici
+7. **Ne pas dupliquer** : Si une fonction existe, l'utiliser !
