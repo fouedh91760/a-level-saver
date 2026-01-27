@@ -2,22 +2,12 @@
 <b>Concernant l'offre Uber</b><br>
 <br>
 {{#if is_uber_20_deal}}
+Vous êtes bien inscrit via l'offre Uber à 20€.<br>
 {{#if uber_eligible}}
-Bonne nouvelle ! Vous êtes bien éligible à l'offre Uber à 20€.<br>
-{{else}}
-{{#if uber_case}}
-{{#if (eq uber_case 'CAS_A')}}
-Pour finaliser votre inscription à 20€, nous avons besoin que vous nous transmettiez vos documents (pièce d'identité, justificatif de domicile, photo d'identité, permis de conduire).<br>
-{{else if (eq uber_case 'CAS_D')}}
-Votre adresse email ne semble pas être associée à un compte Uber Driver. Veuillez contacter Uber pour vérifier votre éligibilité.<br>
-{{else if (eq uber_case 'CAS_E')}}
-Selon les informations d'Uber, vous n'êtes pas éligible à cette offre. Veuillez contacter Uber pour plus de détails.<br>
-{{else}}
-Votre éligibilité à l'offre Uber est en cours de vérification.<br>
+Votre éligibilité a été confirmée par Uber.<br>
 {{/if}}
-{{else}}
-Votre éligibilité à l'offre Uber est en cours de vérification. Nous vous tiendrons informé dès que nous aurons une réponse.<br>
-{{/if}}
+{{#if uber_verif_en_cours}}
+Votre éligibilité est en cours de vérification. Nous vous tiendrons informé dès que nous aurons une réponse d'Uber.<br>
 {{/if}}
 {{else}}
 Vous n'êtes pas inscrit via l'offre Uber à 20€. Si vous pensez que c'est une erreur, veuillez nous contacter avec votre email Uber Driver.<br>
