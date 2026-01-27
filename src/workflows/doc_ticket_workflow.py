@@ -1545,6 +1545,27 @@ L'équipe Cab Formations"""
             'uber_case': uber_result.get('case', ''),
         })
 
+        # RECALCULATE can_modify_exam_date avec date_cloture enrichi
+        # (le StateDetector n'a pas accès à date_cloture lors de la détection)
+        date_cloture = date_examen_vtc_result.get('date_cloture')
+        if date_cloture:
+            from datetime import datetime
+            try:
+                if 'T' in str(date_cloture):
+                    cloture_date = datetime.fromisoformat(str(date_cloture).replace('Z', '+00:00')).date()
+                else:
+                    cloture_date = datetime.strptime(str(date_cloture)[:10], '%Y-%m-%d').date()
+                today = datetime.now().date()
+                cloture_passed = cloture_date < today
+                evalbox = detected_state.context_data.get('evalbox', '')
+                blocking_statuses = {'VALIDE CMA', 'Convoc CMA reçue'}
+                if evalbox in blocking_statuses and cloture_passed:
+                    detected_state.context_data['can_modify_exam_date'] = False
+                    detected_state.context_data['cloture_passed'] = True
+                    logger.info(f"  ⚠️ can_modify_exam_date recalculé: False (clôture {date_cloture} passée)")
+            except Exception as e:
+                logger.warning(f"  ⚠️ Erreur parsing date_cloture: {e}")
+
         # Create AI generator for personalization sections
         # This uses Sonnet to generate contextual personalization based on threads/message
         def ai_personalization_generator(state, instructions="", max_length=150):
