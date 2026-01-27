@@ -123,27 +123,7 @@ result = agent.process({"ticket_id": "123456"})
 # Retourne: deal_id, deal_data, all_deals, routing info
 ```
 
-### 4. ResponseGeneratorAgent (`src/agents/response_generator_agent.py`)
-**Génère les réponses aux tickets avec Claude + RAG.**
-
-```python
-from src.agents.response_generator_agent import ResponseGeneratorAgent
-
-agent = ResponseGeneratorAgent()
-result = agent.generate_with_validation_loop(
-    ticket_subject="...",
-    customer_message="...",
-    crm_data={...},
-    exament3p_data={...}
-)
-# Retourne: response_text, crm_updates, detected_scenarios, etc.
-```
-
-**Important :**
-- L'agent extrait automatiquement les mises à jour CRM via le bloc `[CRM_UPDATES]...[/CRM_UPDATES]`
-- Les alertes temporaires sont automatiquement injectées dans le prompt
-
-### 5. ExamT3PAgent (`src/agents/examt3p_agent.py`)
+### 4. ExamT3PAgent (`src/agents/examt3p_agent.py`)
 **Extrait les données de la plateforme ExamT3P.**
 
 ```python
@@ -154,7 +134,7 @@ data = agent.extract_data(identifiant, mot_de_passe)
 # Retourne: documents, paiements, examens, statut_dossier, num_dossier, etc.
 ```
 
-### 6. TicketDispatcherAgent (`src/agents/dispatcher_agent.py`)
+### 5. TicketDispatcherAgent (`src/agents/dispatcher_agent.py`)
 **Route les tickets vers le bon département.**
 
 ---
@@ -320,8 +300,8 @@ filtered_dates = filter_dates_by_region_relevance(
 - `REGION_ALIASES` : aliases ("PDL", "IDF", "alsace") → région officielle
 
 **Intégration automatique :**
-Le filtrage est appliqué automatiquement dans `ResponseGeneratorAgent._format_data_sources()`.
-L'IA reçoit uniquement les dates pertinentes, pas besoin de règles manuelles dans le prompt.
+Le filtrage est appliqué automatiquement dans le workflow d'analyse.
+Les templates reçoivent uniquement les dates pertinentes pour la région du candidat.
 
 ### Sessions de Formation (`src/utils/session_helper.py`)
 
@@ -452,9 +432,7 @@ Next steps CAB:
 
 ### Principe Fondamental
 
-**Le Legacy fournit la LOGIQUE et les DONNÉES, le State Engine fournit le ROUTING et le RENDU.**
-
-Le système génère les réponses de manière **déterministe** :
+**Le State Engine génère les réponses de manière déterministe** :
 1. **ÉTAT** = situation factuelle du candidat (détecté depuis CRM/ExamT3P)
 2. **INTENTION** = ce que le candidat demande (détecté par TriageAgent via IA)
 3. **TEMPLATE** = réponse adaptée à la combinaison ÉTAT × INTENTION
@@ -522,7 +500,7 @@ session_data = analyze_session_situation(
 {{session_preference}}          <!-- "jour" ou "soir" -->
 {{session_preference_jour}}     <!-- true/false -->
 {{session_preference_soir}}     <!-- true/false -->
-{{session_message}}             <!-- Message pré-formaté du legacy -->
+{{session_message}}             <!-- Message pré-formaté -->
 {{#each sessions_proposees}}    <!-- Liste aplatie des sessions -->
   {{this.nom}}                  <!-- Nom de la session -->
   {{this.debut}}                <!-- Date début formatée -->
@@ -569,12 +547,12 @@ L'ordre de priorité dans `_select_base_template()` :
 7. **PASS 5** : Evalbox (statut dossier)
 8. **Fallback** : Par nom d'état normalisé
 
-### Transformation des Données Legacy → Template
+### Transformation des Données session_helper → Template
 
-Le `TemplateEngine` utilise `_flatten_session_options()` pour transformer les données du legacy `session_helper` en format utilisable par les templates :
+Le `TemplateEngine` utilise `_flatten_session_options()` pour transformer les données de `session_helper` en format utilisable par les templates :
 
 ```python
-# Input (legacy session_helper format):
+# Input (session_helper format):
 {
     'proposed_options': [
         {
@@ -666,7 +644,7 @@ L'architecture modulaire garantit que TOUTE réponse :
 ```
 states/templates/
 ├── response_master.html          # Template master universel
-├── base/                         # Templates spécifiques par état (legacy)
+├── base/                         # Templates spécifiques par état
 │   ├── uber_cas_a.html
 │   ├── dossier_synchronise.html
 │   └── ...
@@ -878,12 +856,12 @@ Bien cordialement,
 L'équipe CAB Formations
 ```
 
-### Migration Progressive
+### Architecture Modulaire
 
-L'architecture permet une migration progressive :
-1. **Templates legacy** (`states/templates/base/*.html`) continuent de fonctionner
-2. **Nouveaux templates** peuvent utiliser `response_master.html` avec context flags
-3. **Templates hybrides** (comme `uber_test_missing_hybrid.html`) combinent les deux approches
+L'architecture supporte deux types de templates :
+1. **Templates spécifiques** (`states/templates/base/*.html`) pour des cas particuliers
+2. **Template master** (`response_master.html`) avec context flags pour les cas généraux
+3. **Templates hybrides** (comme `uber_test_missing_hybrid.html`) pour combiner les approches
 
 ### Ajout d'une Nouvelle Intention
 
@@ -1081,8 +1059,8 @@ python list_recent_tickets.py
 # Tester le workflow complet
 python test_doc_workflow_with_examt3p.py <ticket_id>
 
-# Tester la génération de réponse seule
-python -c "from src.agents.response_generator_agent import ResponseGeneratorAgent; ..."
+# Tester le State Engine sur 5 tickets
+python test_state_engine_sections.py
 
 # Analyser un lot de tickets (utilise data/open_doc_tickets.txt)
 python analyze_lot.py 11 20  # Lot 2: tickets 11-20
