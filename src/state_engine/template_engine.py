@@ -120,6 +120,9 @@ class TemplateEngine:
         # Nettoyer les placeholders non remplacés
         response_text = self._cleanup_unresolved_placeholders(response_text)
 
+        # Supprimer les commentaires BLOCK du texte final
+        response_text = self._strip_block_comments(response_text)
+
         return {
             'response_text': response_text.strip(),
             'template_used': template_name,
@@ -544,6 +547,15 @@ Nous vous invitons à contacter le support Uber via l'application **Uber Driver*
         # Nettoyer les lignes vides multiples
         cleaned = re.sub(r'\n{3,}', '\n\n', cleaned)
         return cleaned
+
+    def _strip_block_comments(self, response: str) -> str:
+        """Supprime les commentaires BLOCK du texte final."""
+        # Supprimer les marqueurs <!-- BLOCK: xxx --> et <!-- /BLOCK -->
+        cleaned = re.sub(r'<!--\s*BLOCK:\s*\w+\s*-->\n?', '', response)
+        cleaned = re.sub(r'<!--\s*/BLOCK\s*-->\n?', '', cleaned)
+        # Nettoyer les lignes vides multiples
+        cleaned = re.sub(r'\n{3,}', '\n\n', cleaned)
+        return cleaned.strip()
 
     def _generate_fallback_response(
         self,
