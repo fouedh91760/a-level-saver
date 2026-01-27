@@ -1200,11 +1200,16 @@ Deux comptes ExamenT3P fonctionnels ont été détectés pour ce candidat, et le
 
         if should_analyze_sessions:
             logger.info("  📚 Recherche des sessions de formation associées...")
+            # Récupérer la préférence du TriageAgent si disponible
+            intent_context = triage_result.get('intent_context', {}) if triage_result else {}
+            triage_session_pref = intent_context.get('session_preference')
+
             session_data = analyze_session_situation(
                 deal_data=deal_data,
                 exam_dates=exam_dates_for_session,
                 threads=threads_data,
-                crm_client=self.crm_client
+                crm_client=self.crm_client,
+                triage_session_preference=triage_session_pref
             )
             if session_data.get('session_preference'):
                 logger.info(f"  ➡️ Préférence détectée: {session_data['session_preference']}")

@@ -597,8 +597,15 @@ class TemplateEngine:
             # Département
             'departement': departement,
 
-            # Session
+            # Session - utilise les données du legacy session_helper
+            # Le legacy fournit la logique (quelles sessions proposer), le State Engine formate l'affichage
             'session_choisie': self._format_session(deal_data.get('Session')),
+            'session_message': context.get('session_data', {}).get('message', ''),
+            'session_preference': context.get('session_data', {}).get('session_preference', ''),
+            'session_preference_soir': context.get('session_data', {}).get('session_preference') == 'soir',
+            'session_preference_jour': context.get('session_data', {}).get('session_preference') == 'jour',
+            # Données aplaties pour itération facile dans les templates
+            'sessions_proposees': self._flatten_session_options(context.get('session_data', {})),
             'date_debut_formation': '',
             'date_fin_formation': '',
 
@@ -689,6 +696,82 @@ class TemplateEngine:
         if isinstance(session, dict):
             return session.get('name', '')
         return str(session)
+
+    def _flatten_session_options(self, session_data: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """
+        Transforme les proposed_options du legacy session_helper en format plat
+        utilisable facilement par les templates Handlebars.
+
+        Input (legacy format):
+            proposed_options: [
+                {
+                    'exam_info': {'Date_Examen': '2026-03-31', 'Departement': '75', ...},
+                    'sessions': [
+                        {'Name': 'cds-janvier', 'Date_d_but': '...', 'Date_fin': '...', 'session_type': 'soir', ...}
+                    ]
+                }
+            ]
+
+        Output (template format):
+            [
+                {
+                    'date_examen': '31/03/2026',
+                    'departement': '75',
+                    'cloture': '15/03/2026',
+                    'nom': 'Cours du soir - Janvier 2026',
+                    'debut': '15/01/2026',
+                    'fin': '25/01/2026',
+                    'type': 'soir',
+                    'horaires': '18h-22h'
+                }
+            ]
+        """
+        flattened = []
+        proposed_options = session_data.get('proposed_options', [])
+
+        for option in proposed_options:
+            exam_info = option.get('exam_info', {})
+            sessions = option.get('sessions', [])
+
+            # Formater les dates d'examen
+            date_examen = exam_info.get('Date_Examen', '')
+            date_examen_formatted = self._format_date(date_examen) if date_examen else ''
+            cloture = exam_info.get('Date_Cloture_Inscription', '')
+            cloture_formatted = self._format_date(cloture) if cloture else ''
+            departement = exam_info.get('Departement', '')
+
+            for session in sessions:
+                session_type = session.get('session_type', '')
+                session_type_label = session.get('session_type_label', '')
+
+                # Extraire les dates de la session
+                date_debut = session.get('Date_d_but', '')
+                date_fin = session.get('Date_fin', '')
+                date_debut_formatted = self._format_date(date_debut) if date_debut else ''
+                date_fin_formatted = self._format_date(date_fin) if date_fin else ''
+
+                # Extraire les horaires si disponibles
+                horaires = session.get('Type_de_cours', '')
+                if isinstance(horaires, dict):
+                    horaires = horaires.get('name', '')
+
+                flattened.append({
+                    'date_examen': date_examen_formatted,
+                    'date_examen_raw': date_examen,
+                    'departement': departement,
+                    'cloture': cloture_formatted,
+                    'nom': session_type_label or session.get('Name', ''),
+                    'session_name': session.get('Name', ''),
+                    'session_id': session.get('id', ''),
+                    'debut': date_debut_formatted,
+                    'fin': date_fin_formatted,
+                    'type': session_type,
+                    'horaires': horaires,
+                    'is_jour': session_type == 'jour',
+                    'is_soir': session_type == 'soir',
+                })
+
+        return flattened
 
     def _format_statut(self, evalbox: str) -> str:
         """Formate le statut Evalbox pour affichage."""

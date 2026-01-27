@@ -420,7 +420,8 @@ def analyze_session_situation(
     deal_data: Dict[str, Any],
     exam_dates: List[Dict[str, Any]],
     threads: List[Dict] = None,
-    crm_client = None
+    crm_client = None,
+    triage_session_preference: Optional[str] = None
 ) -> Dict[str, Any]:
     """
     Analyse la situation et propose les sessions appropriées pour les dates d'examen.
@@ -430,6 +431,8 @@ def analyze_session_situation(
         exam_dates: Liste des prochaines dates d'examen
         threads: Threads du ticket (pour détecter préférence)
         crm_client: Client Zoho CRM
+        triage_session_preference: Préférence détectée par TriageAgent ('jour'/'soir')
+                                   Si fournie, override la détection automatique
 
     Returns:
         {
@@ -491,12 +494,17 @@ def analyze_session_situation(
                 pass
 
     # 2. Détecter la préférence jour/soir
-    preference = detect_session_preference_from_deal(deal_data)
-    if not preference and threads:
-        preference = detect_session_preference_from_threads(threads)
+    # Priorité: 1) TriageAgent 2) Deal CRM 3) Threads
+    if triage_session_preference:
+        preference = triage_session_preference
+        logger.info(f"  Préférence TriageAgent: {preference}")
+    else:
+        preference = detect_session_preference_from_deal(deal_data)
+        if not preference and threads:
+            preference = detect_session_preference_from_threads(threads)
 
     result['session_preference'] = preference
-    logger.info(f"  Préférence détectée: {preference or 'aucune'}")
+    logger.info(f"  Préférence finale: {preference or 'aucune'}")
 
     # 3. Si pas de dates d'examen, pas de proposition
     if not exam_dates:
