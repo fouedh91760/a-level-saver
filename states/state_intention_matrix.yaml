@@ -1152,6 +1152,48 @@ matrix:
       intention_confirmation_session: true
       show_statut_section: true
 
+  # UBER_ACCOUNT_NOT_VERIFIED × Intentions
+  "UBER_ACCOUNT_NOT_VERIFIED:CONFIRMATION_SESSION":
+    template: "response_master.html"
+    context_flags:
+      intention_confirmation_session: true
+      show_statut_section: true
+      action_contacter_uber: true
+
+  "UBER_ACCOUNT_NOT_VERIFIED:STATUT_DOSSIER":
+    template: "response_master.html"
+    context_flags:
+      intention_statut_dossier: true
+      show_statut_section: true
+      action_contacter_uber: true
+
+  # DOSSIER_SYNCHRONIZED × Intentions
+  "DOSSIER_SYNCHRONIZED:STATUT_DOSSIER":
+    template: "response_master.html"
+    context_flags:
+      intention_statut_dossier: true
+      show_statut_section: true
+
+  "DOSSIER_SYNCHRONIZED:CONFIRMATION_SESSION":
+    template: "response_master.html"
+    context_flags:
+      intention_confirmation_session: true
+      show_statut_section: true
+      show_sessions_section: true
+
+  # CONVOCATION_RECEIVED × Intentions
+  "CONVOCATION_RECEIVED:REPORT_DATE":
+    template: "response_master.html"
+    context_flags:
+      intention_report_date: true
+      show_statut_section: true
+
+  "CONVOCATION_RECEIVED:STATUT_DOSSIER":
+    template: "response_master.html"
+    context_flags:
+      intention_statut_dossier: true
+      show_statut_section: true
+
   # --- REFUS_PARTAGE_CREDENTIALS (priorité maximale, s'applique à tout état) ---
   "*:REFUS_PARTAGE_CREDENTIALS":
     priority: 95
