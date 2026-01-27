@@ -210,8 +210,14 @@ class TemplateEngine:
                     logger.info(f"📌 Context flags injectés: {list(context_flags.keys())}")
 
                 # Construire la config au format attendu
+                # response_master.html est dans templates/, pas templates/base/
+                if template_file == 'response_master.html':
+                    file_path = 'templates/response_master.html'
+                else:
+                    file_path = f'templates/base/{template_file}'
+
                 return template_key, {
-                    'file': f'templates/base/{template_file}',
+                    'file': file_path,
                     'blocks': config.get('blocks', []),
                     'crm_update': config.get('crm_update', []),
                     'context_flags': context_flags,
@@ -852,6 +858,15 @@ class TemplateEngine:
             'DOCUMENT_QUESTION': 'intention_probleme_documents',
             'SIGNALE_PROBLEME_DOCS': 'intention_probleme_documents',
             'ENVOIE_DOCUMENTS': 'intention_probleme_documents',
+            # Nouvelles intentions (22.8% + 14.6% + 11.8% = 49.2% des tickets)
+            'QUESTION_GENERALE': 'intention_question_generale',
+            'RESULTAT_EXAMEN': 'intention_resultat_examen',
+            'QUESTION_UBER': 'intention_question_uber',
+            # Synonymes courants
+            'DEMANDE_RESULTAT': 'intention_resultat_examen',
+            'NOTE_EXAMEN': 'intention_resultat_examen',
+            'UBER_ELIGIBILITE': 'intention_question_uber',
+            'UBER_OFFRE': 'intention_question_uber',
         }
 
         # Initialiser tous les flags à False
@@ -864,6 +879,10 @@ class TemplateEngine:
             'intention_demande_elearning': False,
             'intention_report_date': False,
             'intention_probleme_documents': False,
+            # Nouvelles intentions fréquentes
+            'intention_question_generale': False,
+            'intention_resultat_examen': False,
+            'intention_question_uber': False,
         }
 
         # Récupérer l'intention détectée

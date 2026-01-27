@@ -1,0 +1,496 @@
+{
+  "metadata": {
+    "timestamp": "2026-01-27T23:34:48.064627",
+    "total_tickets": 356,
+    "analyzed": 356,
+    "errors": 0
+  },
+  "frequency": {
+    "intentions": {
+      "QUESTION_GENERALE": 81,
+      "CONFIRMATION_SESSION": 75,
+      "RESULTAT_EXAMEN": 52,
+      "QUESTION_UBER": 42,
+      "DEMANDE_DATE_EXAMEN": 37,
+      "DOCUMENTS": 21,
+      "CONVOCATION": 17,
+      "DEMANDE_IDENTIFIANTS": 16,
+      "STATUT_DOSSIER": 8,
+      "REPORT_DATE": 7
+    },
+    "states": {
+      "EXAM_DATE_EMPTY": 317,
+      "UNKNOWN": 21,
+      "DOSSIER_SYNCHRONIZED": 5,
+      "READY_TO_PAY": 4,
+      "VALIDE_CMA_WAITING_CONVOC": 4,
+      "CONVOCATION_RECEIVED": 4,
+      "DOSSIER_REFUSED": 1
+    },
+    "evalbox": {
+      "N/A": 20,
+      "Dossier Synchronisé": 5,
+      "Pret a payer": 4,
+      "VALIDE CMA": 4,
+      "Convoc CMA reçue": 4,
+      "Documents manquants": 1,
+      "Documents refusés": 1
+    },
+    "amount": {
+      "20": 39
+    }
+  },
+  "tickets": [
+    {
+      "ticket_id": "198709000448042637",
+      "subject": "Re: Test de sélection réussi - Examen VTC",
+      "intention": "RESULTAT_EXAMEN",
+      "state": "UNKNOWN",
+      "evalbox": "N/A",
+      "amount": 20,
+      "has_deal": true
+    },
+    {
+      "ticket_id": "198709000448052389",
+      "subject": "Re: Examen VTC : Quel est votre compte Uber ?",
+      "intention": "QUESTION_UBER",
+      "state": "UNKNOWN",
+      "evalbox": "N/A",
+      "amount": 20,
+      "has_deal": true
+    },
+    {
+      "ticket_id": "198709000448046631",
+      "subject": "Re: Examen VTC : Quel est votre compte Uber ?",
+      "intention": "QUESTION_UBER",
+      "state": "UNKNOWN",
+      "evalbox": "N/A",
+      "amount": 20,
+      "has_deal": true
+    },
+    {
+      "ticket_id": "198709000448028878",
+      "subject": "Demande de renseignement",
+      "intention": "QUESTION_GENERALE",
+      "state": "READY_TO_PAY",
+      "evalbox": "Pret a payer",
+      "amount": 20,
+      "has_deal": true
+    },
+    {
+      "ticket_id": "198709000448046426",
+      "subject": "Re: Test de sélection réussi - Examen VTC",
+      "intention": "RESULTAT_EXAMEN",
+      "state": "UNKNOWN",
+      "evalbox": "N/A",
+      "amount": 20,
+      "has_deal": true
+    },
+    {
+      "ticket_id": "198709000417584251",
+      "subject": "Identifiants evalbox",
+      "intention": "DEMANDE_IDENTIFIANTS",
+      "state": "DOSSIER_SYNCHRONIZED",
+      "evalbox": "Dossier Synchronisé",
+      "amount": 20,
+      "has_deal": true
+    },
+    {
+      "ticket_id": "198709000448040784",
+      "subject": "Avis : Le contenu datant de plus d’un an dans votre espace de travail gratuit sera supprimé à partir",
+      "intention": "QUESTION_GENERALE",
+      "state": "EXAM_DATE_EMPTY",
+      "evalbox": null,
+      "amount": null,
+      "has_deal": false
+    },
+    {
+      "ticket_id": "198709000448025997",
+      "subject": "Re: Examen VTC : Quel est votre compte Uber ?",
+      "intention": "QUESTION_UBER",
+      "state": "UNKNOWN",
+      "evalbox": "N/A",
+      "amount": 20,
+      "has_deal": true
+    },
+    {
+      "ticket_id": "198709000448027901",
+      "subject": "Demande d’information",
+      "intention": "CONFIRMATION_SESSION",
+      "state": "VALIDE_CMA_WAITING_CONVOC",
+      "evalbox": "VALIDE CMA",
+      "amount": 20,
+      "has_deal": true
+    },
+    {
+      "ticket_id": "198709000448040528",
+      "subject": "[Service client] Demande destruction",
+      "intention": "QUESTION_GENERALE",
+      "state": "READY_TO_PAY",
+      "evalbox": "Pret a payer",
+      "amount": 20,
+      "has_deal": true
+    },
+    {
+      "ticket_id": "198709000448019181",
+      "subject": "Form submission from: Assistance",
+      "intention": "QUESTION_GENERALE",
+      "state": "UNKNOWN",
+      "evalbox": "N/A",
+      "amount": 20,
+      "has_deal": true
+    },
+    {
+      "ticket_id": "198709000448043841",
+      "subject": "Re: Test de sélection réussi - Examen VTC",
+      "intention": "RESULTAT_EXAMEN",
+      "state": "UNKNOWN",
+      "evalbox": "N/A",
+      "amount": 20,
+      "has_deal": true
+    },
+    {
+      "ticket_id": "198709000448028627",
+      "subject": "Re: Test de sélection réussi - Examen VTC",
+      "intention": "RESULTAT_EXAMEN",
+      "state": "UNKNOWN",
+      "evalbox": "N/A",
+      "amount": 20,
+      "has_deal": true
+    },
+    {
+      "ticket_id": "198709000448028379",
+      "subject": "Une dernière action et tout est bon ",
+      "intention": "QUESTION_GENERALE",
+      "state": "EXAM_DATE_EMPTY",
+      "evalbox": null,
+      "amount": null,
+      "has_deal": false
+    },
+    {
+      "ticket_id": "198709000448043164",
+      "subject": "Activez votre compte en quelques clics ! ",
+      "intention": "QUESTION_GENERALE",
+      "state": "EXAM_DATE_EMPTY",
+      "evalbox": null,
+      "amount": null,
+      "has_deal": false
+    },
+    {
+      "ticket_id": "198709000448042003",
+      "subject": "Re: Cab formation x uber 20€ : Réaliser votre test de sélection",
+      "intention": "CONFIRMATION_SESSION",
+      "state": "UNKNOWN",
+      "evalbox": "N/A",
+      "amount": 20,
+      "has_deal": true
+    },
+    {
+      "ticket_id": "198709000448030877",
+      "subject": "Photo mr bouacida",
+      "intention": "DOCUMENTS",
+      "state": "UNKNOWN",
+      "evalbox": "Documents manquants",
+      "amount": 20,
+      "has_deal": true
+    },
+    {
+      "ticket_id": "198709000448028260",
+      "subject": "Re: Test de sélection réussi - Examen VTC",
+      "intention": "RESULTAT_EXAMEN",
+      "state": "UNKNOWN",
+      "evalbox": "N/A",
+      "amount": 20,
+      "has_deal": true
+    },
+    {
+      "ticket_id": "198709000448029779",
+      "subject": "Re: Rappel pour rejoindre - Formation VTC - 13/01/2025 au 24/01/2025",
+      "intention": "CONFIRMATION_SESSION",
+      "state": "VALIDE_CMA_WAITING_CONVOC",
+      "evalbox": "VALIDE CMA",
+      "amount": 20,
+      "has_deal": true
+    },
+    {
+      "ticket_id": "198709000447513275",
+      "subject": "Re: Convocation à l’épreuve d’admissibilité",
+      "intention": "CONVOCATION",
+      "state": "CONVOCATION_RECEIVED",
+      "evalbox": "Convoc CMA reçue",
+      "amount": 20,
+      "has_deal": true
+    },
+    {
+      "ticket_id": "198709000448029532",
+      "subject": "Re: Récapitulatif de votre inscription à l'examen VTC",
+      "intention": "DEMANDE_DATE_EXAMEN",
+      "state": "EXAM_DATE_EMPTY",
+      "evalbox": null,
+      "amount": null,
+      "has_deal": false
+    },
+    {
+      "ticket_id": "198709000432908817",
+      "subject": "Re: DEMANDE D'INFORMATIONS EXAMEN THEORIQUE",
+      "intention": "CONFIRMATION_SESSION",
+      "state": "VALIDE_CMA_WAITING_CONVOC",
+      "evalbox": "VALIDE CMA",
+      "amount": 20,
+      "has_deal": true
+    },
+    {
+      "ticket_id": "198709000448030107",
+      "subject": "Re: Convocation à l’épreuve d’admissibilité",
+      "intention": "CONVOCATION",
+      "state": "CONVOCATION_RECEIVED",
+      "evalbox": "Convoc CMA reçue",
+      "amount": 20,
+      "has_deal": true
+    },
+    {
+      "ticket_id": "198709000447819499",
+      "subject": "Je voudrais avoir les prochaines dates d’examen ",
+      "intention": "DEMANDE_DATE_EXAMEN",
+      "state": "UNKNOWN",
+      "evalbox": "N/A",
+      "amount": 20,
+      "has_deal": true
+    },
+    {
+      "ticket_id": "198709000448029003",
+      "subject": "Re: Test de sélection réussi - Examen VTC",
+      "intention": "RESULTAT_EXAMEN",
+      "state": "UNKNOWN",
+      "evalbox": "N/A",
+      "amount": 20,
+      "has_deal": true
+    },
+    {
+      "ticket_id": "198709000448014900",
+      "subject": "INSCRIPTION",
+      "intention": "QUESTION_GENERALE",
+      "state": "UNKNOWN",
+      "evalbox": "N/A",
+      "amount": 20,
+      "has_deal": true
+    },
+    {
+      "ticket_id": "198709000448021650",
+      "subject": "Inscription ",
+      "intention": "QUESTION_GENERALE",
+      "state": "READY_TO_PAY",
+      "evalbox": "Pret a payer",
+      "amount": 20,
+      "has_deal": true
+    },
+    {
+      "ticket_id": "198709000448021504",
+      "subject": "Re: Examen VTC : Quel est votre compte Uber ?",
+      "intention": "QUESTION_UBER",
+      "state": "VALIDE_CMA_WAITING_CONVOC",
+      "evalbox": "VALIDE CMA",
+      "amount": 20,
+      "has_deal": true
+    },
+    {
+      "ticket_id": "198709000448020795",
+      "subject": "Re:[## 1094887 ##] Demande d'attestation de formation",
+      "intention": "CONFIRMATION_SESSION",
+      "state": "EXAM_DATE_EMPTY",
+      "evalbox": null,
+      "amount": null,
+      "has_deal": false
+    },
+    {
+      "ticket_id": "198709000448020640",
+      "subject": "Re: Test de sélection réussi - Examen VTC",
+      "intention": "RESULTAT_EXAMEN",
+      "state": "UNKNOWN",
+      "evalbox": "N/A",
+      "amount": 20,
+      "has_deal": true
+    },
+    {
+      "ticket_id": "198709000448014561",
+      "subject": "RE: Examen VTC : Quel est votre compte Uber ?",
+      "intention": "QUESTION_UBER",
+      "state": "UNKNOWN",
+      "evalbox": "N/A",
+      "amount": 20,
+      "has_deal": true
+    },
+    {
+      "ticket_id": "198709000381479684",
+      "subject": "Inscription examen vtc uber 20e",
+      "intention": "DEMANDE_DATE_EXAMEN",
+      "state": "EXAM_DATE_EMPTY",
+      "evalbox": null,
+      "amount": null,
+      "has_deal": false
+    },
+    {
+      "ticket_id": "198709000448019288",
+      "subject": "Re: Test de sélection réussi - Examen VTC",
+      "intention": "RESULTAT_EXAMEN",
+      "state": "UNKNOWN",
+      "evalbox": "N/A",
+      "amount": 20,
+      "has_deal": true
+    },
+    {
+      "ticket_id": "198709000448006899",
+      "subject": "(No Subject)",
+      "intention": "QUESTION_GENERALE",
+      "state": "EXAM_DATE_EMPTY",
+      "evalbox": null,
+      "amount": null,
+      "has_deal": false
+    },
+    {
+      "ticket_id": "198709000447742403",
+      "subject": "Re: Test de sélection réussi - Examen VTC",
+      "intention": "RESULTAT_EXAMEN",
+      "state": "EXAM_DATE_EMPTY",
+      "evalbox": null,
+      "amount": null,
+      "has_deal": false
+    },
+    {
+      "ticket_id": "198709000447777611",
+      "subject": "Bonjour je ne sais pas comment on fait l'inscription pour les cours du soir et comment il faut régle",
+      "intention": "CONFIRMATION_SESSION",
+      "state": "EXAM_DATE_EMPTY",
+      "evalbox": null,
+      "amount": null,
+      "has_deal": false
+    },
+    {
+      "ticket_id": "198709000447655180",
+      "subject": "(No Subject)",
+      "intention": "QUESTION_GENERALE",
+      "state": "EXAM_DATE_EMPTY",
+      "evalbox": null,
+      "amount": null,
+      "has_deal": false
+    },
+    {
+      "ticket_id": "198709000448009576",
+      "subject": "Re: Examen VTC : Vous n'êtes pas éligible",
+      "intention": "QUESTION_GENERALE",
+      "state": "EXAM_DATE_EMPTY",
+      "evalbox": null,
+      "amount": null,
+      "has_deal": false
+    },
+    {
+      "ticket_id": "198709000447994862",
+      "subject": "Fwd: Examen VTC : Quel est votre compte Uber ?",
+      "intention": "QUESTION_UBER",
+      "state": "EXAM_DATE_EMPTY",
+      "evalbox": null,
+      "amount": null,
+      "has_deal": false
+    },
+    {
+      "ticket_id": "198709000448007789",
+      "subject": "Re: Test de sélection réussi - Examen VTC",
+      "intention": "RESULTAT_EXAMEN",
+      "state": "EXAM_DATE_EMPTY",
+      "evalbox": null,
+      "amount": null,
+      "has_deal": false
+    },
+    {
+      "ticket_id": "198709000448010519",
+      "subject": "RE: Examen VTC : Quel est votre compte Uber ?",
+      "intention": "QUESTION_UBER",
+      "state": "EXAM_DATE_EMPTY",
+      "evalbox": null,
+      "amount": null,
+      "has_deal": false
+    },
+    {
+      "ticket_id": "198709000448010356",
+      "subject": "Re: Examen VTC : Quel est votre compte Uber ?",
+      "intention": "QUESTION_UBER",
+      "state": "EXAM_DATE_EMPTY",
+      "evalbox": null,
+      "amount": null,
+      "has_deal": false
+    },
+    {
+      "ticket_id": "198709000368940163",
+      "subject": "Re: Finaliser votre inscription examen Vtc : Offre uber 20€",
+      "intention": "DEMANDE_DATE_EXAMEN",
+      "state": "EXAM_DATE_EMPTY",
+      "evalbox": null,
+      "amount": null,
+      "has_deal": false
+    },
+    {
+      "ticket_id": "198709000447936187",
+      "subject": "Vous avez un numéro pour vous contacter",
+      "intention": "QUESTION_GENERALE",
+      "state": "EXAM_DATE_EMPTY",
+      "evalbox": null,
+      "amount": null,
+      "has_deal": false
+    },
+    {
+      "ticket_id": "198709000448009061",
+      "subject": "Re: Test de sélection réussi - Examen VTC",
+      "intention": "RESULTAT_EXAMEN",
+      "state": "EXAM_DATE_EMPTY",
+      "evalbox": null,
+      "amount": null,
+      "has_deal": false
+    },
+    {
+      "ticket_id": "198709000447998665",
+      "subject": "Re: Examen VTC : Quel est votre compte Uber ?",
+      "intention": "QUESTION_UBER",
+      "state": "EXAM_DATE_EMPTY",
+      "evalbox": null,
+      "amount": null,
+      "has_deal": false
+    },
+    {
+      "ticket_id": "198709000447997965",
+      "subject": "[Service client] Convocation examen",
+      "intention": "CONVOCATION",
+      "state": "EXAM_DATE_EMPTY",
+      "evalbox": null,
+      "amount": null,
+      "has_deal": false
+    },
+    {
+      "ticket_id": "198709000430681141",
+      "subject": "Re: [## 1051449 ##] Re: Confirmation de votre inscription",
+      "intention": "CONFIRMATION_SESSION",
+      "state": "EXAM_DATE_EMPTY",
+      "evalbox": null,
+      "amount": null,
+      "has_deal": false
+    },
+    {
+      "ticket_id": "198709000447977649",
+      "subject": "[Service client] Suivi de mon inscription à la formation VTC",
+      "intention": "STATUT_DOSSIER",
+      "state": "EXAM_DATE_EMPTY",
+      "evalbox": null,
+      "amount": null,
+      "has_deal": false
+    },
+    {
+      "ticket_id": "198709000448004472",
+      "subject": "Re: Examen VTC : Quel est votre compte Uber ?",
+      "intention": "QUESTION_UBER",
+      "state": "EXAM_DATE_EMPTY",
+      "evalbox": null,
+      "amount": null,
+      "has_deal": false
+    }
+  ],
+  "errors": []
+}

@@ -1038,6 +1038,120 @@ states:
 matrix:
   # Format: "ÉTAT:INTENTION" -> configuration spécifique
 
+  # ===========================================================================
+  # RESPONSE_MASTER - Templates modulaires avec 3 sections
+  # Ces entrées utilisent response_master.html pour les intentions fréquentes
+  # Basé sur analyse de fréquence: 356 tickets DOC
+  # ===========================================================================
+
+  # EXAM_DATE_EMPTY (89% des tickets) × Intentions fréquentes
+  "EXAM_DATE_EMPTY:QUESTION_GENERALE":
+    template: "response_master.html"
+    description: "Question générale + statut date vide"
+    context_flags:
+      intention_question_generale: true
+      show_statut_section: true
+      action_choisir_date: true
+
+  "EXAM_DATE_EMPTY:RESULTAT_EXAMEN":
+    template: "response_master.html"
+    description: "Résultat examen + statut date vide"
+    context_flags:
+      intention_resultat_examen: true
+      show_statut_section: true
+
+  "EXAM_DATE_EMPTY:QUESTION_UBER":
+    template: "response_master.html"
+    description: "Question Uber + statut date vide"
+    context_flags:
+      intention_question_uber: true
+      show_statut_section: true
+      action_choisir_date: true
+
+  "EXAM_DATE_EMPTY:DEMANDE_IDENTIFIANTS":
+    template: "response_master.html"
+    description: "Identifiants + statut date vide"
+    context_flags:
+      intention_demande_identifiants: true
+      show_statut_section: true
+      action_choisir_date: true
+
+  "EXAM_DATE_EMPTY:CONFIRMATION_SESSION":
+    template: "response_master.html"
+    description: "Session + statut date vide"
+    context_flags:
+      intention_confirmation_session: true
+      show_statut_section: true
+      show_sessions_section: true
+      action_choisir_date: true
+
+  "EXAM_DATE_EMPTY:DEMANDE_DATE_EXAMEN":
+    template: "response_master.html"
+    description: "Dates examen + proposition"
+    context_flags:
+      intention_demande_date: true
+      show_statut_section: true
+      show_dates_section: true
+
+  # EXAM_DATE_ASSIGNED_WAITING × Intentions fréquentes
+  "EXAM_DATE_ASSIGNED_WAITING:QUESTION_GENERALE":
+    template: "response_master.html"
+    description: "Question générale + date assignée"
+    context_flags:
+      intention_question_generale: true
+      show_statut_section: true
+
+  "EXAM_DATE_ASSIGNED_WAITING:RESULTAT_EXAMEN":
+    template: "response_master.html"
+    description: "Résultat + date future assignée"
+    context_flags:
+      intention_resultat_examen: true
+      show_statut_section: true
+
+  "EXAM_DATE_ASSIGNED_WAITING:CONFIRMATION_SESSION":
+    template: "response_master.html"
+    description: "Session + date assignée"
+    context_flags:
+      intention_confirmation_session: true
+      show_statut_section: true
+      show_sessions_section: true
+
+  "EXAM_DATE_ASSIGNED_WAITING:STATUT_DOSSIER":
+    template: "response_master.html"
+    description: "Statut dossier + date assignée"
+    context_flags:
+      intention_statut_dossier: true
+      show_statut_section: true
+
+  # EXAM_DATE_PAST_VALIDATED (examen passé) × Intentions
+  "EXAM_DATE_PAST_VALIDATED:STATUT_DOSSIER":
+    template: "response_master.html"
+    description: "Statut après examen passé"
+    context_flags:
+      intention_statut_dossier: true
+      show_statut_section: true
+
+  "EXAM_DATE_PAST_VALIDATED:RESULTAT_EXAMEN":
+    template: "response_master.html"
+    description: "Résultat examen passé"
+    context_flags:
+      intention_resultat_examen: true
+      show_statut_section: true
+
+  "EXAM_DATE_PAST_VALIDATED:QUESTION_GENERALE":
+    template: "response_master.html"
+    description: "Question générale après examen"
+    context_flags:
+      intention_question_generale: true
+      show_statut_section: true
+
+  "EXAM_DATE_PAST_VALIDATED:CONFIRMATION_SESSION":
+    template: "response_master.html"
+    description: "Session après examen passé"
+    context_flags:
+      intention_confirmation_session: true
+      show_statut_section: true
+
   # --- REFUS_PARTAGE_CREDENTIALS (priorité maximale, s'applique à tout état) ---
   "*:REFUS_PARTAGE_CREDENTIALS":
     priority: 95
@@ -1182,29 +1296,30 @@ matrix:
 
   # --- STATUT_DOSSIER (intention générique) ---
   # Quand le candidat demande où en est son dossier, répondre avec le statut actuel
-  # Priorité sur le template no_compte_examt3p qui est trop générique
+  # Utilise response_master.html pour avoir les 3 sections
 
   "EXAM_DATE_EMPTY:STATUT_DOSSIER":
-    template: "statut_dossier_reponse.html"
+    template: "response_master.html"
     description: "Date vide + demande statut -> donner le statut actuel"
-    blocks:
-      - statut_actuel
-      - prochaines_etapes
+    context_flags:
+      intention_statut_dossier: true
+      show_statut_section: true
+      action_choisir_date: true
 
   "EXAM_DATE_ASSIGNED_WAITING:STATUT_DOSSIER":
-    template: "statut_dossier_reponse.html"
+    template: "response_master.html"
     description: "Date assignée + demande statut -> confirmer date et statut"
-    blocks:
-      - statut_actuel
-      - date_examen_confirmee
-      - prochaines_etapes
+    context_flags:
+      intention_statut_dossier: true
+      show_statut_section: true
 
   "EXAMT3P_PAS_DE_COMPTE:STATUT_DOSSIER":
-    template: "statut_dossier_reponse.html"
+    template: "response_master.html"
     description: "Pas de compte + demande statut -> expliquer où en est le processus"
-    blocks:
-      - statut_en_attente
-      - prochaines_etapes
+    context_flags:
+      intention_statut_dossier: true
+      show_statut_section: true
+      action_choisir_date: true
 
   # --- DATE_FUTURE_VALIDE_CMA × Intentions ---
   "DATE_FUTURE_VALIDE_CMA:DEMANDE_CONVOCATION":
@@ -1311,60 +1426,62 @@ matrix:
   # --- CONFIRMATION_SESSION pour états avec date d'examen ---
   # Note: On enregistre la préférence (jour/soir) mais PAS Session_choisie
   # tant que le candidat n'a pas confirmé une session spécifique
+  # Utilise response_master.html pour avoir les 3 sections
   "DATE_EXAMEN_VIDE:CONFIRMATION_SESSION":
-    template: "confirmation_session.html"
+    template: "response_master.html"
     crm_update:
       - field: Preference_horaire
         value: "{{session_preference}}"
         condition: "session_preference != null"
-    blocks:
-      - confirmation_session
-      - sessions_formation
-      - prochaines_etapes
+    context_flags:
+      intention_confirmation_session: true
+      show_statut_section: true
+      show_sessions_section: true
+      action_choisir_date: true
 
   "EXAM_DATE_ASSIGNED_WAITING:CONFIRMATION_SESSION":
-    template: "confirmation_session.html"
+    template: "response_master.html"
     crm_update:
       - field: Preference_horaire
         value: "{{session_preference}}"
         condition: "session_preference != null"
-    blocks:
-      - confirmation_session
-      - sessions_formation
-      - prochaines_etapes
+    context_flags:
+      intention_confirmation_session: true
+      show_statut_section: true
+      show_sessions_section: true
 
   "DATE_FUTURE_DOSSIER_SYNC:CONFIRMATION_SESSION":
-    template: "confirmation_session.html"
+    template: "response_master.html"
     crm_update:
       - field: Preference_horaire
         value: "{{session_preference}}"
         condition: "session_preference != null"
-    blocks:
-      - confirmation_session
-      - sessions_formation
-      - prochaines_etapes
+    context_flags:
+      intention_confirmation_session: true
+      show_statut_section: true
+      show_sessions_section: true
 
   "DATE_FUTURE_VALIDE_CMA:CONFIRMATION_SESSION":
-    template: "confirmation_session.html"
+    template: "response_master.html"
     crm_update:
       - field: Preference_horaire
         value: "{{session_preference}}"
         condition: "session_preference != null"
-    blocks:
-      - confirmation_session
-      - sessions_formation
-      - prochaines_etapes
+    context_flags:
+      intention_confirmation_session: true
+      show_statut_section: true
+      show_sessions_section: true
 
   "PRET_A_PAYER:CONFIRMATION_SESSION":
-    template: "confirmation_session.html"
+    template: "response_master.html"
     crm_update:
       - field: Preference_horaire
         value: "{{session_preference}}"
         condition: "session_preference != null"
-    blocks:
-      - confirmation_session
-      - sessions_formation
-      - prochaines_etapes
+    context_flags:
+      intention_confirmation_session: true
+      show_statut_section: true
+      show_sessions_section: true
 
   # --- RESULTAT × Intentions ---
   "RESULTAT_ADMIS:RESULTAT_EXAMEN":
