@@ -266,7 +266,13 @@ class TemplateEngine:
             if template_key.lower() == state_name_normalized:
                 return template_key, config
 
-        return None, {}
+        # FALLBACK FINAL: Utiliser response_master.html avec auto-mapping des intentions
+        # Cela permet de gérer TOUS les états sans créer ~200 entrées manuelles
+        logger.info(f"📝 Fallback vers response_master.html pour {state.name}")
+        return 'response_master', {
+            'file': 'templates/response_master.html',
+            'description': f'Template master générique pour {state.name}',
+        }
 
     def _determine_uber_case(self, context: Dict[str, Any]) -> str:
         """Détermine le cas Uber (A, B, D, E, ELIGIBLE, NOT_UBER)."""
@@ -799,16 +805,10 @@ class TemplateEngine:
             'is_force_majeure_childcare': context.get('is_force_majeure_childcare', False),
             'is_force_majeure_other': context.get('is_force_majeure_other', False),
 
-            # Context flags pour templates hybrides (injectés par la matrice État×Intention)
-            # Ces flags permettent aux templates de savoir quelle section afficher
-            'intention_statut_dossier': context.get('intention_statut_dossier', False),
-            'intention_demande_date': context.get('intention_demande_date', False),
-            'intention_confirmation_session': context.get('intention_confirmation_session', False),
-            'intention_demande_identifiants': context.get('intention_demande_identifiants', False),
-            'intention_demande_convocation': context.get('intention_demande_convocation', False),
-            'intention_demande_elearning': context.get('intention_demande_elearning', False),
-            'intention_report_date': context.get('intention_report_date', False),
-            'intention_probleme_documents': context.get('intention_probleme_documents', False),
+            # Context flags pour templates hybrides
+            # AUTO-MAPPING: Génère automatiquement les flags depuis detected_intent
+            # Priorité: context_flags de la matrice > auto-mapping depuis detected_intent
+            **self._auto_map_intention_flags(context),
 
             # Données supplémentaires pour templates hybrides
             'has_next_dates': bool(context.get('next_dates', [])),
@@ -824,6 +824,63 @@ class TemplateEngine:
             # Actions requises (déterminées par l'état)
             **self._determine_required_actions(context, evalbox),
         }
+
+    def _auto_map_intention_flags(self, context: Dict[str, Any]) -> Dict[str, bool]:
+        """
+        Auto-génère les flags intention_* depuis detected_intent.
+
+        Cela évite de créer ~200 entrées manuelles dans la matrice STATE×INTENTION.
+        Le template master (response_master.html) utilise ces flags pour afficher
+        la section appropriée selon l'intention du candidat.
+
+        Priorité: context_flags de la matrice > auto-mapping
+        Si un flag est déjà défini dans le contexte (via matrice), il est conservé.
+        """
+        # Mapping intention → flag
+        INTENTION_FLAG_MAP = {
+            'STATUT_DOSSIER': 'intention_statut_dossier',
+            'DEMANDE_DATE_EXAMEN': 'intention_demande_date',
+            'DEMANDE_AUTRES_DATES': 'intention_demande_date',
+            'CONFIRMATION_DATE_EXAMEN': 'intention_demande_date',
+            'DEMANDE_IDENTIFIANTS': 'intention_demande_identifiants',
+            'ENVOIE_IDENTIFIANTS': 'intention_demande_identifiants',
+            'CONFIRMATION_SESSION': 'intention_confirmation_session',
+            'DEMANDE_CONVOCATION': 'intention_demande_convocation',
+            'DEMANDE_ELEARNING_ACCESS': 'intention_demande_elearning',
+            'REPORT_DATE': 'intention_report_date',
+            'FORCE_MAJEURE_REPORT': 'intention_report_date',
+            'DOCUMENT_QUESTION': 'intention_probleme_documents',
+            'SIGNALE_PROBLEME_DOCS': 'intention_probleme_documents',
+            'ENVOIE_DOCUMENTS': 'intention_probleme_documents',
+        }
+
+        # Initialiser tous les flags à False
+        flags = {
+            'intention_statut_dossier': False,
+            'intention_demande_date': False,
+            'intention_confirmation_session': False,
+            'intention_demande_identifiants': False,
+            'intention_demande_convocation': False,
+            'intention_demande_elearning': False,
+            'intention_report_date': False,
+            'intention_probleme_documents': False,
+        }
+
+        # Récupérer l'intention détectée
+        detected_intent = context.get('detected_intent', '')
+
+        # Auto-mapper si l'intention est connue
+        if detected_intent in INTENTION_FLAG_MAP:
+            flag_name = INTENTION_FLAG_MAP[detected_intent]
+            flags[flag_name] = True
+            logger.debug(f"Auto-mapped intention {detected_intent} -> {flag_name}")
+
+        # Priorité aux flags déjà définis dans le contexte (via matrice)
+        for flag_name in flags:
+            if context.get(flag_name) is True:
+                flags[flag_name] = True
+
+        return flags
 
     def _determine_required_actions(self, context: Dict[str, Any], evalbox: str) -> Dict[str, bool]:
         """Détermine les actions requises selon l'état du candidat."""
