@@ -12,6 +12,12 @@ Workflow complet :
 import logging
 import re
 from typing import Dict, Optional, Tuple, List
+from pathlib import Path
+
+# Load environment variables for Anthropic API key
+from dotenv import load_dotenv
+project_root = Path(__file__).parent.parent.parent
+load_dotenv(project_root / ".env")
 
 logger = logging.getLogger(__name__)
 

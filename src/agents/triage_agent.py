@@ -17,6 +17,12 @@ UTILISATION:
 import logging
 from typing import Dict, Any, Optional
 import json
+from pathlib import Path
+
+# Load environment variables for Anthropic API key
+from dotenv import load_dotenv
+project_root = Path(__file__).parent.parent.parent
+load_dotenv(project_root / ".env")
 
 from .base_agent import BaseAgent
 

@@ -27,6 +27,10 @@ from datetime import datetime
 project_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(project_root))
 
+# Load environment variables (for Anthropic API key)
+from dotenv import load_dotenv
+load_dotenv(project_root / ".env")
+
 from src.agents.deal_linking_agent import DealLinkingAgent
 from src.agents.examt3p_agent import ExamT3PAgent
 from src.agents.dispatcher_agent import TicketDispatcherAgent
