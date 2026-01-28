@@ -551,12 +551,39 @@ class DOCTicketWorkflow:
         current_department = ticket.get('departmentId') or ticket.get('department', {}).get('name', 'DOC')
 
         # Get threads for content analysis
+        # API returns newest first, but we want the most MEANINGFUL customer message
+        # Skip: feedback/ratings, very short messages, "lisez mon mail précédent"
         threads = self.desk_client.get_all_threads_with_full_content(ticket_id)
         last_thread_content = ""
+        min_meaningful_length = 80  # Ignore very short messages
+
+        # Patterns to skip (feedback, automated, follow-ups asking to read previous)
+        skip_patterns = [
+            "a évalué la réponse",
+            "a evalué la reponse",
+            "lisez mon mail",
+            "lire mon mail",
+            "voir mon message",
+            "mon précédent mail",
+            "mon precedent mail",
+        ]
+
         for thread in threads:
             if thread.get('direction') == 'in':
-                last_thread_content = get_clean_thread_content(thread)
-                break
+                content = get_clean_thread_content(thread)
+                content_lower = content.lower()
+
+                # Skip feedback/automated messages
+                if any(pattern in content_lower for pattern in skip_patterns):
+                    continue
+
+                # Take the first customer message that's meaningful (>80 chars)
+                if len(content) >= min_meaningful_length:
+                    last_thread_content = content
+                    break
+                # Fallback to any customer message if none are long enough
+                elif not last_thread_content:
+                    last_thread_content = content
 
         # Default result
         triage_result = {
