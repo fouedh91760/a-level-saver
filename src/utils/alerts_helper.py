@@ -133,9 +133,8 @@ def get_active_alerts(
         if evalbox_filter:
             if evalbox_status and evalbox_status in evalbox_filter:
                 evalbox_match = True
-        else:
-            # Pas de filtre Evalbox = toujours OK pour ce critère
-            evalbox_match = True
+        # Note: Si pas de filtre evalbox, evalbox_match reste False
+        # L'alerte ne se déclenche que par mots-clés dans ce cas
 
         # Mode 2: Déclenchement par mots-clés dans le message
         keyword_match = False

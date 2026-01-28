@@ -1,0 +1,61 @@
+{
+  "total": 6,
+  "ok": 2,
+  "missing_sections": [
+    {
+      "ticket_id": "198709000448014561",
+      "state": "UBER_ACCOUNT_NOT_VERIFIED",
+      "intention": "CONFIRMATION_SESSION",
+      "template": "no_compte_examt3p",
+      "missing": [
+        "statut"
+      ]
+    },
+    {
+      "ticket_id": "198709000441546431",
+      "state": "ROUTE_DEPARTMENT",
+      "intention": null,
+      "template": "no_compte_examt3p",
+      "missing": [
+        "statut"
+      ]
+    },
+    {
+      "ticket_id": "198709000445504216",
+      "state": "DOSSIER_SYNCHRONIZED",
+      "intention": "STATUT_DOSSIER",
+      "template": "no_compte_examt3p",
+      "missing": [
+        "statut"
+      ]
+    },
+    {
+      "ticket_id": "198709000447363760",
+      "state": "CONVOCATION_RECEIVED",
+      "intention": "REPORT_DATE",
+      "template": "report_possible",
+      "missing": [
+        "statut"
+      ]
+    }
+  ],
+  "errors": [],
+  "states": {
+    "UBER_ACCOUNT_NOT_VERIFIED": 1,
+    "ROUTE_DEPARTMENT": 1,
+    "DOSSIER_SYNCHRONIZED": 1,
+    "EXAM_DATE_EMPTY": 2,
+    "CONVOCATION_RECEIVED": 1
+  },
+  "intentions": {
+    "CONFIRMATION_SESSION": 1,
+    "null": 1,
+    "STATUT_DOSSIER": 3,
+    "REPORT_DATE": 1
+  },
+  "templates": {
+    "no_compte_examt3p": 3,
+    "response_master": 2,
+    "report_possible": 1
+  }
+}

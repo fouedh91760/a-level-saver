@@ -1138,6 +1138,13 @@ matrix:
       intention_confirmation_session: true
       show_statut_section: true
 
+  "EXAM_DATE_PAST_VALIDATED:DEMANDE_IDENTIFIANTS":
+    template: "response_master.html"
+    description: "Demande identifiants après examen passé"
+    context_flags:
+      intention_demande_identifiants: true
+      show_statut_section: true
+
   # UBER_ACCOUNT_NOT_VERIFIED × Intentions
   "UBER_ACCOUNT_NOT_VERIFIED:CONFIRMATION_SESSION":
     template: "response_master.html"

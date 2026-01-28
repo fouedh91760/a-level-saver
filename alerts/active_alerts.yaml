@@ -56,12 +56,10 @@ alerts:
       - "double convocation"
       - "reçu deux"
       - "annule et remplace"
-      - "27/01"
-      - "28/01"
-      - "27 janvier"
-      - "28 janvier"
-    applies_to:
-      evalbox: ["Convoc CMA reçue", "VALIDE CMA"]
+      - "quelle convocation"
+      - "laquelle"
+    # Note: Ne se déclenche QUE si le candidat mentionne les mots-clés
+    # (pas de filtre evalbox pour éviter de mentionner proactivement)
 
   # Exemple d'alerte désactivée (pour référence)
   # - id: "paiement_cb_indisponible"
