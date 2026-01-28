@@ -340,36 +340,42 @@ class TemplateEngine:
             if 'for_state' in config:
                 if state.name == config['for_state']:
                     logger.info(f"✅ Template sélectionné via for_state: {state.name} -> {template_key}")
+                    self._inject_context_flags(config, context, state, "PASS 1.5")
                     return template_key, config
 
         # PASS 2: Templates avec condition seule (sans intention et sans for_state)
         for template_key, config in self.base_templates.items():
             if 'for_condition' in config and 'for_intention' not in config and 'for_state' not in config:
                 if self._evaluate_condition(config['for_condition'], context):
+                    self._inject_context_flags(config, context, state, "PASS 2")
                     return template_key, config
 
         # PASS 3: Cas Uber
         for template_key, config in self.base_templates.items():
             if 'for_uber_case' in config:
                 if uber_case == config['for_uber_case']:
+                    self._inject_context_flags(config, context, state, "PASS 3")
                     return template_key, config
 
         # PASS 4: Résultat examen
         for template_key, config in self.base_templates.items():
             if 'for_resultat' in config:
                 if resultat == config['for_resultat']:
+                    self._inject_context_flags(config, context, state, "PASS 4")
                     return template_key, config
 
         # PASS 5: Evalbox (le plus courant)
         for template_key, config in self.base_templates.items():
             if 'for_evalbox' in config:
                 if evalbox == config['for_evalbox']:
+                    self._inject_context_flags(config, context, state, "PASS 5")
                     return template_key, config
 
         # Fallback: chercher par nom d'état normalisé
         state_name_normalized = state.name.lower().replace('_', '-')
         for template_key, config in self.base_templates.items():
             if template_key.lower() == state_name_normalized:
+                self._inject_context_flags(config, context, state, "Fallback by name")
                 return template_key, config
 
         # FALLBACK FINAL: Utiliser response_master.html avec auto-mapping des intentions
@@ -379,6 +385,28 @@ class TemplateEngine:
             'file': 'templates/response_master.html',
             'description': f'Template master générique pour {state.name}',
         }
+
+    def _inject_context_flags(
+        self,
+        config: Dict[str, Any],
+        context: Dict[str, Any],
+        state: DetectedState,
+        pass_name: str
+    ) -> None:
+        """
+        Injecte les context_flags d'un template dans le contexte et state.context_data.
+
+        Args:
+            config: Configuration du template (peut contenir 'context_flags')
+            context: Contexte global à modifier
+            state: État détecté (state.context_data sera aussi modifié)
+            pass_name: Nom du PASS pour le logging (ex: "PASS 1.5")
+        """
+        context_flags = config.get('context_flags', {})
+        if context_flags:
+            context.update(context_flags)
+            state.context_data.update(context_flags)
+            logger.info(f"📌 Context flags injectés ({pass_name}): {list(context_flags.keys())}")
 
     def _determine_uber_case(self, context: Dict[str, Any]) -> str:
         """Détermine le cas Uber (A, B, D, E, ELIGIBLE, NOT_UBER)."""
