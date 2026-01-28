@@ -1167,19 +1167,27 @@ Deux comptes ExamenT3P fonctionnels ont été détectés pour ce candidat, et le
                 requested_location = intent_context.get('requested_location')
 
                 if requested_month or requested_location:
-                    from src.utils.date_examen_vtc_helper import search_dates_for_month_and_location
+                    from src.utils.date_examen_vtc_helper import search_dates_for_month_and_location, normalize_location_to_dept
+
+                    # Normaliser la location (ville → code département)
+                    normalized_dept = normalize_location_to_dept(requested_location) if requested_location else None
+                    if requested_location and normalized_dept:
+                        logger.info(f"  📍 Location normalisée: '{requested_location}' → département {normalized_dept}")
+                    elif requested_location:
+                        logger.warning(f"  ⚠️ Location non reconnue: '{requested_location}' - utilisation telle quelle")
+                        normalized_dept = requested_location  # Fallback
 
                     search_result = search_dates_for_month_and_location(
                         crm_client=self.crm_client,
                         requested_month=requested_month,
-                        requested_location=requested_location,
+                        requested_location=normalized_dept,
                         candidate_region=date_examen_vtc_result.get('candidate_region')
                     )
 
                     # Propager les résultats
                     date_examen_vtc_result['no_date_for_requested_month'] = search_result['no_date_for_requested_month']
                     date_examen_vtc_result['requested_month_name'] = search_result['requested_month_name']
-                    date_examen_vtc_result['requested_location'] = requested_location
+                    date_examen_vtc_result['requested_location'] = requested_location  # Garder le nom original pour l'affichage
                     date_examen_vtc_result['same_month_other_depts'] = search_result['same_month_other_depts']
                     date_examen_vtc_result['same_dept_other_months'] = search_result['same_dept_other_months']
 
