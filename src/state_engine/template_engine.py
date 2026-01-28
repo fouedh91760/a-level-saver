@@ -881,7 +881,7 @@ class TemplateEngine:
                 exam_date = datetime.strptime(date_examen, '%Y-%m-%d')
                 convoc_date = exam_date - timedelta(days=10)
                 date_convocation = convoc_date.strftime('%d/%m/%Y')
-            except:
+            except Exception as e:
                 pass
 
         result = {
@@ -1312,7 +1312,7 @@ class TemplateEngine:
         try:
             date_obj = datetime.strptime(str(date_str)[:10], '%Y-%m-%d')
             return date_obj.strftime('%d/%m/%Y')
-        except:
+        except Exception as e:
             return str(date_str)
 
     def _format_dates_list(self, dates: List[Dict]) -> str:

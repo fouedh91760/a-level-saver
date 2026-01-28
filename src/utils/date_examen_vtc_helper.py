@@ -176,7 +176,7 @@ def get_earlier_dates_other_departments(
 
         try:
             ref_date = datetime.strptime(str(reference_date), "%Y-%m-%d")
-        except:
+        except Exception as e:
             logger.warning(f"Format de date de référence invalide: {reference_date}")
             return []
 
@@ -240,7 +240,7 @@ def get_earlier_dates_other_departments(
                     days_until_cloture = (date_cloture - today_date).days
                     if days_until_cloture < min_days_before_cloture:
                         continue  # Clôture trop proche ou passée
-                except:
+                except Exception as e:
                     continue
             else:
                 continue  # Pas de date de clôture = invalide
@@ -253,7 +253,7 @@ def get_earlier_dates_other_departments(
                     if date_examen >= ref_date:
                         continue  # Pas plus tôt
                     valid_sessions.append(session)
-                except:
+                except Exception as e:
                     continue
 
         # Trier par date d'examen (plus proche en premier)
@@ -344,7 +344,7 @@ def get_next_exam_dates_any_department(
                         valid_sessions.append(session)
                     else:
                         logger.debug(f"  Session exclue: clôture {date_cloture} dans {days_until_cloture} jours (min: {min_days_before_cloture})")
-                except:
+                except Exception as e:
                     continue
 
         valid_sessions.sort(key=lambda x: x.get('Date_Examen', '9999-99-99'))
@@ -388,7 +388,7 @@ def format_exam_date_for_display(session: Dict[str, Any], include_department: bo
             date_examen_formatted = date_obj.strftime("%d/%m/%Y")
         else:
             date_examen_formatted = date_examen
-    except:
+    except Exception as e:
         date_examen_formatted = date_examen
 
     # Formater la date de clôture
@@ -401,7 +401,7 @@ def format_exam_date_for_display(session: Dict[str, Any], include_department: bo
             date_cloture_formatted = date_cloture_obj.strftime("%d/%m/%Y")
         else:
             date_cloture_formatted = ""
-    except:
+    except Exception as e:
         date_cloture_formatted = ""
 
     result = f"- **{date_examen_formatted}**"
@@ -434,7 +434,7 @@ def is_date_in_past(date_str: str) -> bool:
             date_obj = datetime.strptime(str(date_str), "%Y-%m-%d")
 
         return date_obj.date() < datetime.now().date()
-    except:
+    except Exception as e:
         return False
 
 
@@ -727,7 +727,7 @@ def analyze_exam_date_situation(
                     date_obj = datetime.strptime(str(date_examen_str), "%Y-%m-%d")
                     today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
                     days_until_exam = (date_obj - today).days
-                except:
+                except Exception as e:
                     pass
 
             # Si examen dans ≤ 7 jours sans convocation → candidat sera décalé
@@ -992,7 +992,7 @@ def generate_refus_cma_message(
             else:
                 date_obj = datetime.strptime(str(date_cloture), "%Y-%m-%d")
             date_cloture_formatted = date_obj.strftime("%d/%m/%Y")
-        except:
+        except Exception as e:
             date_cloture_formatted = str(date_cloture)
 
     # Formater la prochaine date d'examen (UNE SEULE - positionnement automatique)
@@ -1005,7 +1005,7 @@ def generate_refus_cma_message(
             try:
                 date_obj = datetime.strptime(str(date_examen), "%Y-%m-%d")
                 next_exam_date_formatted = date_obj.strftime("%d/%m/%Y")
-            except:
+            except Exception as e:
                 next_exam_date_formatted = str(date_examen)
 
     # Formater les pièces refusées avec détails
@@ -1092,7 +1092,7 @@ def generate_valide_cma_message(date_examen_str: str, next_exam_date: Optional[D
             # Calculer le nombre de jours jusqu'à l'examen
             today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
             days_until_exam = (date_obj - today).days
-        except:
+        except Exception as e:
             date_formatted = str(date_examen_str)
 
     date_text = f" du {date_formatted}" if date_formatted else ""
@@ -1107,7 +1107,7 @@ def generate_valide_cma_message(date_examen_str: str, next_exam_date: Optional[D
                 if next_date_str:
                     next_date_obj = datetime.strptime(str(next_date_str), "%Y-%m-%d")
                     next_date_formatted = next_date_obj.strftime("%d/%m/%Y")
-            except:
+            except Exception as e:
                 pass
 
         next_date_text = f" du **{next_date_formatted}**" if next_date_formatted else " (date à confirmer)"
@@ -1162,7 +1162,7 @@ def generate_dossier_synchronise_message(
         try:
             date_obj = datetime.strptime(str(date_examen_str), "%Y-%m-%d")
             date_formatted = date_obj.strftime("%d/%m/%Y")
-        except:
+        except Exception as e:
             date_formatted = str(date_examen_str)
 
     date_cloture_formatted = ""
@@ -1173,7 +1173,7 @@ def generate_dossier_synchronise_message(
             else:
                 date_obj = datetime.strptime(str(date_cloture), "%Y-%m-%d")
             date_cloture_formatted = date_obj.strftime("%d/%m/%Y")
-        except:
+        except Exception as e:
             date_cloture_formatted = str(date_cloture)
 
     date_text = f" du {date_formatted}" if date_formatted else ""
@@ -1222,7 +1222,7 @@ def generate_deadline_missed_message(
         try:
             date_obj = datetime.strptime(str(date_examen_str), "%Y-%m-%d")
             date_examen_formatted = date_obj.strftime("%d/%m/%Y")
-        except:
+        except Exception as e:
             date_examen_formatted = str(date_examen_str)
 
     # Formater la date de clôture
@@ -1234,7 +1234,7 @@ def generate_deadline_missed_message(
             else:
                 date_obj = datetime.strptime(str(date_cloture), "%Y-%m-%d")
             date_cloture_formatted = date_obj.strftime("%d/%m/%Y")
-        except:
+        except Exception as e:
             date_cloture_formatted = str(date_cloture)
 
     date_examen_text = f" du {date_examen_formatted}" if date_examen_formatted else ""
@@ -1282,7 +1282,7 @@ def generate_convocation_message(
         try:
             date_obj = datetime.strptime(str(date_examen_str), "%Y-%m-%d")
             date_formatted = date_obj.strftime("%d/%m/%Y")
-        except:
+        except Exception as e:
             date_formatted = str(date_examen_str)
 
     date_text = f" du **{date_formatted}**" if date_formatted else ""
@@ -1342,7 +1342,7 @@ def generate_pret_a_payer_message(
         try:
             date_obj = datetime.strptime(str(date_examen_str), "%Y-%m-%d")
             date_examen_formatted = date_obj.strftime("%d/%m/%Y")
-        except:
+        except Exception as e:
             date_examen_formatted = str(date_examen_str)
 
     # Formater la date de clôture
@@ -1354,7 +1354,7 @@ def generate_pret_a_payer_message(
             else:
                 date_obj = datetime.strptime(str(date_cloture), "%Y-%m-%d")
             date_cloture_formatted = date_obj.strftime("%d/%m/%Y")
-        except:
+        except Exception as e:
             date_cloture_formatted = str(date_cloture)
 
     date_examen_text = f" du **{date_examen_formatted}**" if date_examen_formatted else ""

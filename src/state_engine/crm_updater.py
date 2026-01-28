@@ -224,7 +224,7 @@ class CRMUpdater:
                         if month:
                             dt = datetime(int(year), month, int(day))
                             dates_found.append(dt.strftime('%Y-%m-%d'))
-                    except:
+                    except Exception as e:
                         pass
                 else:
                     # Date en chiffres
@@ -295,14 +295,14 @@ class CRMUpdater:
             # Essayer DD/MM/YYYY
             dt = datetime.strptime(date_str, '%d/%m/%Y')
             return dt.strftime('%Y-%m-%d')
-        except:
+        except Exception as e:
             pass
 
         try:
             # Essayer YYYY-MM-DD
             dt = datetime.strptime(date_str[:10], '%Y-%m-%d')
             return dt.strftime('%Y-%m-%d')
-        except:
+        except Exception as e:
             pass
 
         return None

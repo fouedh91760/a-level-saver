@@ -325,7 +325,7 @@ class ResponseValidator:
                     try:
                         dt = datetime.strptime(date_str[:10], '%Y-%m-%d')
                         valid_dates.add(dt.strftime('%d/%m/%Y'))
-                    except:
+                    except Exception as e:
                         pass
 
             # Vérifier chaque date trouvée
@@ -344,7 +344,7 @@ class ResponseValidator:
                         try:
                             dt = datetime.strptime(d[:10], '%Y-%m-%d')
                             context_dates.add(dt.strftime('%d/%m/%Y'))
-                        except:
+                        except Exception as e:
                             pass
 
                     if normalized not in context_dates:
@@ -367,7 +367,7 @@ class ResponseValidator:
                         f"Date passée mentionnée: '{date_found}'",
                         severity='warning'
                     ))
-            except:
+            except Exception as e:
                 pass
 
         if not any(e.error_type in ['invented_date', 'past_date'] for e in result.errors):
@@ -563,14 +563,14 @@ class ResponseValidator:
             # Essayer DD/MM/YYYY
             dt = datetime.strptime(date_str, '%d/%m/%Y')
             return dt.strftime('%Y-%m-%d')
-        except:
+        except Exception as e:
             pass
 
         try:
             # Essayer YYYY-MM-DD
             dt = datetime.strptime(date_str[:10], '%Y-%m-%d')
             return dt.strftime('%Y-%m-%d')
-        except:
+        except Exception as e:
             pass
 
         return None

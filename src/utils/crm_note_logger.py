@@ -321,7 +321,7 @@ def log_exam_date_blocked(
             else:
                 date_obj = datetime.strptime(str(date_cloture), "%Y-%m-%d")
             date_formatted = date_obj.strftime("%d/%m/%Y")
-    except:
+    except Exception as e:
         pass
 
     content_lines = [
@@ -448,14 +448,14 @@ def log_session_linked(
         if exam_date and 'T' not in str(exam_date):
             exam_date_obj = datetime.strptime(str(exam_date), "%Y-%m-%d")
             exam_date = exam_date_obj.strftime("%d/%m/%Y")
-    except:
+    except Exception as e:
         pass
 
     try:
         if session_date and 'T' not in str(session_date):
             session_date_obj = datetime.strptime(str(session_date), "%Y-%m-%d")
             session_date = session_date_obj.strftime("%d/%m/%Y")
-    except:
+    except Exception as e:
         pass
 
     content_lines.extend([

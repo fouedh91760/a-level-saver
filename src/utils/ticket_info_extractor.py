@@ -299,7 +299,7 @@ def _get_blocked_update_message(evalbox_status: str, date_cloture: str) -> str:
             else:
                 date_obj = datetime.strptime(str(date_cloture), "%Y-%m-%d")
             date_formatted = date_obj.strftime("%d/%m/%Y")
-        except:
+        except Exception as e:
             pass
 
     return f"""Votre dossier a été validé par la CMA et les inscriptions sont clôturées.

@@ -195,7 +195,7 @@ class ExamenT3PPlaywright:
                 if me_connecter_btn:
                     await me_connecter_btn.click()
                     await asyncio.sleep(ACTION_DELAY)
-            except:
+            except Exception as e:
                 # Méthode 2: La modal est peut-être déjà ouverte
                 pass
 
@@ -207,7 +207,7 @@ class ExamenT3PPlaywright:
                     await self.page.wait_for_selector(selector, state='visible', timeout=ELEMENT_TIMEOUT)
                     modal_found = True
                     break
-                except:
+                except Exception as e:
                     continue
 
             if not modal_found:
@@ -225,7 +225,7 @@ class ExamenT3PPlaywright:
                     await self.page.fill(selector, self.identifiant)
                     email_filled = True
                     break
-                except:
+                except Exception as e:
                     continue
 
             if not email_filled:
@@ -239,7 +239,7 @@ class ExamenT3PPlaywright:
                     await self.page.fill(selector, self.password)
                     password_filled = True
                     break
-                except:
+                except Exception as e:
                     continue
 
             if not password_filled:
@@ -263,7 +263,7 @@ class ExamenT3PPlaywright:
                         await btn.click()
                         submitted = True
                         break
-                except:
+                except Exception as e:
                     continue
 
             if not submitted:
@@ -333,10 +333,10 @@ class ExamenT3PPlaywright:
         """Récupère le texte de la page de manière sécurisée."""
         try:
             return await self.page.inner_text('body')
-        except:
+        except Exception as e:
             try:
                 return await self.page.content()
-            except:
+            except Exception as e:
                 return ""
 
     def _extract_refusal_reason(self, text_content: str, doc_name: str) -> Optional[str]:
@@ -997,7 +997,7 @@ class ExamenT3PPlaywright:
         """Déconnexion sécurisée (non bloquante)."""
         try:
             await self._safe_click('a:has-text("Déconnexion")', timeout=5000)
-        except:
+        except Exception as e:
             pass
 
 

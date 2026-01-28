@@ -2,7 +2,7 @@
 
 Ce document contient les diagrammes Mermaid décrivant l'architecture et les flux du système A-Level Saver.
 
-**Version 2.1** - Inclut l'architecture Multi-Intention et Multi-État.
+**Version 2.2** - Inclut l'architecture Multi-Intention et Multi-État, wildcards matrix, date_utils centralisé.
 
 ---
 
@@ -35,6 +35,7 @@ graph TB
         UEH[UberEligibilityHelper<br/>Cas A/B/D/E]
         ECH[ExamT3PCredentialsHelper<br/>Extraction identifiants]
         AH[AlertsHelper<br/>Alertes temporaires]
+        DU[DateUtils<br/>Parsing dates centralisé]
     end
 
     subgraph "State Engine"
@@ -261,8 +262,8 @@ flowchart LR
         UEH[UberHelper<br/>→ cas A/B/D/E]
     end
 
-    subgraph CONTEXT["Contexte Unifié"]
-        CTX{{"context = {<br/>  deal_data,<br/>  examt3p_data,<br/>  intention,<br/>  exam_analysis,<br/>  session_data,<br/>  uber_case,<br/>  alerts<br/>}"}}
+    subgraph CONTEXT["Contexte Unifié (v2.2)"]
+        CTX{{"context = {<br/>  deal_data,<br/>  examt3p_data,<br/>  intention,<br/>  exam_analysis,<br/>  session_data,<br/>  uber_case, ← auto-calculé<br/>  training_exam_consistency,<br/>  extraction_failed,<br/>  error_type,<br/>  alerts<br/>}"}}
     end
 
     subgraph STATE["State Engine"]
@@ -370,6 +371,8 @@ graph TB
         UEH[<b>UberEligibilityHelper</b><br/>━━━━━━━━━━━━<br/>• Cas A/B/D/E<br/>• Vérification timing<br/>• Messages adaptés<br/>• Règles de blocage]
 
         ECH[<b>CredentialsHelper</b><br/>━━━━━━━━━━━━<br/>• Extraction via IA<br/>• Validation connexion<br/>• Source CRM/threads<br/>• Gestion double compte]
+
+        DUH[<b>DateUtils</b> ⭐ NEW<br/>━━━━━━━━━━━━<br/>• Parsing multi-format<br/>• parse_date_flexible<br/>• format_date_for_display<br/>• Comparaisons dates]
     end
 
     TA --> |intention| WF[DOCTicketWorkflow]
@@ -405,9 +408,10 @@ flowchart TD
         CTX[Contexte données<br/>deal, examt3p, etc.]
     end
 
-    subgraph SELECTION["Sélection Template"]
+    subgraph SELECTION["Sélection Template (v2.2)"]
         direction TB
-        P0{PASS 0<br/>Matrice État:Intention?}
+        P0a{PASS 0a<br/>Matrice État:Intention?}
+        P0b{PASS 0b<br/>Wildcard *:Intention?}
         P1{PASS 1<br/>Template avec<br/>for_intention?}
         P2{PASS 1.5<br/>Template avec<br/>for_state?}
         P3{PASS 2<br/>Template avec<br/>for_condition?}
@@ -416,7 +420,8 @@ flowchart TD
         P6{PASS 5<br/>Evalbox status?}
         P7[FALLBACK<br/>Par nom d'état]
 
-        P0 -->|Non trouvé| P1
+        P0a -->|Non trouvé| P0b
+        P0b -->|Non trouvé| P1
         P1 -->|Non trouvé| P2
         P2 -->|Non trouvé| P3
         P3 -->|Non trouvé| P4
@@ -449,11 +454,12 @@ flowchart TD
         V4[Format HTML valide?]
     end
 
-    STATE --> P0
-    INTENT --> P0
+    STATE --> P0a
+    INTENT --> P0a
     CTX --> MERGE_TPL
 
-    P0 -->|Trouvé| TPL
+    P0a -->|Trouvé| TPL
+    P0b -->|Trouvé| TPL
     P1 -->|Trouvé| TPL
     P2 -->|Trouvé| TPL
     P3 -->|Trouvé| TPL
@@ -466,7 +472,8 @@ flowchart TD
     V1 --> V2 --> V3 --> V4
     V4 --> OUTPUT[Réponse HTML validée]
 
-    style P0 fill:#c8e6c9
+    style P0a fill:#c8e6c9
+    style P0b fill:#c8e6c9
     style MERGE_TPL fill:#fff3e0
     style OUTPUT fill:#e1f5fe
 ```
@@ -783,6 +790,7 @@ graph TB
 | 🟣 Violet | IA / Agents Claude |
 | 🔴 Rouge clair | Blocage / Erreur |
 | ⬜ Gris | Éléments neutres |
+| ⭐ NEW | Nouveautés v2.2 |
 
 ---
 
@@ -902,7 +910,7 @@ flowchart TD
     style OUTPUT fill:#c8e6c9
 ```
 
-### Structure DetectedStates
+### Structure DetectedStates (v2.2)
 
 ```python
 @dataclass
@@ -912,6 +920,16 @@ class DetectedStates:
     info_states: List[DetectedState]         # États combinables
     primary_state: DetectedState             # blocking > premier info
     all_states: List[DetectedState]          # Debug
+
+# Contexte enrichi automatiquement (v2.2):
+context = {
+    'uber_case': 'A' | 'B' | 'D' | 'E' | 'ELIGIBLE' | None,  # Auto-calculé
+    'extraction_failed': bool,     # True si ExamT3P indisponible
+    'error_type': str | None,      # Type d'erreur
+    'session_data': dict,          # Données sessions
+    'training_exam_consistency_data': dict,  # Cohérence formation
+    # ... autres données du contexte
+}
 ```
 
 ---
@@ -928,11 +946,11 @@ sequenceDiagram
     WF->>TA: triage_ticket(subject, threads)
     TA-->>WF: {primary_intent, secondary_intents, intent_context}
 
-    WF->>SD: detect_all_states(deal_data, examt3p, triage_result)
+    WF->>SD: detect_all_states(deal_data, examt3p, triage_result,<br/>session_data, training_consistency) ⭐ v2.2
 
-    Note over SD: Évalue ~25 états par priorité
+    Note over SD: Évalue ~25 états par priorité<br/>uber_case auto-calculé dans contexte
 
-    SD-->>WF: DetectedStates {blocking, warnings, infos}
+    SD-->>WF: DetectedStates {blocking, warnings, infos, context}
 
     alt BLOCKING state trouvé
         WF->>TE: generate_response(blocking_state)
@@ -1051,4 +1069,138 @@ flowchart LR
 
 ---
 
-*Généré automatiquement depuis l'analyse du codebase A-Level Saver - v2.1 Multi-Intention/Multi-État*
+---
+
+## 19. Module DateUtils - Parsing Centralisé (v2.2)
+
+```mermaid
+flowchart LR
+    subgraph SOURCES["Sources de Dates"]
+        S1["CRM<br/>'2026-03-31'"]
+        S2["ExamT3P<br/>'2026-03-31T10:30:00Z'"]
+        S3["API<br/>'31/03/2026'"]
+        S4["ISO<br/>'2026-03-31T10:30:00.000'"]
+    end
+
+    subgraph DATEUTILS["src/utils/date_utils.py"]
+        direction TB
+        PDF["<b>parse_date_flexible()</b><br/>━━━━━━━━━━━━━━<br/>Supporte 6+ formats<br/>Retourne: date | None"]
+        PDTF["<b>parse_datetime_flexible()</b><br/>━━━━━━━━━━━━━━<br/>Datetime complet<br/>Retourne: datetime | None"]
+        FDD["<b>format_date_for_display()</b><br/>━━━━━━━━━━━━━━<br/>Format: DD/MM/YYYY"]
+        CMP["<b>days_between()</b><br/><b>is_date_before()</b><br/><b>is_date_after()</b>"]
+    end
+
+    subgraph CONSUMERS["Utilisateurs"]
+        UEH["UberEligibilityHelper<br/>Vérification J+1"]
+        DEH["DateExamenHelper<br/>Analyse dates"]
+        TE["TemplateEngine<br/>Formatage affichage"]
+    end
+
+    S1 --> PDF
+    S2 --> PDF
+    S3 --> PDF
+    S4 --> PDF
+
+    PDF --> UEH
+    PDF --> DEH
+    PDTF --> DEH
+    FDD --> TE
+    CMP --> UEH
+
+    style DATEUTILS fill:#e8f5e9
+    style PDF fill:#c8e6c9
+```
+
+### Formats Supportés (ordre de priorité)
+
+| Format | Exemple | Source typique |
+|--------|---------|----------------|
+| `%Y-%m-%d` | 2026-03-31 | CRM, API |
+| `%Y-%m-%dT%H:%M:%S` | 2026-03-31T10:30:00 | API |
+| `%Y-%m-%dT%H:%M:%S.%f` | 2026-03-31T10:30:00.000 | API |
+| `%Y-%m-%dT%H:%M:%SZ` | 2026-03-31T10:30:00Z | ExamT3P |
+| `%d/%m/%Y` | 31/03/2026 | Affichage FR |
+| `%d-%m-%Y` | 31-03-2026 | Import legacy |
+
+---
+
+## 20. STATE_FLAG_MAP - Mapping États → Flags Template (v2.2)
+
+```mermaid
+flowchart LR
+    subgraph STATES["États Détectés"]
+        S1[UBER_DOCS_MISSING]
+        S2[UBER_TEST_MISSING]
+        S3[CREDENTIALS_INVALID]
+        S4[DATE_MODIFICATION_BLOCKED]
+        S5[EXAM_PASSED]
+    end
+
+    subgraph MAP["STATE_FLAG_MAP"]
+        M["TemplateEngine<br/>._get_state_flags()"]
+    end
+
+    subgraph FLAGS["Flags Template"]
+        F1["uber_cas_a: true"]
+        F2["uber_cas_b: true"]
+        F3["credentials_invalid: true"]
+        F4["report_bloque: true"]
+        F5["resultat_admis: true"]
+    end
+
+    subgraph TEMPLATE["response_master.html"]
+        T1["{{#if uber_cas_a}}<br/>→ partials/uber/cas_a"]
+        T2["{{#if uber_cas_b}}<br/>→ partials/uber/cas_b"]
+        T3["{{#if credentials_invalid}}<br/>→ partials/credentials/invalid"]
+    end
+
+    S1 --> M --> F1 --> T1
+    S2 --> M --> F2 --> T2
+    S3 --> M --> F3 --> T3
+    S4 --> M --> F4
+    S5 --> M --> F5
+
+    style MAP fill:#fff3e0
+    style FLAGS fill:#e8f5e9
+```
+
+### Mapping Complet (20+ états)
+
+| État | Flags Template |
+|------|----------------|
+| `UBER_DOCS_MISSING` | `uber_cas_a` |
+| `UBER_TEST_MISSING` | `uber_cas_b` |
+| `UBER_ACCOUNT_NOT_VERIFIED` | `uber_cas_d` |
+| `UBER_NOT_ELIGIBLE` | `uber_cas_e` |
+| `DUPLICATE_UBER` | `uber_doublon` |
+| `CREDENTIALS_INVALID` | `credentials_invalid` |
+| `CREDENTIALS_UNKNOWN` | `credentials_inconnus` |
+| `DATE_MODIFICATION_BLOCKED` | `report_bloque` |
+| `REPORT_DATE_REQUEST` | `report_possible` |
+| `FORCE_MAJEURE_REPORT` | `report_force_majeure` |
+| `EXAM_PASSED` | `resultat_admis` |
+| `EXAM_FAILED` | `resultat_non_admis` |
+| `EXAM_ABSENT` | `resultat_absent` |
+
+---
+
+## Changelog Architecture
+
+### v2.2 (Janvier 2026)
+- **DateUtils** : Nouveau module centralisé pour parsing de dates multi-format
+- **Wildcards Matrix** : Support `*:INTENTION` pour templates génériques (PASS 0b)
+- **uber_case en contexte** : Calculé automatiquement dans `_build_context()`
+- **Paramètres enrichis** : `session_data` et `training_exam_consistency_data` dans `detect_all_states()`
+- **STATE_FLAG_MAP complet** : 20+ états mappés vers flags template
+- **extraction_failed/error_type** : Flags pour détection EXAMT3P_DOWN
+- **Templates .html** : Tous les templates référencent `.html` (plus de `.md`)
+- **Section states: dépréciée** : Source de vérité unique = `candidate_states.yaml`
+
+### v2.1 (Décembre 2025)
+- Architecture Multi-Intention (primary + secondary intents)
+- Architecture Multi-État (BLOCKING/WARNING/INFO severity)
+- Template master modulaire avec partials
+
+---
+
+*Généré automatiquement depuis l'analyse du codebase A-Level Saver - v2.2 Multi-Intention/Multi-État + DateUtils + Wildcards*

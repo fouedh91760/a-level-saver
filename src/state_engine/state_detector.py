@@ -254,7 +254,7 @@ class StateDetector:
             try:
                 exam_date_obj = datetime.strptime(date_examen, '%Y-%m-%d').date()
                 days_until_exam = (exam_date_obj - today).days
-            except:
+            except Exception as e:
                 pass
 
         # Vérifier si la clôture est passée
@@ -263,7 +263,7 @@ class StateDetector:
             try:
                 cloture_date_obj = datetime.strptime(date_cloture, '%Y-%m-%d').date()
                 cloture_passed = cloture_date_obj < today
-            except:
+            except Exception as e:
                 pass
 
         context = {
@@ -501,7 +501,7 @@ class StateDetector:
 
             if today < verification_date:
                 return False  # Vérification pas encore faite
-        except:
+        except Exception as e:
             return False
 
         return not context.get('compte_uber', False)
@@ -527,7 +527,7 @@ class StateDetector:
 
             if today < verification_date:
                 return False
-        except:
+        except Exception as e:
             return False
 
         return not context.get('eligible_uber', False)
@@ -732,7 +732,7 @@ class StateDetector:
                     test_mandatory_from = date(2025, 5, 19)
                     if dossier_date > test_mandatory_from:
                         return 'B'
-                except:
+                except Exception as e:
                     pass
 
         return 'ELIGIBLE'

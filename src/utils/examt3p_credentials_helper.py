@@ -190,7 +190,7 @@ def test_examt3p_connection(identifiant: str, mot_de_passe: str) -> Tuple[bool, 
                         if me_connecter_btn:
                             await me_connecter_btn.click()
                             await asyncio.sleep(1)
-                    except:
+                    except Exception as e:
                         pass
 
                     # Remplir le formulaire
@@ -202,7 +202,7 @@ def test_examt3p_connection(identifiant: str, mot_de_passe: str) -> Tuple[bool, 
                             await page.fill(selector, identifiant)
                             email_filled = True
                             break
-                        except:
+                        except Exception as e:
                             continue
 
                     if not email_filled:
@@ -215,7 +215,7 @@ def test_examt3p_connection(identifiant: str, mot_de_passe: str) -> Tuple[bool, 
                             await page.fill(selector, mot_de_passe)
                             password_filled = True
                             break
-                        except:
+                        except Exception as e:
                             continue
 
                     if not password_filled:
@@ -236,7 +236,7 @@ def test_examt3p_connection(identifiant: str, mot_de_passe: str) -> Tuple[bool, 
                                 await btn.click()
                                 submitted = True
                                 break
-                        except:
+                        except Exception as e:
                             continue
 
                     if not submitted:

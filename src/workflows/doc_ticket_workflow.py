@@ -259,16 +259,16 @@ class DOCTicketWorkflow:
             result['analysis_result'] = analysis_result
 
             # Check VÉRIFICATION #1: Identifiants ExamenT3P
-            exament3p_data = analysis_result.get('exament3p_data', {})
-            if exament3p_data.get('should_respond_to_candidate'):
+            examt3p_data = analysis_result.get('examt3p_data', {})
+            if examt3p_data.get('should_respond_to_candidate'):
                 logger.warning("⚠️  IDENTIFIANTS EXAMENT3P INVALIDES OU MANQUANTS")
                 logger.info("→ L'agent rédacteur intégrera la demande d'identifiants dans la réponse globale")
-            elif not exament3p_data.get('compte_existe'):
+            elif not examt3p_data.get('compte_existe'):
                 # Pas de compte ExamT3P = cas normal (compte à créer par CAB)
                 # Le State Engine détectera l'état approprié (NO_COMPTE_EXAMT3P, UBER_DOCS_MISSING, etc.)
                 logger.info("ℹ️  Pas de compte ExamT3P → compte à créer")
             else:
-                logger.info(f"✅ Identifiants validés (source: {exament3p_data.get('credentials_source')})")
+                logger.info(f"✅ Identifiants validés (source: {examt3p_data.get('credentials_source')})")
 
             # Check VÉRIFICATION #2: Date examen VTC
             date_examen_vtc_result = analysis_result.get('date_examen_vtc_result', {})
@@ -738,7 +738,7 @@ class DOCTicketWorkflow:
                 'contact_data': Dict,
                 'deal_id': str,
                 'deal_data': Dict,
-                'exament3p_data': Dict,
+                'examt3p_data': Dict,
                 'evalbox_data': Dict,
                 'session_data': Dict,
                 'ancien_dossier': bool
@@ -821,8 +821,8 @@ class DOCTicketWorkflow:
             auto_update_crm=True  # Toujours mettre à jour le CRM si identifiants trouvés dans mails
         )
 
-        # Initialiser exament3p_data
-        exament3p_data = {
+        # Initialiser examt3p_data
+        examt3p_data = {
             'compte_existe': False,
             'identifiant': credentials_result.get('identifiant'),
             'mot_de_passe': credentials_result.get('mot_de_passe'),  # Sera masqué dans les logs
@@ -858,9 +858,9 @@ class DOCTicketWorkflow:
             logger.error(f"     → Compte Candidat: {duplicate_accounts.get('thread', {}).get('identifiant')}")
             logger.error("     → INTERVENTION MANUELLE REQUISE - Vérifier les paiements!")
 
-            # Ajouter le flag dans exament3p_data pour visibilité
-            exament3p_data['duplicate_payment_alert'] = True
-            exament3p_data['duplicate_accounts'] = duplicate_accounts
+            # Ajouter le flag dans examt3p_data pour visibilité
+            examt3p_data['duplicate_payment_alert'] = True
+            examt3p_data['duplicate_accounts'] = duplicate_accounts
 
             # Créer une note CRM d'alerte
             try:
@@ -891,7 +891,7 @@ Deux comptes ExamenT3P fonctionnels ont été détectés pour ce candidat, et le
         # Info si basculement vers compte payé du candidat
         if credentials_result.get('switched_to_paid_account'):
             logger.info("  🔄 Basculement vers le compte ExamT3P déjà payé du candidat")
-            exament3p_data['switched_to_paid_account'] = True
+            examt3p_data['switched_to_paid_account'] = True
 
         # Si les identifiants sont valides, procéder à l'extraction
         if credentials_result.get('connection_test_success'):
@@ -909,27 +909,27 @@ Deux comptes ExamenT3P fonctionnels ont été détectés pour ce candidat, et le
                 })
 
                 if examt3p_result.get('success'):
-                    # Fusionner les données extraites avec exament3p_data
-                    exament3p_data.update(examt3p_result)
-                    exament3p_data['compte_existe'] = True
+                    # Fusionner les données extraites avec examt3p_data
+                    examt3p_data.update(examt3p_result)
+                    examt3p_data['compte_existe'] = True
                     logger.info("  ✅ Données ExamenT3P extraites avec succès")
                 else:
                     logger.warning(f"  ⚠️  Échec extraction ExamenT3P: {examt3p_result.get('error')}")
-                    exament3p_data['extraction_error'] = examt3p_result.get('error')
+                    examt3p_data['extraction_error'] = examt3p_result.get('error')
 
             except Exception as e:
                 logger.error(f"  ❌ Erreur lors de l'extraction ExamenT3P: {e}")
-                exament3p_data['extraction_error'] = str(e)
+                examt3p_data['extraction_error'] = str(e)
 
         elif credentials_result.get('credentials_found'):
             # Identifiants trouvés mais connexion échouée
             logger.warning(f"  ❌ Identifiants trouvés mais connexion échouée: {credentials_result.get('connection_error')}")
-            exament3p_data['extraction_error'] = f"Connexion échouée: {credentials_result.get('connection_error')}"
+            examt3p_data['extraction_error'] = f"Connexion échouée: {credentials_result.get('connection_error')}"
 
         else:
             # Identifiants non trouvés
             logger.warning("  ⚠️  Identifiants ExamenT3P introuvables")
-            exament3p_data['extraction_error'] = "Identifiants non trouvés dans le CRM ni dans les threads"
+            examt3p_data['extraction_error'] = "Identifiants non trouvés dans le CRM ni dans les threads"
 
         # Source 3: Evalbox (Google Sheet)
         logger.info("  📊 Source 3/6: Evalbox...")
@@ -968,12 +968,12 @@ Deux comptes ExamenT3P fonctionnels ont été détectés pour ce candidat, et le
         # ================================================================
         # ExamT3P est la SOURCE DE VÉRITÉ - on synchronise d'abord vers CRM
         sync_result = None
-        if exament3p_data.get('compte_existe') and deal_id:
+        if examt3p_data.get('compte_existe') and deal_id:
             logger.info("  🔄 Synchronisation ExamT3P → CRM...")
             sync_result = sync_examt3p_to_crm(
                 deal_id=deal_id,
                 deal_data=deal_data,
-                examt3p_data=exament3p_data,
+                examt3p_data=examt3p_data,
                 crm_client=self.crm_client,
                 dry_run=False
             )
@@ -994,7 +994,7 @@ Deux comptes ExamenT3P fonctionnels ont été détectés pour ce candidat, et le
             date_sync_result = sync_exam_date_from_examt3p(
                 deal_id=deal_id,
                 deal_data=deal_data,
-                examt3p_data=exament3p_data,
+                examt3p_data=examt3p_data,
                 crm_client=self.crm_client,
                 dry_run=False
             )
@@ -1110,18 +1110,18 @@ Deux comptes ExamenT3P fonctionnels ont été détectés pour ce candidat, et le
         is_uber_eligible = uber_eligibility_result.get('is_eligible', False)
         has_exam_date = bool(deal_data.get('Date_examen_VTC'))
 
-        if exament3p_data.get('should_respond_to_candidate') and not exament3p_data.get('compte_existe'):
+        if examt3p_data.get('should_respond_to_candidate') and not examt3p_data.get('compte_existe'):
             if is_uber_eligible or has_exam_date:
                 # Uber éligible ou date déjà assignée → on continue l'analyse
                 logger.info("  ℹ️ Identifiants manquants MAIS candidat Uber éligible ou date assignée")
                 logger.info("  → On continue l'analyse dates/sessions (CAB gère le compte)")
                 # Ne pas skip, on répond à la question du candidat
-            elif exament3p_data.get('credentials_request_sent'):
+            elif examt3p_data.get('credentials_request_sent'):
                 logger.warning("  🚨 DEMANDE D'IDENTIFIANTS DÉJÀ ENVOYÉE MAIS PAS DE RÉPONSE")
                 logger.warning("  → La réponse doit confirmer que c'est normal et redemander les identifiants")
                 skip_date_session_analysis = True
                 skip_reason = 'credentials_invalid'
-            elif exament3p_data.get('account_creation_requested'):
+            elif examt3p_data.get('account_creation_requested'):
                 logger.warning("  🚨 CRÉATION DE COMPTE DEMANDÉE MAIS PAS D'IDENTIFIANTS REÇUS")
                 logger.warning("  → La réponse doit relancer le candidat sur la création de compte")
                 skip_date_session_analysis = True
@@ -1155,7 +1155,7 @@ Deux comptes ExamenT3P fonctionnels ont été détectés pour ce candidat, et le
                 deal_data=deal_data,
                 threads=threads_data,
                 crm_client=self.crm_client,
-                examt3p_data=exament3p_data
+                examt3p_data=examt3p_data
             )
 
             if date_examen_vtc_result.get('should_include_in_response'):
@@ -1328,7 +1328,7 @@ Deux comptes ExamenT3P fonctionnels ont été détectés pour ce candidat, et le
             'deal_id': deal_id,
             'deal_data': deal_data,
             'date_examen_vtc_value': date_examen_vtc_value,  # Date réelle extraite du lookup
-            'exament3p_data': exament3p_data,
+            'examt3p_data': examt3p_data,
             'uber_eligibility_result': uber_eligibility_result,  # Éligibilité Uber 20€
             'date_examen_vtc_result': date_examen_vtc_result,
             'evalbox_data': evalbox_data,
@@ -1535,7 +1535,7 @@ L'équipe Cab Formations"""
         # STEP 1: Detect State
         # ================================================================
         deal_data = analysis_result.get('deal_data', {})
-        examt3p_data = analysis_result.get('exament3p_data', {})
+        examt3p_data = analysis_result.get('examt3p_data', {})
         threads_data = analysis_result.get('threads', [])
 
         # Build linking_result from analysis data
@@ -1990,7 +1990,7 @@ Génère maintenant la personnalisation (1-3 phrases):"""
                     else:
                         dt = datetime.strptime(str(created_time), "%Y-%m-%d %H:%M:%S")
                     date_str = dt.strftime("%d/%m/%Y")
-                except:
+                except Exception as e:
                     date_str = ""
 
             # Sender
@@ -2093,7 +2093,7 @@ Génère maintenant la personnalisation (1-3 phrases):"""
             alerts.append(f"⚠️ {training_result.get('problem_description', 'Cohérence formation/examen à vérifier')}")
 
         # Double compte ExamT3P
-        examt3p_data = analysis_result.get('exament3p_data', {})
+        examt3p_data = analysis_result.get('examt3p_data', {})
         if examt3p_data.get('duplicate_paid_accounts'):
             alerts.append("⚠️ DOUBLE COMPTE PAYÉ - vérifier paiement")
 
@@ -2122,7 +2122,7 @@ Génère maintenant la personnalisation (1-3 phrases):"""
 
         # Préparer le contexte
         deal_data = analysis_result.get('deal_data', {})
-        examt3p_data = analysis_result.get('exament3p_data', {})
+        examt3p_data = analysis_result.get('examt3p_data', {})
         date_result = analysis_result.get('date_examen_vtc_result', {})
         uber_result = analysis_result.get('uber_eligibility_result', {})
 

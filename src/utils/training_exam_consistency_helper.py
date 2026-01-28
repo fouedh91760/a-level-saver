@@ -129,7 +129,7 @@ def analyze_training_exam_consistency(
             try:
                 next_date = datetime.strptime(result['next_exam_date'], "%Y-%m-%d")
                 result['next_exam_date_formatted'] = next_date.strftime("%d/%m/%Y")
-            except:
+            except Exception as e:
                 result['next_exam_date_formatted'] = result['next_exam_date']
             logger.info(f"  📅 Prochaine date d'examen disponible: {result['next_exam_date_formatted']}")
 

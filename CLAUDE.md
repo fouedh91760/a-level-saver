@@ -411,6 +411,39 @@ result = analyze_training_exam_consistency(deal_data, threads, session_data, crm
 # Détecte les cas: formation manquée + examen imminent
 ```
 
+### Parsing de Dates (`src/utils/date_utils.py`) - NOUVEAU
+
+**Module centralisé pour le parsing robuste de dates depuis diverses sources (CRM, ExamT3P, API).**
+
+```python
+from src.utils.date_utils import (
+    parse_date_flexible,       # Parse date avec multiples formats → date
+    parse_datetime_flexible,   # Parse datetime avec multiples formats → datetime
+    format_date_for_display,   # Formate date pour affichage (DD/MM/YYYY)
+    is_date_before,            # Compare deux dates (date1 < date2)
+    is_date_after,             # Compare deux dates (date1 > date2)
+    days_between,              # Nombre de jours entre deux dates
+    add_days,                  # Ajoute des jours à une date
+)
+
+# Exemples d'utilisation
+date = parse_date_flexible("2026-03-31")           # → datetime.date(2026, 3, 31)
+date = parse_date_flexible("2026-03-31T10:30:00Z") # → datetime.date(2026, 3, 31)
+date = parse_date_flexible("31/03/2026")           # → datetime.date(2026, 3, 31)
+
+# Formats supportés (ordre de priorité)
+DATE_FORMATS = [
+    "%Y-%m-%d",                    # 2026-03-31
+    "%Y-%m-%dT%H:%M:%S",           # 2026-03-31T10:30:00
+    "%Y-%m-%dT%H:%M:%S.%f",        # 2026-03-31T10:30:00.000
+    "%Y-%m-%dT%H:%M:%SZ",          # 2026-03-31T10:30:00Z
+    "%d/%m/%Y",                    # 31/03/2026
+    "%d-%m-%Y",                    # 31-03-2026
+]
+```
+
+**IMPORTANT :** Toujours utiliser `parse_date_flexible()` au lieu de parsers inline pour éviter les bugs de formats. Ce module est utilisé par `uber_eligibility_helper.py` et d'autres helpers.
+
 ---
 
 ## Client Zoho (`src/zoho_client.py`)
@@ -545,7 +578,12 @@ Le State Engine détecte **plusieurs états simultanément** grâce à la classi
 ```python
 # Dans state_detector.py
 detected_states = state_detector.detect_all_states(
-    deal_data, examt3p_data, triage_result, linking_result
+    deal_data=deal_data,
+    examt3p_data=examt3p_data,
+    triage_result=triage_result,
+    linking_result=linking_result,
+    session_data=session_data,                         # NOUVEAU v2.2
+    training_exam_consistency_data=consistency_data    # NOUVEAU v2.2
 )
 
 # Structure DetectedStates:
@@ -556,6 +594,11 @@ detected_states = state_detector.detect_all_states(
     "primary_state": DetectedState,            # État principal (rétrocompat)
     "all_states": [DetectedState, ...]         # Tous les états détectés
 }
+
+# Contexte enrichi automatiquement (v2.2):
+# - uber_case: calculé automatiquement depuis deal_data (A/B/D/E/ELIGIBLE)
+# - extraction_failed: True si ExamT3P indisponible
+# - error_type: type d'erreur (connection_failed, etc.)
 ```
 
 **Comportement :**
@@ -579,13 +622,15 @@ UBER_ACCOUNT_NOT_VERIFIED:
 
 | Fichier | Contenu |
 |---------|---------|
-| `states/candidate_states.yaml` | **38 ÉTATS** avec severity (BLOCKING/WARNING/INFO) |
-| `states/state_intention_matrix.yaml` | **37 INTENTIONS** (I01-I37) + MATRICE État×Intention |
+| `states/candidate_states.yaml` | **38 ÉTATS** avec severity (BLOCKING/WARNING/INFO) - **SOURCE DE VÉRITÉ UNIQUE** |
+| `states/state_intention_matrix.yaml` | **37 INTENTIONS** (I01-I37) + MATRICE État×Intention (section `states:` DÉPRÉCIÉE) |
 | `states/templates/response_master.html` | **Template master modulaire** (architecture v2.0) |
-| `states/templates/partials/**/*.html` | **Partials modulaires** (intentions, statuts, actions, uber, resultats, report, credentials) |
+| `states/templates/partials/**/*.html` | **Partials modulaires** - tous en `.html` (pas `.md`) |
 | `states/templates/base_legacy/*.html` | **62 Templates legacy** (archivés, utilisés en fallback) |
 | `states/blocks/*.md` | Blocs réutilisables (salutation, signature, etc.) |
 | `states/VARIABLES.md` | Documentation des variables Handlebars |
+
+**⚠️ IMPORTANT (v2.2) :** La section `states:` dans `state_intention_matrix.yaml` est **DÉPRÉCIÉE**. La source de vérité unique pour les états est `candidate_states.yaml`.
 
 ### Détection d'Intent et Contexte par TriageAgent
 
@@ -689,12 +734,26 @@ session_data = analyze_session_situation(
 
 L'ordre de priorité dans `_select_base_template()` :
 
-1. **PASS 0** : Matrice `STATE:INTENTION` (priorité maximale)
+1. **PASS 0** : Matrice `STATE:INTENTION` (priorité maximale) + **WILDCARDS** (v2.2)
    ```python
-   # Cherche "DATE_EXAMEN_VIDE:CONFIRMATION_SESSION" dans state_intention_matrix
+   # 0a. D'abord essayer match exact STATE:INTENTION
    matrix_key = f"{state.name}:{intention}"
-   if matrix_key in self.state_intention_matrix:
-       return config['template']  # ex: "confirmation_session.html"
+   config = self.state_intention_matrix.get(matrix_key)
+
+   # 0b. Si pas de match exact, essayer wildcard *:INTENTION (NOUVEAU v2.2)
+   if not config:
+       wildcard_key = f"*:{intention}"
+       if wildcard_key in self.state_intention_matrix:
+           config = self.state_intention_matrix[wildcard_key]
+   ```
+
+   **Exemple wildcard :**
+   ```yaml
+   # Dans state_intention_matrix.yaml
+   "*:REPORT_DATE":
+     template: "report_possible.html"
+     context_flags:
+       intention_report_date: true
    ```
 
 2. **PASS 1** : Templates avec intention (`for_intention` + `for_condition`)
@@ -961,6 +1020,31 @@ Les context flags sont injectés par la matrice État×Intention et activent les
 - `report_force_majeure` - Demande de report avec force majeure
 - `credentials_invalid` - Identifiants invalides
 - `credentials_inconnus` - Identifiants inconnus
+
+**STATE_FLAG_MAP (v2.2)** - Mapping complet État → Flags template :
+```python
+# Dans template_engine.py
+STATE_FLAG_MAP = {
+    # Uber states
+    'UBER_DOCS_MISSING': ['uber_cas_a'],
+    'UBER_TEST_MISSING': ['uber_cas_b'],
+    'UBER_ACCOUNT_NOT_VERIFIED': ['uber_cas_d'],
+    'UBER_NOT_ELIGIBLE': ['uber_cas_e'],
+    'DUPLICATE_UBER': ['uber_doublon'],
+    # Credentials states
+    'CREDENTIALS_INVALID': ['credentials_invalid'],
+    'CREDENTIALS_UNKNOWN': ['credentials_inconnus'],
+    # Report states
+    'DATE_MODIFICATION_BLOCKED': ['report_bloque'],
+    'REPORT_DATE_REQUEST': ['report_possible'],
+    'FORCE_MAJEURE_REPORT': ['report_force_majeure'],
+    # Exam result states
+    'EXAM_PASSED': ['resultat_admis'],
+    'EXAM_FAILED': ['resultat_non_admis'],
+    'EXAM_ABSENT': ['resultat_absent'],
+    # ... (20+ états au total)
+}
+```
 
 ### Détermination Automatique des Actions
 

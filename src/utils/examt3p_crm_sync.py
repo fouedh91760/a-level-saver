@@ -78,7 +78,7 @@ def is_date_past(date_str: str) -> bool:
         else:
             date_obj = datetime.strptime(str(date_str), "%Y-%m-%d")
         return date_obj.date() < datetime.now().date()
-    except:
+    except Exception as e:
         return False
 
 
@@ -405,7 +405,7 @@ def get_sync_status_message(
                 else:
                     date_obj = datetime.strptime(str(date_cloture), "%Y-%m-%d")
                 date_formatted = date_obj.strftime("%d/%m/%Y")
-            except:
+            except Exception as e:
                 date_formatted = str(date_cloture)
 
         return f"""Votre inscription à l'examen VTC a été validée par la CMA et les inscriptions sont maintenant clôturées.
@@ -516,7 +516,7 @@ def get_crm_exam_date(deal_data: Dict[str, Any]) -> Optional[str]:
             try:
                 date_obj = datetime.strptime(str(date_value), "%Y-%m-%d")
                 return date_obj.strftime("%d/%m/%Y")
-            except:
+            except Exception as e:
                 pass
 
     return None
@@ -553,7 +553,7 @@ def get_examt3p_exam_date(examt3p_data: Dict[str, Any]) -> Optional[str]:
         try:
             date_obj = datetime.strptime(date_str, "%Y-%m-%d")
             return date_obj.strftime("%d/%m/%Y")
-        except:
+        except Exception as e:
             pass
 
     # Format français "1 mars 2026" ou "15 février 2026"
