@@ -633,8 +633,13 @@ class TemplateEngine:
 
     def _get_context_value(self, key: str, context: Dict[str, Any]) -> Any:
         """Récupère une valeur du contexte, avec support des clés imbriquées."""
-        # Mapping des variables de template vers le contexte
-        # Variables booléennes courantes
+        # PRIORITÉ 1: Vérifier si la clé existe directement dans le contexte
+        # Ceci permet à placeholder_data de surcharger les mappings legacy
+        if key in context:
+            return context[key]
+
+        # PRIORITÉ 2: Mappings legacy pour rétrocompatibilité
+        # (utilisés uniquement si la clé n'existe pas directement)
         if key == 'uber_20':
             return context.get('is_uber_20_deal', False)
         if key == 'can_choose_other_department':
@@ -666,11 +671,7 @@ class TemplateEngine:
                 return formatted_dates
             return []
 
-        # Chercher directement dans le contexte
-        if key in context:
-            return context[key]
-
-        # Chercher dans deal_data
+        # Chercher dans deal_data (fallback pour clés non mappées)
         deal_data = context.get('deal_data', {})
         if key in deal_data:
             return deal_data[key]
@@ -791,7 +792,9 @@ class TemplateEngine:
             'prochaines_etapes': self._get_prochaines_etapes(state),
 
             # Booléens pour les conditions (aussi disponibles comme placeholders)
+            # Note: uber_20 et is_uber_20_deal sont synonymes pour supporter les deux notations dans les templates
             'uber_20': context.get('is_uber_20_deal', False),
+            'is_uber_20_deal': context.get('is_uber_20_deal', False),
             'can_choose_other_department': context.get('can_choose_other_department', False) or not context.get('compte_existe', True),
             'session_assigned': context.get('session_assigned', False),
             'compte_existe': context.get('compte_existe', False),

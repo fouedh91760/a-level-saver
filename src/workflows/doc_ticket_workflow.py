@@ -729,8 +729,18 @@ class DOCTicketWorkflow:
         date_examen_lookup = deal_data.get('Date_examen_VTC')
         if date_examen_lookup:
             if isinstance(date_examen_lookup, dict):
-                # C'est un lookup, récupérer la date du record lié
-                date_examen_vtc_value = date_examen_lookup.get('Date_Examen') or date_examen_lookup.get('name')
+                # C'est un lookup, récupérer la date depuis le module Dates_Examens_VTC_TAXI
+                lookup_id = date_examen_lookup.get('id')
+                if lookup_id:
+                    try:
+                        date_record = self.crm_client.get_record('Dates_Examens_VTC_TAXI', lookup_id)
+                        if date_record:
+                            date_examen_vtc_value = date_record.get('Date_Examen')
+                            logger.info(f"  📅 Date_Examen récupérée du module: {date_examen_vtc_value}")
+                    except Exception as e:
+                        logger.warning(f"  ⚠️  Erreur récupération date examen: {e}")
+                if not date_examen_vtc_value:
+                    date_examen_vtc_value = date_examen_lookup.get('name')
             else:
                 # C'est peut-être déjà une string (compatibilité)
                 date_examen_vtc_value = date_examen_lookup

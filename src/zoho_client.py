@@ -555,6 +555,12 @@ class ZohoCRMClient(ZohoAPIClient):
             logger.error(f"Failed to refresh CRM access token: {e}")
             raise
 
+    def get_record(self, module: str, record_id: str) -> Dict[str, Any]:
+        """Get a specific record by module name and ID."""
+        url = f"{settings.zoho_crm_api_url}/{module}/{record_id}"
+        response = self._make_request("GET", url)
+        return response.get("data", [{}])[0] if response.get("data") else {}
+
     def get_deal(self, deal_id: str) -> Dict[str, Any]:
         """Get a specific deal/opportunity by ID."""
         url = f"{settings.zoho_crm_api_url}/Deals/{deal_id}"

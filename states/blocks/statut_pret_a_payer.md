@@ -1,2 +1,1 @@
-💳 <b>Paiement des frais d'examen en cours</b><br>Votre dossier est complet et le paiement des frais d'examen est en cours de traitement auprès de la CMA.<br>N° de dossier : {{num_dossier}}<br>Date d'examen prévue : {{date_examen}}
-<br>Le paiement est effectué par CAB Formations dans le cadre de votre offre. Une fois le paiement confirmé, votre dossier passera automatiquement en instruction.<br>Vous recevrez une confirmation par email. Pensez à vérifier vos spams.<br>
+💳 <b>Statut de votre dossier</b><br>Vos documents ont bien été transmis à la CMA. Votre dossier est en attente de paiement des frais d'inscription.<br>N° de dossier : {{num_dossier}}<br>Date d'examen prévue : {{date_examen}}<br>Date limite d'inscription : {{date_cloture}}<br>
