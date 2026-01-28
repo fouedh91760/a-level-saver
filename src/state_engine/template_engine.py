@@ -24,7 +24,7 @@ from pathlib import Path
 from typing import Dict, Any, Optional, List, Tuple
 from datetime import datetime
 
-from .state_detector import DetectedState
+from .state_detector import DetectedState, DetectedStates
 
 logger = logging.getLogger(__name__)
 
@@ -83,6 +83,101 @@ class TemplateEngine:
         except Exception as e:
             logger.error(f"Erreur chargement matrice: {e}")
             return {}
+
+    def generate_response_multi(
+        self,
+        detected_states: DetectedStates,
+        triage_result: Dict[str, Any],
+        ai_generator: Optional[callable] = None
+    ) -> Dict[str, Any]:
+        """
+        Génère une réponse composite gérant multi-intentions et multi-états.
+
+        Args:
+            detected_states: Tous les états détectés (blocking, warning, info)
+            triage_result: Résultat du triage avec primary_intent et secondary_intents
+            ai_generator: Fonction pour générer les sections IA (optionnel)
+
+        Returns:
+            {
+                'response_text': str,
+                'template_used': str,
+                'states_used': List[str],
+                'intents_handled': List[str],
+                ...
+            }
+        """
+        # 1. Si état BLOCKING → réponse unique (comportement actuel)
+        if detected_states.blocking_state:
+            logger.info(f"🚫 État BLOCKING détecté - réponse unique pour {detected_states.blocking_state.name}")
+            result = self.generate_response(detected_states.blocking_state, ai_generator)
+            result['states_used'] = [detected_states.blocking_state.name]
+            result['is_blocking'] = True
+            return result
+
+        # 2. Sinon, combiner les flags de tous les états et intentions
+        primary_state = detected_states.primary_state
+        if not primary_state:
+            logger.warning("Aucun état primaire - utilisation de GENERAL")
+            primary_state = self._create_default_state()
+
+        # Copier le contexte du primary_state
+        combined_context = primary_state.context_data.copy()
+
+        # Ajouter les flags des états WARNING
+        warning_flags = self._map_warning_state_flags(detected_states.warning_states)
+        combined_context.update(warning_flags)
+
+        # Ajouter les intentions du triage (primary + secondary)
+        combined_context['primary_intent'] = triage_result.get('primary_intent')
+        combined_context['secondary_intents'] = triage_result.get('secondary_intents', [])
+
+        # Enrichir le primary_state avec le contexte combiné
+        primary_state.context_data = combined_context
+
+        # Collecter les alertes de tous les WARNING states
+        all_alerts = list(primary_state.alerts)
+        for warning_state in detected_states.warning_states:
+            all_alerts.extend(warning_state.alerts)
+        primary_state.alerts = all_alerts
+
+        # 3. Générer la réponse avec le contexte combiné
+        result = self.generate_response(primary_state, ai_generator)
+
+        # 4. Ajouter les métadonnées multi-états
+        result['states_used'] = [s.name for s in detected_states.all_states]
+        result['warning_states'] = [s.name for s in detected_states.warning_states]
+        result['info_states'] = [s.name for s in detected_states.info_states]
+        result['primary_intent'] = triage_result.get('primary_intent')
+        result['secondary_intents'] = triage_result.get('secondary_intents', [])
+        result['is_blocking'] = False
+
+        intents_handled = []
+        if triage_result.get('primary_intent'):
+            intents_handled.append(triage_result['primary_intent'])
+        intents_handled.extend(triage_result.get('secondary_intents', []))
+        result['intents_handled'] = intents_handled
+
+        logger.info(f"📝 Réponse multi-états générée: states={result['states_used']}, intents={intents_handled}")
+
+        return result
+
+    def _create_default_state(self) -> DetectedState:
+        """Crée un état GENERAL par défaut."""
+        return DetectedState(
+            id='DEFAULT',
+            name='GENERAL',
+            priority=999,
+            category='default',
+            description='État par défaut',
+            workflow_action='RESPOND',
+            response_config={},
+            crm_updates_config=None,
+            detection_reason='Fallback vers état GENERAL',
+            severity='INFO',
+            context_data={},
+            alerts=[]
+        )
 
     def generate_response(
         self,
@@ -861,9 +956,49 @@ class TemplateEngine:
             **self._determine_required_actions(context, evalbox),
         }
 
+    # Mapping state → flag pour les états WARNING
+    STATE_FLAG_MAP = {
+        'UBER_ACCOUNT_NOT_VERIFIED': 'uber_cas_d',
+        'UBER_NOT_ELIGIBLE': 'uber_cas_e',
+        'PERSONAL_ACCOUNT_WARNING': 'personal_account_warning',
+        'DATE_MODIFICATION_BLOCKED': 'report_bloque',
+        'TRAINING_MISSED_EXAM_IMMINENT': 'training_missed_alert',
+    }
+
+    # Mapping intention → flag
+    INTENTION_FLAG_MAP = {
+        'STATUT_DOSSIER': 'intention_statut_dossier',
+        'DEMANDE_DATE_EXAMEN': 'intention_demande_date',
+        'DEMANDE_AUTRES_DATES': 'intention_demande_date',
+        'DEMANDE_DATES_FUTURES': 'intention_demande_date',  # Nouvelle intention
+        'CONFIRMATION_DATE_EXAMEN': 'intention_demande_date',
+        'DEMANDE_IDENTIFIANTS': 'intention_demande_identifiants',
+        'ENVOIE_IDENTIFIANTS': 'intention_demande_identifiants',
+        'CONFIRMATION_SESSION': 'intention_confirmation_session',
+        'QUESTION_SESSION': 'intention_question_session',  # Nouvelle intention
+        'DEMANDE_CONVOCATION': 'intention_demande_convocation',
+        'DEMANDE_ELEARNING_ACCESS': 'intention_demande_elearning',
+        'REPORT_DATE': 'intention_report_date',
+        'FORCE_MAJEURE_REPORT': 'intention_report_date',
+        'DOCUMENT_QUESTION': 'intention_probleme_documents',
+        'SIGNALE_PROBLEME_DOCS': 'intention_probleme_documents',
+        'ENVOIE_DOCUMENTS': 'intention_probleme_documents',
+        'QUESTION_PROCESSUS': 'intention_question_processus',  # Nouvelle intention
+        'DEMANDE_AUTRES_DEPARTEMENTS': 'intention_autres_departements',  # Nouvelle intention
+        # Intentions fréquentes
+        'QUESTION_GENERALE': 'intention_question_generale',
+        'RESULTAT_EXAMEN': 'intention_resultat_examen',
+        'QUESTION_UBER': 'intention_question_uber',
+        # Synonymes courants
+        'DEMANDE_RESULTAT': 'intention_resultat_examen',
+        'NOTE_EXAMEN': 'intention_resultat_examen',
+        'UBER_ELIGIBILITE': 'intention_question_uber',
+        'UBER_OFFRE': 'intention_question_uber',
+    }
+
     def _auto_map_intention_flags(self, context: Dict[str, Any]) -> Dict[str, bool]:
         """
-        Auto-génère les flags intention_* depuis detected_intent.
+        Auto-génère les flags intention_* depuis detected_intent ET secondary_intents.
 
         Cela évite de créer ~200 entrées manuelles dans la matrice STATE×INTENTION.
         Le template master (response_master.html) utilise ces flags pour afficher
@@ -872,63 +1007,62 @@ class TemplateEngine:
         Priorité: context_flags de la matrice > auto-mapping
         Si un flag est déjà défini dans le contexte (via matrice), il est conservé.
         """
-        # Mapping intention → flag
-        INTENTION_FLAG_MAP = {
-            'STATUT_DOSSIER': 'intention_statut_dossier',
-            'DEMANDE_DATE_EXAMEN': 'intention_demande_date',
-            'DEMANDE_AUTRES_DATES': 'intention_demande_date',
-            'CONFIRMATION_DATE_EXAMEN': 'intention_demande_date',
-            'DEMANDE_IDENTIFIANTS': 'intention_demande_identifiants',
-            'ENVOIE_IDENTIFIANTS': 'intention_demande_identifiants',
-            'CONFIRMATION_SESSION': 'intention_confirmation_session',
-            'DEMANDE_CONVOCATION': 'intention_demande_convocation',
-            'DEMANDE_ELEARNING_ACCESS': 'intention_demande_elearning',
-            'REPORT_DATE': 'intention_report_date',
-            'FORCE_MAJEURE_REPORT': 'intention_report_date',
-            'DOCUMENT_QUESTION': 'intention_probleme_documents',
-            'SIGNALE_PROBLEME_DOCS': 'intention_probleme_documents',
-            'ENVOIE_DOCUMENTS': 'intention_probleme_documents',
-            # Nouvelles intentions (22.8% + 14.6% + 11.8% = 49.2% des tickets)
-            'QUESTION_GENERALE': 'intention_question_generale',
-            'RESULTAT_EXAMEN': 'intention_resultat_examen',
-            'QUESTION_UBER': 'intention_question_uber',
-            # Synonymes courants
-            'DEMANDE_RESULTAT': 'intention_resultat_examen',
-            'NOTE_EXAMEN': 'intention_resultat_examen',
-            'UBER_ELIGIBILITE': 'intention_question_uber',
-            'UBER_OFFRE': 'intention_question_uber',
-        }
-
         # Initialiser tous les flags à False
         flags = {
             'intention_statut_dossier': False,
             'intention_demande_date': False,
             'intention_confirmation_session': False,
+            'intention_question_session': False,  # Nouvelle
             'intention_demande_identifiants': False,
             'intention_demande_convocation': False,
             'intention_demande_elearning': False,
             'intention_report_date': False,
             'intention_probleme_documents': False,
-            # Nouvelles intentions fréquentes
+            'intention_question_processus': False,  # Nouvelle
+            'intention_autres_departements': False,  # Nouvelle
+            # Intentions fréquentes
             'intention_question_generale': False,
             'intention_resultat_examen': False,
             'intention_question_uber': False,
         }
 
-        # Récupérer l'intention détectée
-        detected_intent = context.get('detected_intent', '')
+        # Récupérer l'intention principale (rétrocompatibilité + nouveau format)
+        primary_intent = context.get('primary_intent') or context.get('detected_intent', '')
 
-        # Auto-mapper si l'intention est connue
-        if detected_intent in INTENTION_FLAG_MAP:
-            flag_name = INTENTION_FLAG_MAP[detected_intent]
+        # Auto-mapper l'intention principale
+        if primary_intent in self.INTENTION_FLAG_MAP:
+            flag_name = self.INTENTION_FLAG_MAP[primary_intent]
             flags[flag_name] = True
-            logger.debug(f"Auto-mapped intention {detected_intent} -> {flag_name}")
+            logger.debug(f"Auto-mapped primary_intent {primary_intent} -> {flag_name}")
+
+        # Auto-mapper les intentions secondaires (NOUVEAU)
+        secondary_intents = context.get('secondary_intents', [])
+        for intent in secondary_intents:
+            if intent in self.INTENTION_FLAG_MAP:
+                flag_name = self.INTENTION_FLAG_MAP[intent]
+                flags[flag_name] = True
+                logger.debug(f"Auto-mapped secondary_intent {intent} -> {flag_name}")
 
         # Priorité aux flags déjà définis dans le contexte (via matrice)
         for flag_name in flags:
             if context.get(flag_name) is True:
                 flags[flag_name] = True
 
+        return flags
+
+    def _map_warning_state_flags(self, warning_states: List[DetectedState]) -> Dict[str, bool]:
+        """
+        Génère les flags pour les états WARNING.
+
+        Ces flags sont utilisés par response_master.html pour afficher
+        les alertes appropriées dans la réponse.
+        """
+        flags = {}
+        for state in warning_states:
+            state_flag = self.STATE_FLAG_MAP.get(state.name)
+            if state_flag:
+                flags[state_flag] = True
+                logger.debug(f"Mapped WARNING state {state.name} -> {state_flag}")
         return flags
 
     def _determine_required_actions(self, context: Dict[str, Any], evalbox: str) -> Dict[str, bool]:

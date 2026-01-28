@@ -38,6 +38,8 @@ class DetectedState:
     response_config: Dict[str, Any]
     crm_updates_config: Optional[Dict[str, Any]]
     detection_reason: str
+    # Severity: BLOCKING, WARNING, INFO
+    severity: str = "INFO"
     # Données contextuelles pour le template
     context_data: Dict[str, Any] = field(default_factory=dict)
     # Alertes à inclure (Uber D/E, etc.)
@@ -45,6 +47,21 @@ class DetectedState:
     # Intention détectée (si applicable)
     detected_intent: Optional[str] = None
     intent_context: Dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class DetectedStates:
+    """Représente TOUS les états détectés pour un candidat (multi-états)."""
+    # État BLOCKING le plus prioritaire (stoppe le workflow)
+    blocking_state: Optional[DetectedState] = None
+    # États WARNING (alertes à inclure mais workflow continue)
+    warning_states: List[DetectedState] = field(default_factory=list)
+    # États INFO (combinables, informatifs)
+    info_states: List[DetectedState] = field(default_factory=list)
+    # État principal pour rétrocompatibilité (blocking > premier info)
+    primary_state: Optional[DetectedState] = None
+    # Tous les états détectés (pour debug)
+    all_states: List[DetectedState] = field(default_factory=list)
 
 
 class StateDetector:
@@ -100,7 +117,7 @@ class StateDetector:
         threads_data: Optional[List[Dict]] = None
     ) -> DetectedState:
         """
-        Détecte l'état principal du candidat.
+        Détecte l'état principal du candidat (rétrocompatibilité).
 
         Args:
             deal_data: Données du deal CRM
@@ -110,9 +127,39 @@ class StateDetector:
             threads_data: Threads du ticket (optionnel)
 
         Returns:
-            DetectedState avec toutes les informations nécessaires
+            DetectedState principal (blocking > premier info)
         """
-        logger.info("🔍 Détection d'état en cours...")
+        # Utiliser detect_all_states et retourner le primary_state
+        detected_states = self.detect_all_states(
+            deal_data, examt3p_data, triage_result, linking_result, threads_data
+        )
+        return detected_states.primary_state
+
+    def detect_all_states(
+        self,
+        deal_data: Dict[str, Any],
+        examt3p_data: Dict[str, Any],
+        triage_result: Dict[str, Any],
+        linking_result: Dict[str, Any],
+        threads_data: Optional[List[Dict]] = None
+    ) -> DetectedStates:
+        """
+        Détecte TOUS les états du candidat (multi-états).
+
+        Contrairement à detect_state() qui retourne le premier match,
+        cette méthode collecte TOUS les états applicables classifiés par severity.
+
+        Args:
+            deal_data: Données du deal CRM
+            examt3p_data: Données ExamT3P
+            triage_result: Résultat du triage (action, intent, etc.)
+            linking_result: Résultat du deal linking
+            threads_data: Threads du ticket (optionnel)
+
+        Returns:
+            DetectedStates avec blocking_state, warning_states, info_states
+        """
+        logger.info("🔍 Détection multi-états en cours...")
 
         # Contexte pour l'évaluation des conditions
         context = self._build_context(
@@ -122,19 +169,52 @@ class StateDetector:
         # Collecter les alertes (Uber D/E, etc.)
         alerts = self._collect_alerts(context)
 
-        # Évaluer chaque état par ordre de priorité
+        # Collecter tous les états qui matchent
+        blocking_state = None
+        warning_states = []
+        info_states = []
+        all_states = []
+
         for state_name, state_config in self._sorted_states:
             if self._matches_state(state_name, state_config, context):
-                logger.info(f"✅ État détecté: {state_name} (priorité {state_config.get('priority')})")
-
-                return self._create_detected_state(
+                state = self._create_detected_state(
                     state_name, state_config, context, alerts
                 )
+                severity = state_config.get('severity', 'INFO')
+                all_states.append(state)
 
-        # Fallback: état GENERAL
-        logger.info("ℹ️ Aucun état spécifique - utilisation de GENERAL")
-        return self._create_detected_state(
-            'GENERAL', self.states.get('GENERAL', {}), context, alerts
+                if severity == 'BLOCKING':
+                    if not blocking_state:  # Premier BLOCKING uniquement
+                        blocking_state = state
+                        logger.info(f"🚫 État BLOCKING détecté: {state_name} (priorité {state_config.get('priority')})")
+                        break  # Les BLOCKING stoppent la collecte
+                elif severity == 'WARNING':
+                    warning_states.append(state)
+                    logger.info(f"⚠️ État WARNING détecté: {state_name}")
+                else:  # INFO
+                    info_states.append(state)
+                    logger.info(f"ℹ️ État INFO détecté: {state_name}")
+
+        # Si aucun état, utiliser GENERAL
+        if not blocking_state and not info_states:
+            general_state = self._create_detected_state(
+                'GENERAL', self.states.get('GENERAL', {}), context, alerts
+            )
+            info_states.append(general_state)
+            all_states.append(general_state)
+            logger.info("ℹ️ Aucun état spécifique - utilisation de GENERAL")
+
+        # Primary state: blocking > premier info
+        primary_state = blocking_state or (info_states[0] if info_states else None)
+
+        logger.info(f"📊 Résumé: blocking={blocking_state is not None}, warnings={len(warning_states)}, info={len(info_states)}")
+
+        return DetectedStates(
+            blocking_state=blocking_state,
+            warning_states=warning_states,
+            info_states=info_states,
+            primary_state=primary_state,
+            all_states=all_states
         )
 
     def _build_context(
@@ -776,6 +856,7 @@ class StateDetector:
             response_config=response,
             crm_updates_config=state_config.get('crm_updates'),
             detection_reason=f"État {state_name} détecté",
+            severity=state_config.get('severity', 'INFO'),
             context_data=context,
             alerts=alerts,
             detected_intent=context.get('detected_intent'),

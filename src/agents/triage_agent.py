@@ -69,21 +69,60 @@ IMPORTANT:
 
 ---
 
-DÉTECTION D'INTENTION (pour action GO uniquement):
+DÉTECTION D'INTENTIONS (TOUTES, pas seulement la principale):
 
-Quand l'action est GO, tu dois aussi identifier l'INTENTION PRINCIPALE du candidat:
+Quand l'action est GO, tu dois identifier TOUTES les intentions exprimées par le candidat.
+Un candidat peut avoir PLUSIEURS intentions dans un même message - c'est très fréquent !
 
-INTENTIONS POSSIBLES:
-- REPORT_DATE: Changement/report de date d'examen (changement de date, décaler, reporter, repousser, nouvelle date)
-- DEMANDE_IDENTIFIANTS: Demande d'identifiants ExamT3P (mot de passe oublié, identifiants, connexion)
-- REFUS_PARTAGE_CREDENTIALS: Refus de partager ses identifiants pour raison de sécurité (ne veut pas donner mot de passe, sécurité, données personnelles, confidentialité, RGPD)
-- STATUT_DOSSIER: Question sur l'avancement du dossier (où en est mon dossier, suivi, statut)
-- CONFIRMATION_SESSION: Choix/confirmation de session de formation (je choisis, je confirme, option 1/2)
-- CONFIRMATION_PAIEMENT: Question sur le paiement (payé, paiement effectué, facture)
-- DOCUMENT_QUESTION: Question sur les documents (document manquant, pièce à fournir)
-- RESULTAT_EXAMEN: Question sur le résultat d'examen (réussi, échoué, admis)
-- DEMANDE_SUPPRESSION_DONNEES: Demande RGPD de suppression/destruction de données personnelles (supprimer, destruction, droit à l'oubli, effacer mes données)
-- QUESTION_GENERALE: Autre question générale
+INTENTIONS POSSIBLES (par ordre de spécificité - préfère les intentions spécifiques):
+
+**Intentions liées aux DATES D'EXAMEN:**
+- DEMANDE_DATES_FUTURES: Demande de dates d'examen disponibles
+  Exemples: "Quelles sont les prochaines dates ?", "dates disponibles", "dates pour juillet", "dates à Montpellier"
+- REPORT_DATE: Veut CHANGER sa date d'examen actuelle
+  Exemples: "Je voudrais reporter", "changer ma date", "décaler mon examen"
+- DEMANDE_AUTRES_DEPARTEMENTS: Veut voir des dates dans d'autres villes/départements
+  Exemples: "dates ailleurs", "autre département", "dates à Lyon", "d'autres options"
+
+**Intentions liées à la FORMATION:**
+- QUESTION_SESSION: Question sur les sessions de formation (cours du soir/jour)
+  Exemples: "cours du soir", "formation du jour", "horaires de formation", "infos sur les cours"
+- CONFIRMATION_SESSION: CONFIRME son choix de session
+  Exemples: "je choisis cours du soir", "je prends l'option 2", "je confirme la formation du jour"
+
+**Intentions liées au DOSSIER:**
+- STATUT_DOSSIER: Question sur l'avancement
+  Exemples: "où en est mon dossier", "mon inscription", "avancement", "statut"
+- DOCUMENT_QUESTION: Question sur les documents
+  Exemples: "quels documents", "pièces à fournir", "document manquant"
+- CONFIRMATION_PAIEMENT: Question sur le paiement
+  Exemples: "j'ai payé", "confirmation de paiement", "facture"
+
+**Intentions liées aux IDENTIFIANTS:**
+- DEMANDE_IDENTIFIANTS: Demande d'identifiants ExamT3P
+  Exemples: "mot de passe oublié", "mes identifiants", "connexion ExamT3P"
+- REFUS_PARTAGE_CREDENTIALS: Refuse de partager ses identifiants (sécurité)
+  Exemples: "je ne veux pas donner mon mot de passe", "données personnelles", "RGPD"
+
+**Autres intentions:**
+- RESULTAT_EXAMEN: Question sur le résultat
+  Exemples: "résultat de l'examen", "ai-je réussi", "admis ou pas"
+- QUESTION_PROCESSUS: Question sur le processus
+  Exemples: "comment ça marche", "prochaines étapes", "c'est quoi la suite"
+- DEMANDE_SUPPRESSION_DONNEES: Demande RGPD de suppression
+  Exemples: "supprimer mes données", "droit à l'oubli"
+- QUESTION_GENERALE: UNIQUEMENT si aucune intention spécifique ne correspond
+  ⚠️ N'utilise QUESTION_GENERALE que si tu ne peux vraiment pas classifier autrement !
+
+**EXEMPLES DE MULTI-INTENTIONS (très fréquent):**
+- "Je voudrais les dates de Montpellier pour juillet et des infos sur les cours du soir"
+  → primary_intent: DEMANDE_DATES_FUTURES, secondary_intents: ["QUESTION_SESSION"]
+- "Où en est mon dossier ? Et quand est mon examen ?"
+  → primary_intent: STATUT_DOSSIER, secondary_intents: ["DEMANDE_DATES_FUTURES"]
+- "Je confirme le cours du soir. C'est quoi les prochaines étapes ?"
+  → primary_intent: CONFIRMATION_SESSION, secondary_intents: ["QUESTION_PROCESSUS"]
+- "Y a-t-il des dates plus tôt dans d'autres départements ?"
+  → primary_intent: DEMANDE_DATES_FUTURES, secondary_intents: ["DEMANDE_AUTRES_DEPARTEMENTS"]
 
 Pour REPORT_DATE, ajoute un contexte supplémentaire:
 - is_urgent: true si examen imminent (< 7 jours) ou mention d'urgence
@@ -116,7 +155,8 @@ Réponds UNIQUEMENT en JSON valide:
     "target_department": "DOC" | "Refus CMA" | "Contact" | "Comptabilité" | null,
     "reason": "explication courte",
     "confidence": 0.0-1.0,
-    "detected_intent": "REPORT_DATE" | "DEMANDE_IDENTIFIANTS" | "REFUS_PARTAGE_CREDENTIALS" | "STATUT_DOSSIER" | "CONFIRMATION_SESSION" | "CONFIRMATION_PAIEMENT" | "DOCUMENT_QUESTION" | "RESULTAT_EXAMEN" | "DEMANDE_SUPPRESSION_DONNEES" | "QUESTION_GENERALE" | null,
+    "primary_intent": "REPORT_DATE" | "DEMANDE_IDENTIFIANTS" | "STATUT_DOSSIER" | "CONFIRMATION_SESSION" | "DEMANDE_DATES_FUTURES" | "QUESTION_SESSION" | "QUESTION_GENERALE" | ... | null,
+    "secondary_intents": ["QUESTION_SESSION", "DEMANDE_DATES_FUTURES", ...],
     "intent_context": {
         "is_urgent": true | false,
         "mentions_force_majeure": true | false,
@@ -126,6 +166,9 @@ Réponds UNIQUEMENT en JSON valide:
         "session_preference": "jour" | "soir" | null
     }
 }
+
+IMPORTANT: Si le candidat exprime plusieurs intentions, liste l'intention principale dans primary_intent
+et les autres dans secondary_intents (array, peut être vide).
 
 Pour CONFIRMATION_SESSION, extraire la préférence:
 - "jour" si le candidat mentionne: cours du jour, formation du jour, journée, matin
@@ -219,6 +262,8 @@ Pour CONFIRMATION_SESSION, extraire la préférence:
                     'reason': f"Evalbox indique: {evalbox}",
                     'confidence': 1.0,
                     'method': 'rule_evalbox',
+                    'primary_intent': None,
+                    'secondary_intents': [],
                     'detected_intent': None,
                     'intent_context': {}
                 }
@@ -276,21 +321,26 @@ Pour CONFIRMATION_SESSION, extraire la préférence:
             if action == 'GO':
                 target_dept = current_department
 
-            # Extraire l'intention détectée (nouveau)
-            detected_intent = result.get('detected_intent')
+            # Extraire les intentions (support multi-intentions)
+            primary_intent = result.get('primary_intent') or result.get('detected_intent')
+            secondary_intents = result.get('secondary_intents', [])
             intent_context = result.get('intent_context', {})
 
-            # Normaliser intent_context
+            # Normaliser intent_context et secondary_intents
             if not isinstance(intent_context, dict):
                 intent_context = {}
+            if not isinstance(secondary_intents, list):
+                secondary_intents = []
 
-            # Log l'intention détectée
-            if detected_intent:
-                logger.info(f"  🎯 Intention détectée: {detected_intent}")
-                if intent_context.get('mentions_force_majeure'):
-                    logger.info(f"  ⚠️ Force majeure mentionnée: {intent_context.get('force_majeure_type')} - {intent_context.get('force_majeure_details', 'N/A')}")
-                if intent_context.get('is_urgent'):
-                    logger.info(f"  🚨 Situation urgente détectée")
+            # Log les intentions détectées
+            if primary_intent:
+                logger.info(f"  🎯 Intention principale: {primary_intent}")
+            if secondary_intents:
+                logger.info(f"  🎯 Intentions secondaires: {secondary_intents}")
+            if intent_context.get('mentions_force_majeure'):
+                logger.info(f"  ⚠️ Force majeure mentionnée: {intent_context.get('force_majeure_type')} - {intent_context.get('force_majeure_details', 'N/A')}")
+            if intent_context.get('is_urgent'):
+                logger.info(f"  🚨 Situation urgente détectée")
 
             return {
                 'action': action,
@@ -298,7 +348,11 @@ Pour CONFIRMATION_SESSION, extraire la préférence:
                 'reason': result.get('reason', 'Analyse IA'),
                 'confidence': float(result.get('confidence', 0.8)),
                 'method': 'ai',
-                'detected_intent': detected_intent,
+                # Multi-intentions
+                'primary_intent': primary_intent,
+                'secondary_intents': secondary_intents,
+                # Rétrocompatibilité
+                'detected_intent': primary_intent,
                 'intent_context': intent_context
             }
 
@@ -311,6 +365,8 @@ Pour CONFIRMATION_SESSION, extraire la préférence:
                 'reason': 'Erreur parsing IA - fallback GO',
                 'confidence': 0.5,
                 'method': 'fallback',
+                'primary_intent': None,
+                'secondary_intents': [],
                 'detected_intent': None,
                 'intent_context': {}
             }
@@ -324,6 +380,8 @@ Pour CONFIRMATION_SESSION, extraire la préférence:
                 'reason': f'Erreur IA: {str(e)[:50]} - fallback GO',
                 'confidence': 0.3,
                 'method': 'fallback',
+                'primary_intent': None,
+                'secondary_intents': [],
                 'detected_intent': None,
                 'intent_context': {}
             }

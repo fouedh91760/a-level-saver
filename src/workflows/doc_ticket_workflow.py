@@ -254,22 +254,15 @@ class DOCTicketWorkflow:
             analysis_result = self._run_analysis(ticket_id, triage_result)
             result['analysis_result'] = analysis_result
 
-            # Check VÉRIFICATION #0: Connexion ExamT3P (SEUL critère de blocage)
-            exament3p_data = analysis_result.get('exament3p_data', {})
-            if not exament3p_data.get('compte_existe') and not exament3p_data.get('extraction_success', False):
-                logger.warning("⚠️  ÉCHEC CONNEXION EXAMENT3P → Alerte interne")
-                logger.warning("🛑 STOP WORKFLOW (impossible d'extraire les données ExamT3P)")
-                result['workflow_stage'] = 'STOPPED_EXAMT3P_FAILED'
-                result['success'] = True
-                return result
-
             # Check VÉRIFICATION #1: Identifiants ExamenT3P
-            # exament3p_data already retrieved above
+            exament3p_data = analysis_result.get('exament3p_data', {})
             if exament3p_data.get('should_respond_to_candidate'):
                 logger.warning("⚠️  IDENTIFIANTS EXAMENT3P INVALIDES OU MANQUANTS")
                 logger.info("→ L'agent rédacteur intégrera la demande d'identifiants dans la réponse globale")
             elif not exament3p_data.get('compte_existe'):
-                logger.warning("⚠️  COMPTE EXAMENT3P N'EXISTE PAS OU EXTRACTION ÉCHOUÉE")
+                # Pas de compte ExamT3P = cas normal (compte à créer par CAB)
+                # Le State Engine détectera l'état approprié (NO_COMPTE_EXAMT3P, UBER_DOCS_MISSING, etc.)
+                logger.info("ℹ️  Pas de compte ExamT3P → compte à créer")
             else:
                 logger.info(f"✅ Identifiants validés (source: {exament3p_data.get('credentials_source')})")
 
@@ -648,6 +641,9 @@ class DOCTicketWorkflow:
         # Copier l'intention détectée et son contexte (pour State Engine)
         triage_result['detected_intent'] = ai_triage.get('detected_intent')
         triage_result['intent_context'] = ai_triage.get('intent_context', {})
+        # Multi-intentions
+        triage_result['primary_intent'] = ai_triage.get('primary_intent')
+        triage_result['secondary_intents'] = ai_triage.get('secondary_intents', [])
 
         # Log intention si détectée
         if triage_result.get('detected_intent'):
@@ -1491,7 +1487,8 @@ L'équipe Cab Formations"""
             'needs_clarification': analysis_result.get('needs_clarification', False),
         }
 
-        detected_state = self.state_detector.detect_state(
+        # MULTI-ÉTATS: Utiliser detect_all_states pour collecter tous les états
+        detected_states = self.state_detector.detect_all_states(
             deal_data=deal_data,
             examt3p_data=examt3p_data,
             triage_result=triage_result,
@@ -1499,18 +1496,38 @@ L'équipe Cab Formations"""
             threads_data=threads_data
         )
 
+        # Pour rétrocompatibilité, on utilise primary_state comme référence principale
+        detected_state = detected_states.primary_state
+
         state_id = detected_state.id
         state_name = detected_state.name
         priority = detected_state.priority
 
-        logger.info(f"  ✅ État détecté: {state_id} - {state_name} (priorité {priority})")
+        logger.info(f"  ✅ État primaire: {state_id} - {state_name} (priorité {priority})")
+
+        # Log multi-états détaillés
+        if detected_states.blocking_state:
+            logger.info(f"  🚫 État BLOCKING: {detected_states.blocking_state.name}")
+        if detected_states.warning_states:
+            warning_names = [s.name for s in detected_states.warning_states]
+            logger.info(f"  ⚠️ États WARNING: {warning_names}")
+        if detected_states.info_states:
+            info_names = [s.name for s in detected_states.info_states]
+            logger.info(f"  ℹ️ États INFO: {info_names}")
+
+        # Log intentions (multi-intentions)
+        primary_intent = triage_result.get('primary_intent') or triage_result.get('detected_intent')
+        secondary_intents = triage_result.get('secondary_intents', [])
+        if primary_intent:
+            logger.info(f"  🎯 Intention principale: {primary_intent}")
+        if secondary_intents:
+            logger.info(f"  🎯 Intentions secondaires: {secondary_intents}")
 
         # Log context for debugging
         ctx = detected_state.context_data
         logger.debug(f"     Evalbox: {ctx.get('evalbox')}")
         logger.debug(f"     Uber case: {ctx.get('uber_case')}")
         logger.debug(f"     Date case: {ctx.get('date_case')}")
-        logger.debug(f"     Intent: {ctx.get('detected_intent')}")
 
         # ================================================================
         # STEP 2: Generate Response from Template
@@ -1609,9 +1626,13 @@ L'équipe Cab Formations"""
                 max_length=max_length
             )
 
-        # Generate response from template with AI personalization
-        template_result = self.template_engine.generate_response(
-            state=detected_state,
+        # MULTI-ÉTATS: Generate response using generate_response_multi
+        # Enrichir le primary_state avec le contexte combiné (y compris warnings)
+        detected_states.primary_state = detected_state  # Avec le context_data enrichi
+
+        template_result = self.template_engine.generate_response_multi(
+            detected_states=detected_states,
+            triage_result=triage_result,
             ai_generator=ai_personalization_generator
         )
         response_text = template_result.get('response_text', '')
@@ -1619,6 +1640,10 @@ L'équipe Cab Formations"""
         logger.info(f"  ✅ Réponse générée ({len(response_text)} caractères)")
         if template_result.get('template_used'):
             logger.info(f"     Template: {template_result['template_used']}")
+        if template_result.get('states_used'):
+            logger.info(f"     États utilisés: {template_result['states_used']}")
+        if template_result.get('intents_handled'):
+            logger.info(f"     Intentions traitées: {template_result['intents_handled']}")
 
         # ================================================================
         # STEP 3: Validate Response
@@ -1710,7 +1735,15 @@ L'équipe Cab Formations"""
                 'context': ctx,
                 'crm_updates_blocked': crm_update_result.updates_blocked,
                 'crm_updates_skipped': crm_update_result.updates_skipped,
-            }
+            },
+            # Multi-états / Multi-intentions metadata
+            'states_used': template_result.get('states_used', []),
+            'warning_states': template_result.get('warning_states', []),
+            'info_states': template_result.get('info_states', []),
+            'intents_handled': template_result.get('intents_handled', []),
+            'is_blocking': template_result.get('is_blocking', False),
+            'primary_intent': template_result.get('primary_intent'),
+            'secondary_intents': template_result.get('secondary_intents', []),
         }
 
         return response_result

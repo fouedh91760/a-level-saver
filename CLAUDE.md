@@ -499,11 +499,54 @@ Next steps CAB:
 2. **INTENTION** = ce que le candidat demande (détecté par TriageAgent via IA)
 3. **TEMPLATE** = réponse adaptée à la combinaison ÉTAT × INTENTION
 
+### Multi-États (Architecture v2.1)
+
+Le State Engine détecte **plusieurs états simultanément** grâce à la classification par sévérité :
+
+| Severity | Comportement | Exemples |
+|----------|--------------|----------|
+| **BLOCKING** | Stoppe le workflow, réponse unique | SPAM, DUPLICATE_UBER, UBER_CAS_A |
+| **WARNING** | Continue + ajoute alerte | UBER_ACCOUNT_NOT_VERIFIED, UBER_NOT_ELIGIBLE |
+| **INFO** | Combinables entre eux | EXAM_DATE_EMPTY, CREDENTIALS_INVALID, GENERAL |
+
+```python
+# Dans state_detector.py
+detected_states = state_detector.detect_all_states(
+    deal_data, examt3p_data, triage_result, linking_result
+)
+
+# Structure DetectedStates:
+{
+    "blocking_state": None,                    # Si présent, stoppe tout
+    "warning_states": [DetectedState, ...],   # Alertes à inclure
+    "info_states": [DetectedState, ...],      # États combinables
+    "primary_state": DetectedState,            # État principal (rétrocompat)
+    "all_states": [DetectedState, ...]         # Tous les états détectés
+}
+```
+
+**Comportement :**
+- Si `blocking_state` présent → réponse unique, workflow stoppé
+- Sinon → combine tous les `warning_states` et `info_states` dans la réponse
+
+```yaml
+# Exemple dans candidate_states.yaml
+CREDENTIALS_INVALID:
+  id: "A1"
+  priority: 100
+  severity: "INFO"  # Pas BLOCKING car CAB crée le compte pour Uber
+
+UBER_ACCOUNT_NOT_VERIFIED:
+  id: "U-D"
+  priority: 203
+  severity: "WARNING"  # Ajoute alerte mais continue le workflow
+```
+
 ### Fichiers Source de Vérité
 
 | Fichier | Contenu |
 |---------|---------|
-| `states/candidate_states.yaml` | **~25 ÉTATS** (T1-T4, A0-A3, U01-U06, E01-E13, etc.) |
+| `states/candidate_states.yaml` | **38 ÉTATS** avec severity (BLOCKING/WARNING/INFO) |
 | `states/state_intention_matrix.yaml` | **37 INTENTIONS** (I01-I37) + MATRICE État×Intention |
 | `states/templates/response_master.html` | **Template master modulaire** (architecture v2.0) |
 | `states/templates/partials/**/*.html` | **Partials modulaires** (intentions, statuts, actions, uber, resultats, report, credentials) |
@@ -515,20 +558,44 @@ Next steps CAB:
 
 ```python
 triage_result = triage_agent.triage_ticket(ticket_id)
-# Retourne: action, detected_intent, intent_context
+# Retourne: action, primary_intent, secondary_intents, intent_context
 
-# Structure de intent_context:
+# Structure complète:
 {
-    "is_urgent": True | False,
-    "mentions_force_majeure": True | False,
-    "force_majeure_type": "medical" | "death" | "accident" | "childcare" | "other" | None,
-    "force_majeure_details": "description courte" | None,
-    "wants_earlier_date": True | False,
-    "session_preference": "jour" | "soir" | None  # NOUVEAU - extrait automatiquement
+    "action": "GO" | "ROUTE" | "SPAM",
+    "primary_intent": "DEMANDE_DATES_FUTURES",       # Intention principale
+    "secondary_intents": ["QUESTION_SESSION"],       # Intentions secondaires
+    "detected_intent": "DEMANDE_DATES_FUTURES",      # Alias rétrocompat
+    "intent_context": {
+        "is_urgent": True | False,
+        "mentions_force_majeure": True | False,
+        "force_majeure_type": "medical" | "death" | "accident" | "childcare" | "other" | None,
+        "force_majeure_details": "description courte" | None,
+        "wants_earlier_date": True | False,
+        "session_preference": "jour" | "soir" | None
+    }
 }
 ```
 
 **Le TriageAgent extrait automatiquement `session_preference`** quand le candidat mentionne "cours du jour", "cours du soir", etc.
+
+### Multi-Intentions (Architecture v2.1)
+
+Le TriageAgent détecte **plusieurs intentions simultanément** :
+
+```python
+# Exemple: "Je voudrais les dates de Montpellier et des infos sur les cours du soir"
+result = triage_agent.triage_ticket(...)
+# → primary_intent: "DEMANDE_DATES_FUTURES"
+# → secondary_intents: ["QUESTION_SESSION"]
+```
+
+**Intentions disponibles pour multi-détection :**
+- `DEMANDE_DATES_FUTURES` - Demande de dates d'examen futures
+- `QUESTION_SESSION` - Question sur les sessions jour/soir
+- `QUESTION_PROCESSUS` - Question sur le processus global
+- `DEMANDE_AUTRES_DEPARTEMENTS` - Veut voir d'autres départements
+- `STATUT_DOSSIER`, `REPORT_DATE`, `CONFIRMATION_SESSION`, etc.
 
 ### Intégration TriageAgent → session_helper
 
@@ -713,7 +780,7 @@ states/templates/
 │   ├── dossier_synchronise.html
 │   └── ... (62 templates)
 └── partials/                     # Blocs modulaires réutilisables
-    ├── intentions/               # Réponses aux intentions (11 fichiers)
+    ├── intentions/               # Réponses aux intentions (14 fichiers)
     │   ├── statut_dossier.html
     │   ├── demande_date.html
     │   ├── demande_identifiants.html
@@ -724,7 +791,10 @@ states/templates/
     │   ├── probleme_documents.html
     │   ├── question_generale.html
     │   ├── resultat_examen.html
-    │   └── question_uber.html
+    │   ├── question_uber.html
+    │   ├── question_session.html      # Multi-intentions v2.1
+    │   ├── question_processus.html    # Multi-intentions v2.1
+    │   └── autres_departements.html   # Multi-intentions v2.1
     ├── statuts/                  # Affichage du statut Evalbox (7 fichiers)
     │   ├── dossier_cree.html
     │   ├── dossier_synchronise.html
@@ -840,6 +910,9 @@ Les context flags sont injectés par la matrice État×Intention et activent les
 - `intention_question_generale` - Question générale
 - `intention_resultat_examen` - Question sur résultat d'examen
 - `intention_question_uber` - Question sur l'offre Uber
+- `intention_question_session` - Question sur les sessions jour/soir (v2.1)
+- `intention_question_processus` - Question sur le processus global (v2.1)
+- `intention_autres_departements` - Demande d'autres départements (v2.1)
 
 **Flags de conditions bloquantes (Section 0 du response_master) :**
 - `uber_cas_a` - Documents non envoyés (CAS A)

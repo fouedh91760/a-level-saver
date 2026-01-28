@@ -1,0 +1,16 @@
+<!-- Partial: Réponse à l'intention QUESTION_SESSION -->
+<b>Concernant les sessions de formation</b><br>
+<br>
+Nous proposons deux types de sessions :<br>
+<ul>
+<li><b>Cours du jour</b> : formation intensive en journée (9h-17h)</li>
+<li><b>Cours du soir</b> : formation en soirée pour les personnes en activité (18h-22h)</li>
+</ul>
+{{#if has_sessions_proposees}}
+<br>
+Voici les sessions disponibles pour votre date d'examen :<br>
+{{#each sessions_proposees}}
+<li>{{this.nom}} ({{this.type}}) : du {{this.debut}} au {{this.fin}}</li>
+{{/each}}
+{{/if}}
+<br>
