@@ -1160,6 +1160,20 @@ matrix:
       show_statut_section: true
       action_contacter_uber: true
 
+  "UBER_ACCOUNT_NOT_VERIFIED:DEMANDE_IDENTIFIANTS":
+    template: "response_master.html"
+    description: "Demande d'identifiants quand compte Uber pas encore vérifié"
+    context_flags:
+      intention_demande_identifiants: true
+      show_statut_section: true
+
+  "UBER_ACCOUNT_NOT_VERIFIED:QUESTION_GENERALE":
+    template: "response_master.html"
+    context_flags:
+      uber_cas_d: true
+      intention_question_generale: true
+      show_statut_section: true
+
   # DOSSIER_SYNCHRONIZED × Intentions
   "DOSSIER_SYNCHRONIZED:STATUT_DOSSIER":
     template: "response_master.html"
@@ -1177,7 +1191,9 @@ matrix:
   # CONVOCATION_RECEIVED × Intentions
   "CONVOCATION_RECEIVED:REPORT_DATE":
     template: "response_master.html"
+    description: "Report après convocation - généralement bloqué"
     context_flags:
+      report_bloque: true
       intention_report_date: true
       show_statut_section: true
 
@@ -1220,91 +1236,117 @@ matrix:
   # ===========================================================================
   # UBER_DOCS_MISSING (CAS A) × Intentions
   # Principe: Répondre à la question ET pousser vers l'envoi des documents
+  # Utilise response_master.html avec uber_cas_a flag
   # ===========================================================================
   "UBER_DOCS_MISSING:STATUT_DOSSIER":
-    template: "uber_docs_missing_hybrid.html"
+    template: "response_master.html"
     description: "Statut + rappel envoi documents"
     context_flags:
+      uber_cas_a: true
       intention_statut_dossier: true
+      show_statut_section: true
 
   "UBER_DOCS_MISSING:DEMANDE_DATE_EXAMEN":
-    template: "uber_docs_missing_hybrid.html"
+    template: "response_master.html"
     description: "Dates + rappel envoi documents"
     context_flags:
+      uber_cas_a: true
       intention_demande_date: true
+      show_statut_section: true
 
   "UBER_DOCS_MISSING:DEMANDE_AUTRES_DATES":
-    template: "uber_docs_missing_hybrid.html"
+    template: "response_master.html"
     description: "Dates élargies + rappel envoi documents"
     context_flags:
+      uber_cas_a: true
       intention_demande_date: true
+      show_statut_section: true
 
   "UBER_DOCS_MISSING:CONFIRMATION_SESSION":
-    template: "uber_docs_missing_hybrid.html"
+    template: "response_master.html"
     description: "Confirmation session + rappel envoi documents"
     context_flags:
+      uber_cas_a: true
       intention_confirmation_session: true
+      show_statut_section: true
 
   "UBER_DOCS_MISSING:DEMANDE_IDENTIFIANTS":
-    template: "uber_docs_missing_hybrid.html"
+    template: "response_master.html"
     description: "Pas d'identifiants encore + rappel envoi documents"
     context_flags:
+      uber_cas_a: true
       intention_demande_identifiants: true
+      show_statut_section: true
 
   # ===========================================================================
   # UBER_TEST_MISSING (CAS B) × Intentions
   # Principe: Répondre à la question ET pousser vers le test de sélection
+  # Utilise response_master.html avec uber_cas_b flag
   # ===========================================================================
   "UBER_TEST_MISSING:STATUT_DOSSIER":
-    template: "uber_test_missing_hybrid.html"
+    template: "response_master.html"
     description: "Statut + rappel passer le test"
     context_flags:
+      uber_cas_b: true
       intention_statut_dossier: true
+      show_statut_section: true
 
   "UBER_TEST_MISSING:DEMANDE_DATE_EXAMEN":
-    template: "uber_test_missing_hybrid.html"
+    template: "response_master.html"
     description: "Dates + rappel passer le test"
     context_flags:
+      uber_cas_b: true
       intention_demande_date: true
+      show_statut_section: true
 
   "UBER_TEST_MISSING:DEMANDE_AUTRES_DATES":
-    template: "uber_test_missing_hybrid.html"
+    template: "response_master.html"
     description: "Dates élargies + rappel passer le test"
     context_flags:
+      uber_cas_b: true
       intention_demande_date: true
+      show_statut_section: true
 
   "UBER_TEST_MISSING:CONFIRMATION_SESSION":
-    template: "uber_test_missing_hybrid.html"
+    template: "response_master.html"
     description: "Confirmation session + rappel passer le test"
     context_flags:
+      uber_cas_b: true
       intention_confirmation_session: true
+      show_statut_section: true
 
   "UBER_TEST_MISSING:DEMANDE_IDENTIFIANTS":
-    template: "uber_test_missing_hybrid.html"
+    template: "response_master.html"
     description: "Identifiants + rappel passer le test"
     context_flags:
+      uber_cas_b: true
       intention_demande_identifiants: true
+      show_statut_section: true
 
   "UBER_TEST_MISSING:DEMANDE_CONVOCATION":
-    template: "uber_test_missing_hybrid.html"
+    template: "response_master.html"
     description: "Pas de convocation sans test + rappel passer le test"
     context_flags:
+      uber_cas_b: true
       intention_statut_dossier: true
+      show_statut_section: true
 
   # --- EXAMT3P_CREDENTIALS_INVALIDES × Intentions ---
   "EXAMT3P_CREDENTIALS_INVALIDES:DEMANDE_IDENTIFIANTS":
-    template: "credentials_invalid.html"
-    blocks:
-      - erreur_detectee
-      - verification_identifiants
-      - demande_nouveaux_identifiants
+    template: "response_master.html"
+    description: "Identifiants invalides - afficher les identifiants enregistrés + aide"
+    context_flags:
+      credentials_invalid: true
+      intention_demande_identifiants: true
+      show_statut_section: true
 
   "EXAMT3P_CREDENTIALS_INVALIDES:PROBLEME_CONNEXION_EXAMT3P":
-    template: "credentials_invalid.html"
-    blocks:
-      - erreur_detectee
-      - mot_de_passe_oublie
-      - contact_support
+    template: "response_master.html"
+    description: "Problème connexion - aide à la connexion"
+    context_flags:
+      credentials_invalid: true
+      intention_demande_identifiants: true
+      show_statut_section: true
 
   # --- DATE_EXAMEN_VIDE × Intentions ---
   "DATE_EXAMEN_VIDE:DEMANDE_DATE_EXAMEN":
@@ -1346,6 +1388,13 @@ matrix:
     description: "Date assignée + demande statut -> confirmer date et statut"
     context_flags:
       intention_statut_dossier: true
+      show_statut_section: true
+
+  "EXAM_DATE_ASSIGNED_WAITING:DEMANDE_IDENTIFIANTS":
+    template: "response_master.html"
+    description: "Date assignée + demande identifiants"
+    context_flags:
+      intention_demande_identifiants: true
       show_statut_section: true
 
   "EXAMT3P_PAS_DE_COMPTE:STATUT_DOSSIER":
@@ -1423,18 +1472,20 @@ matrix:
 
   # --- BLOCAGE_MODIFICATION_DATE × Intentions ---
   "BLOCAGE_MODIFICATION_DATE:REPORT_DATE":
-    template: "report_bloque.html"
-    blocks:
-      - explication_blocage
-      - procedure_force_majeure
-      - documents_requis
+    template: "response_master.html"
+    description: "Report bloqué - procédure force majeure requise"
+    context_flags:
+      report_bloque: true
+      intention_report_date: true
+      show_statut_section: true
 
   "BLOCAGE_MODIFICATION_DATE:FORCE_MAJEURE_REPORT":
-    template: "report_force_majeure_procedure.html"
-    blocks:
-      - accuse_reception
-      - documents_attendus
-      - delai_traitement
+    template: "response_master.html"
+    description: "Demande de report avec force majeure"
+    context_flags:
+      report_force_majeure: true
+      intention_report_date: true
+      show_statut_section: true
 
   # --- SESSION × Intentions ---
   "SESSION_ASSIGNEE_PASSEE:DEMANDE_DATE_VISIO":

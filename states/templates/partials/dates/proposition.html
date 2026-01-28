@@ -1,0 +1,13 @@
+<!-- Partial: DATES PROPOSITION -->
+<b>Dates d'examen disponibles</b><br>
+<br>
+{{#if prochaines_dates}}
+Voici les prochaines dates d'examen disponibles :<br>
+<br>
+{{#each prochaines_dates}}
+→ <b>{{this.date}}</b> (département {{this.departement}}) - clôture : {{this.cloture}}<br>
+{{/each}}
+<br>
+{{/if}}
+Merci de nous indiquer la date qui vous convient.<br>
+<br>

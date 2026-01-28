@@ -30,7 +30,7 @@ logger = logging.getLogger(__name__)
 
 # Chemins vers les ressources
 STATES_PATH = Path(__file__).parent.parent.parent / "states"
-TEMPLATES_BASE_PATH = STATES_PATH / "templates" / "base"
+TEMPLATES_BASE_PATH = STATES_PATH / "templates" / "base_legacy"  # Migrated to partials
 BLOCKS_PATH = STATES_PATH / "blocks"
 MATRIX_PATH = STATES_PATH / "state_intention_matrix.yaml"
 
@@ -55,7 +55,7 @@ class TemplateEngine:
             states_path: Chemin vers le dossier states (optionnel)
         """
         self.states_path = states_path or STATES_PATH
-        self.templates_base_path = self.states_path / "templates" / "base"
+        self.templates_base_path = self.states_path / "templates" / "base_legacy"  # Migrated to partials
         self.blocks_path = self.states_path / "blocks"
         self.matrix_path = self.states_path / "state_intention_matrix.yaml"
 
@@ -815,6 +815,28 @@ class TemplateEngine:
             # AUTO-MAPPING: Génère automatiquement les flags depuis detected_intent
             # Priorité: context_flags de la matrice > auto-mapping depuis detected_intent
             **self._auto_map_intention_flags(context),
+
+            # Context flags pour conditions bloquantes (Section 0 de response_master)
+            # Ces flags sont définis via context_flags dans la matrice STATE:INTENTION
+            'uber_cas_a': context.get('uber_cas_a', False),
+            'uber_cas_b': context.get('uber_cas_b', False),
+            'uber_cas_d': context.get('uber_cas_d', False),
+            'uber_cas_e': context.get('uber_cas_e', False),
+            'uber_doublon': context.get('uber_doublon', False),
+
+            # Résultats d'examen
+            'resultat_admis': context.get('resultat_admis', False),
+            'resultat_non_admis': context.get('resultat_non_admis', False),
+            'resultat_absent': context.get('resultat_absent', False),
+
+            # Report de date
+            'report_bloque': context.get('report_bloque', False),
+            'report_possible': context.get('report_possible', False),
+            'report_force_majeure': context.get('report_force_majeure', False),
+
+            # Problèmes d'identifiants
+            'credentials_invalid': context.get('credentials_invalid', False),
+            'credentials_inconnus': context.get('credentials_inconnus', False),
 
             # Données supplémentaires pour templates hybrides
             'has_next_dates': bool(context.get('next_dates', [])),

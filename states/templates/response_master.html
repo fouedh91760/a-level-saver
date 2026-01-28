@@ -15,6 +15,62 @@
 {{> salutation_personnalisee}}
 
 <!-- =====================================================================
+     SECTION 0: CONDITIONS BLOQUANTES (Uber, Résultats, Report)
+     ===================================================================== -->
+
+{{#if uber_cas_a}}
+{{> partials/uber/cas_a_docs_manquants}}
+{{/if}}
+
+{{#if uber_cas_b}}
+{{> partials/uber/cas_b_test_manquant}}
+{{/if}}
+
+{{#if uber_cas_d}}
+{{> partials/uber/cas_d_compte_non_verifie}}
+{{/if}}
+
+{{#if uber_cas_e}}
+{{> partials/uber/cas_e_non_eligible}}
+{{/if}}
+
+{{#if uber_doublon}}
+{{> partials/uber/doublon_offre}}
+{{/if}}
+
+{{#if resultat_admis}}
+{{> partials/resultats/admis}}
+{{/if}}
+
+{{#if resultat_non_admis}}
+{{> partials/resultats/non_admis}}
+{{/if}}
+
+{{#if resultat_absent}}
+{{> partials/resultats/absent}}
+{{/if}}
+
+{{#if report_bloque}}
+{{> partials/report/bloque}}
+{{/if}}
+
+{{#if report_possible}}
+{{> partials/report/possible}}
+{{/if}}
+
+{{#if report_force_majeure}}
+{{> partials/report/force_majeure}}
+{{/if}}
+
+{{#if credentials_invalid}}
+{{> partials/credentials/invalid}}
+{{/if}}
+
+{{#if credentials_inconnus}}
+{{> partials/credentials/inconnus}}
+{{/if}}
+
+<!-- =====================================================================
      SECTION 1: RÉPONDRE À L'INTENTION DU CANDIDAT
      ===================================================================== -->
 
