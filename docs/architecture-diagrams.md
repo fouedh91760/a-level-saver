@@ -2,6 +2,8 @@
 
 Ce document contient les diagrammes Mermaid décrivant l'architecture et les flux du système A-Level Saver.
 
+**Version 2.1** - Inclut l'architecture Multi-Intention et Multi-État.
+
 ---
 
 ## 1. Vue d'Ensemble de l'Architecture
@@ -784,4 +786,269 @@ graph TB
 
 ---
 
-*Généré automatiquement depuis l'analyse du codebase A-Level Saver*
+## 14. Architecture Multi-Intention (v2.1)
+
+Le TriageAgent détecte une **intention principale** + des **intentions secondaires** pour les messages complexes.
+
+```mermaid
+flowchart TD
+    subgraph INPUT["Message Candidat"]
+        MSG["Je voudrais les dates de Montpellier<br/>pour juillet et des infos<br/>sur les cours du soir"]
+    end
+
+    subgraph TRIAGE["TriageAgent - Analyse Multi-Intention"]
+        PARSE[Analyse sémantique<br/>Claude Haiku]
+        PARSE --> PRIMARY["<b>primary_intent</b><br/>REPORT_DATE"]
+        PARSE --> SECONDARY["<b>secondary_intents</b><br/>[QUESTION_SESSION,<br/>DEMANDE_AUTRES_DEPARTEMENTS]"]
+        PARSE --> CONTEXT["<b>intent_context</b><br/>requested_month: 7<br/>requested_location: Montpellier<br/>session_preference: soir"]
+    end
+
+    subgraph MAPPING["Auto-Mapping → Flags Template"]
+        direction LR
+        F1[intention_report_date: true]
+        F2[intention_question_session: true]
+        F3[intention_autres_departements: true]
+    end
+
+    subgraph RESPONSE["Réponse Composite"]
+        R1["Section Report Date<br/>(partials/intentions/report_date.html)"]
+        R2["Section Sessions<br/>(partials/intentions/question_session.html)"]
+        R3["Section Autres Depts<br/>(partials/intentions/autres_departements.html)"]
+    end
+
+    MSG --> PARSE
+    PRIMARY --> F1
+    SECONDARY --> F2
+    SECONDARY --> F3
+    F1 --> R1
+    F2 --> R2
+    F3 --> R3
+
+    style PRIMARY fill:#e8f5e9
+    style SECONDARY fill:#fff3e0
+    style CONTEXT fill:#e3f2fd
+```
+
+### Intentions Supportées
+
+| Intention | Flag Template | Description |
+|-----------|---------------|-------------|
+| `STATUT_DOSSIER` | `intention_statut_dossier` | Demande d'avancement |
+| `DEMANDE_DATES_FUTURES` | `intention_demande_date` | Dates disponibles |
+| `REPORT_DATE` | `intention_report_date` | Changement de date |
+| `QUESTION_SESSION` | `intention_question_session` | Infos jour/soir |
+| `DEMANDE_AUTRES_DEPARTEMENTS` | `intention_autres_departements` | Dates autres villes |
+| `QUESTION_PROCESSUS` | `intention_question_processus` | Étapes d'inscription |
+| `CONFIRMATION_SESSION` | `intention_confirmation_session` | Confirme son choix |
+
+---
+
+## 15. Architecture Multi-État - Severity System (v2.1)
+
+Les états sont classifiés par **severity** pour déterminer leur comportement dans le workflow.
+
+```mermaid
+flowchart TD
+    subgraph DETECTION["StateDetector.detect_all_states()"]
+        direction TB
+        EVAL[Évaluation de tous<br/>les états par priorité]
+    end
+
+    EVAL --> BLOCKING
+    EVAL --> WARNING
+    EVAL --> INFO
+
+    subgraph BLOCKING["🚫 BLOCKING States"]
+        direction TB
+        B1[SPAM]
+        B2[DUPLICATE_UBER]
+        B3[UBER_DOCS_MISSING]
+        B4[UBER_TEST_MISSING]
+        B5[UBER_PROSPECT]
+        B6[DOUBLE_ACCOUNT_PAID]
+        NOTE_B["<i>Stoppe le workflow<br/>Réponse unique</i>"]
+    end
+
+    subgraph WARNING["⚠️ WARNING States"]
+        direction TB
+        W1[UBER_ACCOUNT_NOT_VERIFIED]
+        W2[UBER_NOT_ELIGIBLE]
+        W3[DATE_MODIFICATION_BLOCKED]
+        W4[TRAINING_MISSED_EXAM_IMMINENT]
+        W5[PERSONAL_ACCOUNT_WARNING]
+        NOTE_W["<i>Ajoute alerte<br/>Workflow continue</i>"]
+    end
+
+    subgraph INFO["ℹ️ INFO States"]
+        direction TB
+        I1[EXAM_DATE_EMPTY]
+        I2[VALIDE_CMA_WAITING_CONVOC]
+        I3[DOSSIER_SYNCHRONIZED]
+        I4[CONVOCATION_RECEIVED]
+        I5[REPORT_DATE_REQUEST]
+        NOTE_I["<i>Combinables<br/>Réponse composite</i>"]
+    end
+
+    BLOCKING --> |"Si trouvé"| STOP([Arrêt workflow<br/>Réponse BLOCKING])
+    WARNING --> |"Collectés"| CONTINUE
+    INFO --> |"Combinés"| CONTINUE
+
+    CONTINUE[generate_response_multi<br/>Contexte combiné] --> OUTPUT([Réponse composite<br/>avec alertes WARNING])
+
+    style BLOCKING fill:#ffcdd2
+    style WARNING fill:#fff3e0
+    style INFO fill:#e8f5e9
+    style STOP fill:#ef9a9a
+    style OUTPUT fill:#c8e6c9
+```
+
+### Structure DetectedStates
+
+```python
+@dataclass
+class DetectedStates:
+    blocking_state: Optional[DetectedState]  # Premier BLOCKING (arrête tout)
+    warning_states: List[DetectedState]      # Alertes à inclure
+    info_states: List[DetectedState]         # États combinables
+    primary_state: DetectedState             # blocking > premier info
+    all_states: List[DetectedState]          # Debug
+```
+
+---
+
+## 16. Flux de Génération Multi-État/Multi-Intention
+
+```mermaid
+sequenceDiagram
+    participant WF as Workflow
+    participant TA as TriageAgent
+    participant SD as StateDetector
+    participant TE as TemplateEngine
+
+    WF->>TA: triage_ticket(subject, threads)
+    TA-->>WF: {primary_intent, secondary_intents, intent_context}
+
+    WF->>SD: detect_all_states(deal_data, examt3p, triage_result)
+
+    Note over SD: Évalue ~25 états par priorité
+
+    SD-->>WF: DetectedStates {blocking, warnings, infos}
+
+    alt BLOCKING state trouvé
+        WF->>TE: generate_response(blocking_state)
+        TE-->>WF: Réponse unique BLOCKING
+        Note over WF: Workflow STOPPÉ
+    else Pas de BLOCKING
+        WF->>TE: generate_response_multi(detected_states, triage_result)
+
+        Note over TE: 1. Combiner context_data de tous les INFO
+        Note over TE: 2. Ajouter flags WARNING (alertes)
+        Note over TE: 3. Auto-mapper intentions → flags
+        Note over TE: 4. Rendre response_master.html
+
+        TE-->>WF: Réponse composite
+    end
+
+    WF->>WF: Ajouter personnalisation IA
+    WF->>WF: Valider réponse
+    WF->>WF: Créer brouillon Zoho Desk
+```
+
+---
+
+## 17. Template Master - Composition des Sections (v2.1)
+
+```mermaid
+graph TB
+    subgraph MASTER["response_master.html - Sections Conditionnelles"]
+        direction TB
+
+        S0["<b>SECTION 0: Conditions Bloquantes</b><br/>━━━━━━━━━━━━━━━━━━━━━━━<br/>{{#if uber_cas_a}} → cas_a_docs_manquants<br/>{{#if uber_cas_b}} → cas_b_test_manquant<br/>{{#if report_bloque}} → report/bloque<br/>{{#if resultat_admis}} → resultats/admis"]
+
+        S1["<b>SECTION 1: Réponse Intentions</b><br/>━━━━━━━━━━━━━━━━━━━━━━━<br/>{{#if intention_statut_dossier}}<br/>{{#if intention_demande_date}}<br/>{{#if intention_question_session}} ⭐ NEW<br/>{{#if intention_autres_departements}} ⭐ NEW<br/>{{#if intention_question_processus}} ⭐ NEW"]
+
+        S2["<b>SECTION 2: Statut Dossier</b><br/>━━━━━━━━━━━━━━━━━━━━━━━<br/>{{#if evalbox_dossier_synchronise}}<br/>{{#if evalbox_valide_cma}}<br/>{{#if evalbox_convoc_recue}}"]
+
+        S3["<b>SECTION 3: Action Requise</b><br/>━━━━━━━━━━━━━━━━━━━━━━━<br/>{{#if action_passer_test}}<br/>{{#if action_choisir_date}}<br/>{{#if action_surveiller_paiement}}"]
+
+        S4["<b>SECTION 4: Dates/Sessions</b><br/>━━━━━━━━━━━━━━━━━━━━━━━<br/>{{#each next_dates}}<br/>{{#each sessions_proposees}}"]
+
+        S0 --> S1 --> S2 --> S3 --> S4
+    end
+
+    subgraph FLAGS["Flags Auto-Générés"]
+        direction LR
+        F1["primary_intent: REPORT_DATE<br/>↓<br/>intention_report_date: true"]
+        F2["secondary_intents: [QUESTION_SESSION]<br/>↓<br/>intention_question_session: true"]
+    end
+
+    subgraph PARTIALS["Nouveaux Partials v2.1"]
+        P1[partials/intentions/question_session.html]
+        P2[partials/intentions/question_processus.html]
+        P3[partials/intentions/autres_departements.html]
+        P4[partials/warnings/personal_account_warning.html]
+    end
+
+    FLAGS --> MASTER
+    PARTIALS --> S1
+
+    style S0 fill:#ffcdd2
+    style S1 fill:#fff3e0
+    style S2 fill:#e8f5e9
+    style S3 fill:#fce4ec
+    style S4 fill:#e3f2fd
+```
+
+---
+
+## 18. Exemple Complet - Multi-Intention + Multi-État
+
+```mermaid
+flowchart LR
+    subgraph INPUT["Entrée"]
+        MSG["Candidat: 'Je voudrais<br/>reporter ma date à juillet<br/>et avoir des infos sur<br/>les cours du soir'<br/><br/>Date actuelle: 31/03/2026<br/>Evalbox: VALIDE CMA"]
+    end
+
+    subgraph TRIAGE["Triage"]
+        T_OUT["primary: REPORT_DATE<br/>secondary: [QUESTION_SESSION]<br/>context:<br/>  requested_month: 7<br/>  session_preference: soir"]
+    end
+
+    subgraph STATES["États Détectés"]
+        S_BLOCK["🚫 BLOCKING: null"]
+        S_WARN["⚠️ WARNING:<br/>[DATE_MODIFICATION_BLOCKED]"]
+        S_INFO["ℹ️ INFO:<br/>[VALIDE_CMA_WAITING_CONVOC]"]
+    end
+
+    subgraph FLAGS["Flags Combinés"]
+        FL["intention_report_date: true<br/>intention_question_session: true<br/>report_bloque: true<br/>evalbox_valide_cma: true"]
+    end
+
+    subgraph OUTPUT["Réponse Générée"]
+        O1["Section Report Bloqué<br/>'Votre date ne peut pas<br/>être modifiée car votre<br/>dossier est validé...'"]
+        O2["Section Sessions<br/>'Concernant les cours du<br/>soir, nous proposons...'"]
+        O3["Section Statut<br/>'Statut: VALIDE CMA'"]
+    end
+
+    INPUT --> TRIAGE --> STATES --> FLAGS --> OUTPUT
+
+    style S_BLOCK fill:#c8e6c9
+    style S_WARN fill:#fff3e0
+    style S_INFO fill:#e3f2fd
+```
+
+---
+
+## Légende
+
+| Couleur | Signification |
+|---------|---------------|
+| 🟢 Vert clair | Flux principal / OK / INFO |
+| 🔵 Bleu clair | Données / APIs |
+| 🟡 Jaune/Orange | Analyse / WARNING |
+| 🟣 Violet | IA / Agents Claude |
+| 🔴 Rouge clair | Blocage / BLOCKING |
+| ⬜ Gris | Éléments neutres |
+
+---
+
+*Généré automatiquement depuis l'analyse du codebase A-Level Saver - v2.1 Multi-Intention/Multi-État*
