@@ -2004,7 +2004,9 @@ base_templates:
 
   no_compte_examt3p:
     file: "templates/base/no_compte_examt3p.html"
-    for_condition: "compte_existe == false"
+    # CONDITION RESTRICTIVE: Seulement si pas de compte ET pas Uber éligible ET pas de date assignée
+    # Pour les Uber éligibles, CAB gère le compte donc on ne demande pas les documents
+    for_condition: "compte_existe == false AND uber_eligible == false AND date_examen_vide == true"
     # Note: This is a fallback condition that should NOT match if a more specific
     # state-based template exists (like examen_passe for EXAM_DATE_PAST_VALIDATED)
     blocks: [salutation_personnalisee, no_compte_examt3p, prochaines_dates_examen, changement_departement, signature]

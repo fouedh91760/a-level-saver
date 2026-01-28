@@ -1090,18 +1090,32 @@ Deux comptes ExamenT3P fonctionnels ont été détectés pour ce candidat, et le
         skip_reason = None
 
         # Raison 1: Identifiants non accessibles
+        # EXCEPTION: Pour les candidats Uber ÉLIGIBLES, CAB gère le compte pour eux
+        # Donc on NE BLOQUE PAS sur les identifiants manquants
+        is_uber_eligible = uber_eligibility_result.get('is_eligible', False)
+        has_exam_date = bool(deal_data.get('Date_examen_VTC'))
+
         if exament3p_data.get('should_respond_to_candidate') and not exament3p_data.get('compte_existe'):
-            if exament3p_data.get('credentials_request_sent'):
+            if is_uber_eligible or has_exam_date:
+                # Uber éligible ou date déjà assignée → on continue l'analyse
+                logger.info("  ℹ️ Identifiants manquants MAIS candidat Uber éligible ou date assignée")
+                logger.info("  → On continue l'analyse dates/sessions (CAB gère le compte)")
+                # Ne pas skip, on répond à la question du candidat
+            elif exament3p_data.get('credentials_request_sent'):
                 logger.warning("  🚨 DEMANDE D'IDENTIFIANTS DÉJÀ ENVOYÉE MAIS PAS DE RÉPONSE")
                 logger.warning("  → La réponse doit confirmer que c'est normal et redemander les identifiants")
+                skip_date_session_analysis = True
+                skip_reason = 'credentials_invalid'
             elif exament3p_data.get('account_creation_requested'):
                 logger.warning("  🚨 CRÉATION DE COMPTE DEMANDÉE MAIS PAS D'IDENTIFIANTS REÇUS")
                 logger.warning("  → La réponse doit relancer le candidat sur la création de compte")
+                skip_date_session_analysis = True
+                skip_reason = 'credentials_invalid'
             else:
                 logger.warning("  🚨 IDENTIFIANTS INVALIDES → SKIP analyse dates/sessions")
                 logger.warning("  → La réponse doit UNIQUEMENT demander les bons identifiants")
-            skip_date_session_analysis = True
-            skip_reason = 'credentials_invalid'
+                skip_date_session_analysis = True
+                skip_reason = 'credentials_invalid'
 
         # Raison 2: CAS A, B, D ou E (problème Uber - vérification/éligibilité)
         if uber_case_blocks_dates:

@@ -602,7 +602,21 @@ class StateDetector:
         condition = detection.get('condition', '')
 
         # État A1: Identifiants invalides
+        # EXCEPTION: Pour les candidats Uber ÉLIGIBLES (Compte_Uber=true, ELIGIBLE=true)
+        # CAB gère le compte pour eux, donc on ne bloque PAS sur les identifiants
         if state_name == 'CREDENTIALS_INVALID':
+            # Vérifier si c'est un Uber éligible
+            is_uber_eligible = (
+                context.get('is_uber_20_deal') and
+                context.get('compte_uber') and
+                context.get('eligible_uber')
+            )
+            has_exam_date = bool(context.get('date_examen'))
+
+            # Si Uber éligible ou date assignée → pas de blocage sur credentials
+            if is_uber_eligible or has_exam_date:
+                return False
+
             if not context.get('compte_existe') and context.get('should_respond_to_candidate'):
                 return True
             if not context.get('connection_test_success') and context.get('should_respond_to_candidate'):

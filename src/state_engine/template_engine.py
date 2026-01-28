@@ -890,6 +890,12 @@ class TemplateEngine:
             # Note: uber_20 et is_uber_20_deal sont synonymes pour supporter les deux notations dans les templates
             'uber_20': context.get('is_uber_20_deal', False),
             'is_uber_20_deal': context.get('is_uber_20_deal', False),
+            # uber_eligible = Uber 20€ + Compte_Uber vérifié + ELIGIBLE vérifié
+            'uber_eligible': (
+                context.get('is_uber_20_deal', False) and
+                context.get('compte_uber', False) and
+                context.get('eligible_uber', False)
+            ),
             'can_choose_other_department': context.get('can_choose_other_department', False) or not context.get('compte_existe', True),
             'session_assigned': context.get('session_assigned', False),
             'compte_existe': context.get('compte_existe', False),
