@@ -331,7 +331,6 @@ class TemplateEngine:
                     if context_flags:
                         context.update(context_flags)
                         state.context_data.update(context_flags)
-                        logger.info(f"📌 Context flags injectés (PASS 1): {list(context_flags.keys())}")
                     return template_key, config
 
         # PASS 1.5: Templates avec for_state (état spécifique)
@@ -971,11 +970,6 @@ class TemplateEngine:
             # Actions requises (déterminées par l'état)
             **self._determine_required_actions(context, evalbox),
         }
-
-        # Debug logging pour templates hybrides
-        logger.debug(f"placeholder_data: has_next_dates={result.get('has_next_dates')}, "
-                     f"len(next_dates)={len(result.get('next_dates', []))}, "
-                     f"report_possible={result.get('report_possible')}")
 
         return result
 
