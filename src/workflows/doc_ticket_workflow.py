@@ -256,7 +256,7 @@ class DOCTicketWorkflow:
 
             # Check VÉRIFICATION #0: Connexion ExamT3P (SEUL critère de blocage)
             exament3p_data = analysis_result.get('exament3p_data', {})
-            if not exament3p_data.get('compte_existe') and not exament3p_data.get('extraction_success', True):
+            if not exament3p_data.get('compte_existe') and not exament3p_data.get('extraction_success', False):
                 logger.warning("⚠️  ÉCHEC CONNEXION EXAMENT3P → Alerte interne")
                 logger.warning("🛑 STOP WORKFLOW (impossible d'extraire les données ExamT3P)")
                 result['workflow_stage'] = 'STOPPED_EXAMT3P_FAILED'
@@ -399,7 +399,7 @@ class DOCTicketWorkflow:
 
             if auto_create_draft:
                 # Convertir markdown en HTML pour des liens cliquables
-                draft_content = response_result['response_text']
+                draft_content = response_result.get('response_text', '')
                 import re
                 html_content = draft_content
 
