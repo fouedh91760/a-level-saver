@@ -130,6 +130,14 @@
 {{> partials/intentions/autres_departements}}
 {{/if}}
 
+{{#if intention_confirmation_paiement}}
+{{> partials/intentions/confirmation_paiement}}
+{{/if}}
+
+{{#if intention_refus_credentials}}
+{{> partials/intentions/refus_credentials}}
+{{/if}}
+
 <!-- =====================================================================
      SECTION 2: STATUT ACTUEL DU DOSSIER
      (Toujours affiché pour que le candidat sache où il en est)

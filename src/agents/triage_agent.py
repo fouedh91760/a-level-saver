@@ -104,8 +104,16 @@ INTENTIONS POSSIBLES (par ordre de spécificité - préfère les intentions spé
   Exemples: "où en est mon dossier", "mon inscription", "avancement", "statut"
 - DOCUMENT_QUESTION: Question sur les documents
   Exemples: "quels documents", "pièces à fournir", "document manquant"
-- CONFIRMATION_PAIEMENT: Question sur le paiement
-  Exemples: "j'ai payé", "confirmation de paiement", "facture"
+- CONFIRMATION_PAIEMENT: Confirmation ou question sur le paiement
+  Exemples: "j'ai payé", "paiement effectué", "facture", "preuve de paiement"
+
+**Intentions liées à la CONVOCATION:**
+- DEMANDE_CONVOCATION: Demande de convocation CMA
+  Exemples: "où est ma convocation", "quand vais-je recevoir ma convocation", "pas reçu de convocation", "convocation examen"
+
+**Intentions liées à l'E-LEARNING:**
+- DEMANDE_ELEARNING_ACCESS: Demande d'accès à la formation e-learning
+  Exemples: "accès formation", "code e-learning", "connexion formation", "identifiants formation", "comment accéder aux cours"
 
 **Intentions liées aux IDENTIFIANTS:**
 - DEMANDE_IDENTIFIANTS: Demande d'identifiants ExamT3P
@@ -305,8 +313,8 @@ Pour CONFIRMATION_SESSION, extraire la préférence:
 
             client = Anthropic()
             response = client.messages.create(
-                model="claude-3-5-haiku-20241022",  # Modèle rapide pour le triage
-                max_tokens=500,
+                model="claude-sonnet-4-20250514",  # Modèle précis pour ne pas rater les intentions
+                max_tokens=800,  # Sonnet peut être plus verbeux
                 system=self.SYSTEM_PROMPT,
                 messages=[
                     {"role": "user", "content": f"Analyse ce ticket et détermine l'action de triage:\n\n{context}"}

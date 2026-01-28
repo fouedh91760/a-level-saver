@@ -1062,12 +1062,12 @@ class TemplateEngine:
         'STATUT_DOSSIER': 'intention_statut_dossier',
         'DEMANDE_DATE_EXAMEN': 'intention_demande_date',
         'DEMANDE_AUTRES_DATES': 'intention_demande_date',
-        'DEMANDE_DATES_FUTURES': 'intention_demande_date',  # Nouvelle intention
+        'DEMANDE_DATES_FUTURES': 'intention_demande_date',
         'CONFIRMATION_DATE_EXAMEN': 'intention_demande_date',
         'DEMANDE_IDENTIFIANTS': 'intention_demande_identifiants',
         'ENVOIE_IDENTIFIANTS': 'intention_demande_identifiants',
         'CONFIRMATION_SESSION': 'intention_confirmation_session',
-        'QUESTION_SESSION': 'intention_question_session',  # Nouvelle intention
+        'QUESTION_SESSION': 'intention_question_session',
         'DEMANDE_CONVOCATION': 'intention_demande_convocation',
         'DEMANDE_ELEARNING_ACCESS': 'intention_demande_elearning',
         'REPORT_DATE': 'intention_report_date',
@@ -1075,8 +1075,8 @@ class TemplateEngine:
         'DOCUMENT_QUESTION': 'intention_probleme_documents',
         'SIGNALE_PROBLEME_DOCS': 'intention_probleme_documents',
         'ENVOIE_DOCUMENTS': 'intention_probleme_documents',
-        'QUESTION_PROCESSUS': 'intention_question_processus',  # Nouvelle intention
-        'DEMANDE_AUTRES_DEPARTEMENTS': 'intention_autres_departements',  # Nouvelle intention
+        'QUESTION_PROCESSUS': 'intention_question_processus',
+        'DEMANDE_AUTRES_DEPARTEMENTS': 'intention_autres_departements',
         # Intentions fréquentes
         'QUESTION_GENERALE': 'intention_question_generale',
         'RESULTAT_EXAMEN': 'intention_resultat_examen',
@@ -1086,6 +1086,9 @@ class TemplateEngine:
         'NOTE_EXAMEN': 'intention_resultat_examen',
         'UBER_ELIGIBILITE': 'intention_question_uber',
         'UBER_OFFRE': 'intention_question_uber',
+        # Nouvelles intentions alignées (v2.2)
+        'CONFIRMATION_PAIEMENT': 'intention_confirmation_paiement',
+        'REFUS_PARTAGE_CREDENTIALS': 'intention_refus_credentials',
     }
 
     def _auto_map_intention_flags(self, context: Dict[str, Any]) -> Dict[str, bool]:
@@ -1106,18 +1109,21 @@ class TemplateEngine:
             'intention_statut_dossier': False,
             'intention_demande_date': False,
             'intention_confirmation_session': False,
-            'intention_question_session': False,  # Nouvelle
+            'intention_question_session': False,
             'intention_demande_identifiants': False,
             'intention_demande_convocation': False,
             'intention_demande_elearning': False,
             'intention_report_date': False,
             'intention_probleme_documents': False,
-            'intention_question_processus': False,  # Nouvelle
-            'intention_autres_departements': False,  # Nouvelle
+            'intention_question_processus': False,
+            'intention_autres_departements': False,
             # Intentions fréquentes
             'intention_question_generale': False,
             'intention_resultat_examen': False,
             'intention_question_uber': False,
+            # Nouvelles intentions alignées (v2.2)
+            'intention_confirmation_paiement': False,
+            'intention_refus_credentials': False,
         }
 
         # Récupérer l'intention principale (rétrocompatibilité + nouveau format)
