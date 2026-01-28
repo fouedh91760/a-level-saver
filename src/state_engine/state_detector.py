@@ -279,9 +279,11 @@ class StateDetector:
             'date_examen_passed': days_until_exam is not None and days_until_exam < 0,
             'date_examen_future': days_until_exam is not None and days_until_exam >= 0,
 
-            # Triage
+            # Triage - intentions (primary_intent est le standard, detected_intent pour rétrocompat)
             'triage_action': triage_result.get('action', 'GO'),
-            'detected_intent': triage_result.get('detected_intent'),
+            'primary_intent': triage_result.get('primary_intent') or triage_result.get('detected_intent'),
+            'detected_intent': triage_result.get('detected_intent'),  # Rétrocompat
+            'secondary_intents': triage_result.get('secondary_intents', []),
             'intent_context': triage_result.get('intent_context', {}),
 
             # Force majeure (extraites de intent_context pour les templates)
@@ -553,14 +555,28 @@ class StateDetector:
     def _match_intent_state(
         self, state_name: str, detection: Dict, context: Dict
     ) -> bool:
-        """Match les états basés sur l'intention détectée par le Triage Agent."""
+        """
+        Match les états basés sur l'intention détectée par le Triage Agent.
+
+        Vérifie à la fois primary_intent (ou detected_intent pour rétrocompat)
+        ET secondary_intents pour supporter le multi-intentions.
+        """
         condition = detection.get('condition', '')
 
         if 'detected_intent' in condition:
             # Format: "detected_intent == 'REFUS_PARTAGE_CREDENTIALS'"
             expected_intent = condition.split('==')[1].strip().strip("'\"")
-            actual_intent = context.get('detected_intent')
-            return actual_intent == expected_intent
+
+            # Vérifier primary_intent (avec fallback sur detected_intent pour rétrocompat)
+            primary_intent = context.get('primary_intent') or context.get('detected_intent')
+            if primary_intent == expected_intent:
+                return True
+
+            # Vérifier aussi les secondary_intents (multi-intentions v2.1)
+            secondary_intents = context.get('secondary_intents', [])
+            if expected_intent in secondary_intents:
+                logger.debug(f"Intent {expected_intent} matched via secondary_intents for state {state_name}")
+                return True
 
         return False
 
