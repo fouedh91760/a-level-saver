@@ -282,7 +282,8 @@ class TemplateEngine:
         evalbox = context.get('evalbox', '')
         uber_case = self._determine_uber_case(context)
         resultat = context.get('deal_data', {}).get('Resultat', '')
-        intention = context.get('detected_intent', '')
+        # Standardiser sur primary_intent avec fallback sur detected_intent (rétrocompat)
+        intention = context.get('primary_intent') or context.get('detected_intent', '')
 
         # PASS 0: Chercher dans la matrice STATE:INTENTION (priorité maximale)
         # Format: "STATE_NAME:INTENTION" -> configuration spécifique
@@ -954,8 +955,8 @@ class TemplateEngine:
             'is_force_majeure_other': context.get('is_force_majeure_other', False),
 
             # Context flags pour templates hybrides
-            # AUTO-MAPPING: Génère automatiquement les flags depuis detected_intent
-            # Priorité: context_flags de la matrice > auto-mapping depuis detected_intent
+            # AUTO-MAPPING: Génère automatiquement les flags depuis primary_intent et secondary_intents
+            # Priorité: context_flags de la matrice > auto-mapping depuis intentions
             **self._auto_map_intention_flags(context),
 
             # Context flags pour conditions bloquantes (Section 0 de response_master)
@@ -1043,7 +1044,9 @@ class TemplateEngine:
 
     def _auto_map_intention_flags(self, context: Dict[str, Any]) -> Dict[str, bool]:
         """
-        Auto-génère les flags intention_* depuis detected_intent ET secondary_intents.
+        Auto-génère les flags intention_* depuis primary_intent ET secondary_intents.
+
+        Convention: primary_intent est le standard, detected_intent est conservé pour rétrocompat.
 
         Cela évite de créer ~200 entrées manuelles dans la matrice STATE×INTENTION.
         Le template master (response_master.html) utilise ces flags pour afficher

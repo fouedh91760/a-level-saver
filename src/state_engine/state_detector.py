@@ -583,7 +583,7 @@ class StateDetector:
     def _match_triage_state(
         self, state_name: str, detection: Dict, context: Dict
     ) -> bool:
-        """Match les états basés sur le triage."""
+        """Match les états basés sur le triage (action ou intention)."""
         triage_action = detection.get('triage_action')
         condition = detection.get('condition', '')
 
@@ -592,7 +592,14 @@ class StateDetector:
 
         if 'detected_intent' in condition:
             expected_intent = condition.split('==')[1].strip().strip("'\"")
-            return context.get('detected_intent') == expected_intent
+            # Standardiser sur primary_intent avec fallback sur detected_intent
+            primary_intent = context.get('primary_intent') or context.get('detected_intent')
+            if primary_intent == expected_intent:
+                return True
+            # Vérifier aussi secondary_intents
+            secondary_intents = context.get('secondary_intents', [])
+            if expected_intent in secondary_intents:
+                return True
 
         return False
 
