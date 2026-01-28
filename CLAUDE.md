@@ -443,7 +443,9 @@ Next steps CAB:
 |---------|---------|
 | `states/candidate_states.yaml` | **~25 ÉTATS** (T1-T4, A0-A3, U01-U06, E01-E13, etc.) |
 | `states/state_intention_matrix.yaml` | **37 INTENTIONS** (I01-I37) + MATRICE État×Intention |
-| `states/templates/base/*.html` | **62 Templates** HTML (tous en .html, pas .md) |
+| `states/templates/response_master.html` | **Template master modulaire** (architecture v2.0) |
+| `states/templates/partials/**/*.html` | **Partials modulaires** (intentions, statuts, actions, uber, resultats, report, credentials) |
+| `states/templates/base_legacy/*.html` | **62 Templates legacy** (archivés, utilisés en fallback) |
 | `states/blocks/*.md` | Blocs réutilisables (salutation, signature, etc.) |
 | `states/VARIABLES.md` | Documentation des variables Handlebars |
 
@@ -639,17 +641,17 @@ L'architecture modulaire garantit que TOUTE réponse :
 2. **Affiche le statut actuel** (où en est le dossier)
 3. **Pousse vers l'action suivante** (ce que le candidat doit faire maintenant)
 
-### Structure des Dossiers
+### Structure des Dossiers (Architecture v2.0)
 
 ```
 states/templates/
 ├── response_master.html          # Template master universel
-├── base/                         # Templates spécifiques par état
+├── base_legacy/                  # Templates legacy (archivés, utilisés en fallback)
 │   ├── uber_cas_a.html
 │   ├── dossier_synchronise.html
-│   └── ...
+│   └── ... (62 templates)
 └── partials/                     # Blocs modulaires réutilisables
-    ├── intentions/               # Réponses aux intentions (7 fichiers)
+    ├── intentions/               # Réponses aux intentions (11 fichiers)
     │   ├── statut_dossier.html
     │   ├── demande_date.html
     │   ├── demande_identifiants.html
@@ -657,7 +659,10 @@ states/templates/
     │   ├── demande_convocation.html
     │   ├── demande_elearning.html
     │   ├── report_date.html
-    │   └── probleme_documents.html
+    │   ├── probleme_documents.html
+    │   ├── question_generale.html
+    │   ├── resultat_examen.html
+    │   └── question_uber.html
     ├── statuts/                  # Affichage du statut Evalbox (7 fichiers)
     │   ├── dossier_cree.html
     │   ├── dossier_synchronise.html
@@ -666,17 +671,36 @@ states/templates/
     │   ├── refus_cma.html
     │   ├── convoc_recue.html
     │   └── en_attente.html
-    └── actions/                  # Actions requises pour avancer (10 fichiers)
-        ├── passer_test.html
-        ├── envoyer_documents.html
-        ├── completer_dossier.html
-        ├── choisir_date.html
-        ├── choisir_session.html
-        ├── surveiller_paiement.html
-        ├── attendre_convocation.html
-        ├── preparer_examen.html
-        ├── corriger_documents.html
-        └── contacter_uber.html
+    ├── actions/                  # Actions requises pour avancer (10 fichiers)
+    │   ├── passer_test.html
+    │   ├── envoyer_documents.html
+    │   ├── completer_dossier.html
+    │   ├── choisir_date.html
+    │   ├── choisir_session.html
+    │   ├── surveiller_paiement.html
+    │   ├── attendre_convocation.html
+    │   ├── preparer_examen.html
+    │   ├── corriger_documents.html
+    │   └── contacter_uber.html
+    ├── uber/                     # Conditions bloquantes Uber (5 fichiers)
+    │   ├── cas_a_docs_manquants.html
+    │   ├── cas_b_test_manquant.html
+    │   ├── cas_d_compte_non_verifie.html
+    │   ├── cas_e_non_eligible.html
+    │   └── doublon_offre.html
+    ├── resultats/                # Résultats d'examen (3 fichiers)
+    │   ├── admis.html
+    │   ├── non_admis.html
+    │   └── absent.html
+    ├── report/                   # Report de date (3 fichiers)
+    │   ├── bloque.html
+    │   ├── possible.html
+    │   └── force_majeure.html
+    ├── credentials/              # Problèmes d'identifiants (2 fichiers)
+    │   ├── invalid.html
+    │   └── inconnus.html
+    └── dates/                    # Proposition de dates (1 fichier)
+        └── proposition.html
 ```
 
 ### Template Master (`response_master.html`)
@@ -751,6 +775,24 @@ Les context flags sont injectés par la matrice État×Intention et activent les
 - `intention_demande_elearning` - Accès e-learning
 - `intention_report_date` - Demande de report
 - `intention_probleme_documents` - Problème avec les documents
+- `intention_question_generale` - Question générale
+- `intention_resultat_examen` - Question sur résultat d'examen
+- `intention_question_uber` - Question sur l'offre Uber
+
+**Flags de conditions bloquantes (Section 0 du response_master) :**
+- `uber_cas_a` - Documents non envoyés (CAS A)
+- `uber_cas_b` - Test de sélection non passé (CAS B)
+- `uber_cas_d` - Compte Uber non vérifié (CAS D)
+- `uber_cas_e` - Non éligible selon Uber (CAS E)
+- `uber_doublon` - Doublon offre Uber 20€
+- `resultat_admis` - Résultat d'examen admis
+- `resultat_non_admis` - Résultat d'examen non admis
+- `resultat_absent` - Candidat absent à l'examen
+- `report_bloque` - Report impossible (VALIDE CMA + clôture passée)
+- `report_possible` - Report encore possible
+- `report_force_majeure` - Demande de report avec force majeure
+- `credentials_invalid` - Identifiants invalides
+- `credentials_inconnus` - Identifiants inconnus
 
 ### Détermination Automatique des Actions
 
@@ -925,16 +967,19 @@ L'architecture supporte deux types de templates :
 ### Vérification de la Couverture Templates
 
 ```bash
-# Vérifier qu'aucun template ne manque
+# Vérifier qu'aucun template ne manque (avec base_legacy)
 python -c "
 import re, os
 with open('states/state_intention_matrix.yaml') as f:
     templates = set(re.findall(r'template:\s*[\"']?([\\w_-]+\\.html)', f.read()))
-existing = set(os.listdir('states/templates/base'))
-missing = templates - existing
+existing = set(os.listdir('states/templates/base_legacy'))
+missing = templates - existing - {'response_master.html'}  # response_master est à la racine
 print(f'Manquants: {len(missing)}')
 for t in sorted(missing): print(f'  - {t}')
 "
+
+# Vérifier que tous les partials existent
+ls states/templates/partials/*/
 ```
 
 ---
@@ -1118,6 +1163,7 @@ Le TriageAgent détecte automatiquement cette intention et retourne `action: ROU
 2. **Vérifier les agents** : `ls src/agents/`
 3. **Vérifier les alertes** : `cat alerts/active_alerts.yaml`
 4. **Vérifier les intents existants** : `grep -E "^  [A-Z_]+:" states/state_intention_matrix.yaml`
-5. **Vérifier les templates existants** : `ls states/templates/base/`
-6. **Lire ce fichier** : Les fonctions sont documentées ici
-7. **Ne pas dupliquer** : Si une fonction existe, l'utiliser !
+5. **Vérifier les templates existants** : `ls states/templates/base_legacy/` et `ls states/templates/partials/*/`
+6. **Vérifier les partials** : `ls states/templates/partials/*/`
+7. **Lire ce fichier** : Les fonctions sont documentées ici
+8. **Ne pas dupliquer** : Si une fonction existe, l'utiliser !
