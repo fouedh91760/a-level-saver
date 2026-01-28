@@ -703,13 +703,15 @@ class TemplateEngine:
         """Prépare les données pour remplacer les placeholders."""
         context = state.context_data
         deal_data = context.get('deal_data', {})
+        contact_data = context.get('contact_data', {})  # Données du Contact lié (First_Name, Last_Name)
         examt3p_data = context.get('examt3p_data', {})
 
-        # Extraire le prénom
-        prenom = self._extract_prenom(deal_data)
+        # Extraire le prénom et nom depuis Contact (pas Deal)
+        prenom = self._extract_prenom_from_contact(contact_data, deal_data)
+        nom = contact_data.get('Last_Name', '') or ''
 
-        # Formater les dates
-        date_examen = context.get('date_examen')
+        # Formater les dates - utiliser date_examen_vtc_value si disponible (extraite du lookup)
+        date_examen = context.get('date_examen_vtc_value') or context.get('date_examen')
         date_examen_formatted = self._format_date(date_examen) if date_examen else ''
 
         # Département
@@ -734,10 +736,10 @@ class TemplateEngine:
                 pass
 
         return {
-            # Infos candidat
+            # Infos candidat (depuis Contact, pas Deal)
             'prenom': prenom or 'Bonjour',
-            'nom': deal_data.get('Last_Name', ''),
-            'email': deal_data.get('Email', ''),
+            'nom': nom,
+            'email': contact_data.get('Email') or deal_data.get('Email', ''),
 
             # Identifiants ExamT3P
             'identifiant_examt3p': examt3p_data.get('identifiant', ''),
@@ -1027,22 +1029,23 @@ class TemplateEngine:
 
         return formatted
 
-    def _extract_prenom(self, deal_data: Dict[str, Any]) -> str:
-        """Extrait le prénom du candidat."""
-        first_name = deal_data.get('First_Name', '')
+    def _extract_prenom_from_contact(self, contact_data: Dict[str, Any], deal_data: Dict[str, Any]) -> str:
+        """Extrait le prénom du candidat depuis Contact (prioritaire) ou Deal_Name (fallback)."""
+        # Priorité 1: First_Name du Contact
+        first_name = contact_data.get('First_Name', '')
         if first_name and first_name.strip():
             return first_name.strip().capitalize()
 
+        # Priorité 2: Extraire le prénom du Deal_Name (ex: "Thomas DUPONT" -> "Thomas")
         deal_name = deal_data.get('Deal_Name', '')
-        if deal_name:
-            internal_codes = {'BFS', 'NP', 'CPF', 'UBER', 'VISIO', 'PRES', 'TEST', 'VIP'}
+        if deal_name and ' ' in deal_name:
+            # Prendre le premier mot qui n'est pas tout en majuscules
             parts = deal_name.split()
             for part in parts:
-                if part.upper() in internal_codes:
-                    continue
-                if len(part) <= 3 and part.isupper():
-                    continue
-                return part.capitalize()
+                if not part.isupper() and part.isalpha():
+                    return part.capitalize()
+            # Sinon prendre le premier mot
+            return parts[0].capitalize()
 
         return ''
 

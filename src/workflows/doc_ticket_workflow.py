@@ -704,12 +704,37 @@ class DOCTicketWorkflow:
         deal_id = linking_result.get('deal_id')
         deal_data = linking_result.get('selected_deal') or linking_result.get('deal') or {}
 
+        # ================================================================
+        # RÉCUPÉRER LES DONNÉES DU CONTACT LIÉ (First_Name, Last_Name)
+        # ================================================================
         contact_data = {}
+        contact_id = deal_data.get('Contact_Name', {}).get('id') if deal_data else None
+        if contact_id:
+            try:
+                contact_data = self.crm_client.get_contact(contact_id)
+                logger.info(f"  ✅ Contact récupéré: {contact_data.get('First_Name', '')} {contact_data.get('Last_Name', '')}")
+            except Exception as e:
+                logger.warning(f"  ⚠️  Erreur récupération contact: {e}")
+
         if email:
-            contact_data = {
-                'email': email,
-                'contact_id': deal_data.get('Contact_Name', {}).get('id') if deal_data else None
-            }
+            contact_data['email'] = email
+            contact_data['contact_id'] = contact_id
+
+        # ================================================================
+        # EXTRAIRE LA DATE DEPUIS LE LOOKUP Date_examen_VTC
+        # ================================================================
+        # Date_examen_VTC est un lookup vers le module Dates_Examens_VTC_TAXI
+        # On extrait la vraie date (pas juste le record ID)
+        date_examen_vtc_value = None
+        date_examen_lookup = deal_data.get('Date_examen_VTC')
+        if date_examen_lookup:
+            if isinstance(date_examen_lookup, dict):
+                # C'est un lookup, récupérer la date du record lié
+                date_examen_vtc_value = date_examen_lookup.get('Date_Examen') or date_examen_lookup.get('name')
+            else:
+                # C'est peut-être déjà une string (compatibilité)
+                date_examen_vtc_value = date_examen_lookup
+            logger.debug(f"  📅 Date_examen_VTC extraite: {date_examen_vtc_value}")
 
         if not deal_id:
             logger.warning("  ⚠️  No deal found for this ticket")
@@ -1222,9 +1247,10 @@ Deux comptes ExamenT3P fonctionnels ont été détectés pour ce candidat, et le
             logger.info("  📝 CONFIRMATION_SESSION: dates alternatives supprimées du contexte IA")
 
         return {
-            'contact_data': contact_data,
+            'contact_data': contact_data,  # Données du contact lié (First_Name, Last_Name)
             'deal_id': deal_id,
             'deal_data': deal_data,
+            'date_examen_vtc_value': date_examen_vtc_value,  # Date réelle extraite du lookup
             'exament3p_data': exament3p_data,
             'uber_eligibility_result': uber_eligibility_result,  # Éligibilité Uber 20€
             'date_examen_vtc_result': date_examen_vtc_result,
@@ -1476,11 +1502,17 @@ L'équipe Cab Formations"""
         session_data = analysis_result.get('session_data', {})
         uber_result = analysis_result.get('uber_eligibility_result', {})
 
+        # Récupérer contact_data et date_examen_vtc_value depuis analysis_result
+        contact_data = analysis_result.get('contact_data', {})
+        date_examen_vtc_value = analysis_result.get('date_examen_vtc_value')
+
         detected_state.context_data.update({
             # Données brutes
             'deal_data': deal_data,
+            'contact_data': contact_data,  # Données du contact (First_Name, Last_Name)
             'examt3p_data': examt3p_data,
             'date_examen_vtc_data': date_examen_vtc_result,
+            'date_examen_vtc_value': date_examen_vtc_value,  # Date réelle extraite du lookup
             'session_data': session_data,
             'uber_eligibility_data': uber_result,
             'training_exam_consistency_data': analysis_result.get('training_exam_consistency_result', {}),

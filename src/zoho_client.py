@@ -561,6 +561,12 @@ class ZohoCRMClient(ZohoAPIClient):
         response = self._make_request("GET", url)
         return response.get("data", [{}])[0] if response.get("data") else {}
 
+    def get_contact(self, contact_id: str) -> Dict[str, Any]:
+        """Get a specific contact by ID."""
+        url = f"{settings.zoho_crm_api_url}/Contacts/{contact_id}"
+        response = self._make_request("GET", url)
+        return response.get("data", [{}])[0] if response.get("data") else {}
+
     def update_deal(
         self,
         deal_id: str,
