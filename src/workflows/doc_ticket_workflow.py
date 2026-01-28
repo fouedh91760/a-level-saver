@@ -2003,12 +2003,9 @@ Réponds UNIQUEMENT avec ce format, rien d'autre."""
         """Prepare ticket field updates."""
         updates = {}
 
-        # Could update tags, status, priority based on scenario
-        scenarios = response_result.get('detected_scenarios', [])
-
-        if scenarios:
-            # Add scenario tags
-            updates['tags'] = scenarios[:3]  # Max 3 tags
+        # Note: Les tags Zoho Desk ne peuvent pas être mis à jour via l'API standard
+        # (erreur "An extra parameter 'tags' is found")
+        # Pour le moment, on ne met pas à jour les tags automatiquement
 
         return updates
 
