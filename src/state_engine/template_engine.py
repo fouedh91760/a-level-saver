@@ -1069,13 +1069,22 @@ class TemplateEngine:
                 flags[flag_name] = True
                 logger.debug(f"Auto-mapped primary_intent {primary_intent} -> {flag_name}")
 
-        # Auto-mapper les intentions secondaires (NOUVEAU)
+        # Auto-mapper les intentions secondaires (avec vérification Section 0)
         secondary_intents = context.get('secondary_intents', [])
         for intent in secondary_intents:
             if intent in self.INTENTION_FLAG_MAP:
                 flag_name = self.INTENTION_FLAG_MAP[intent]
-                flags[flag_name] = True
-                logger.debug(f"Auto-mapped secondary_intent {intent} -> {flag_name}")
+                # Vérifier si un flag Section 0 couvre déjà cette intention secondaire
+                skip_mapping = False
+                if flag_name in section0_overrides:
+                    for section0_flag in section0_overrides[flag_name]:
+                        if context.get(section0_flag):
+                            skip_mapping = True
+                            logger.debug(f"Skipping secondary_intent {intent} - covered by Section 0 flag {section0_flag}")
+                            break
+                if not skip_mapping:
+                    flags[flag_name] = True
+                    logger.debug(f"Auto-mapped secondary_intent {intent} -> {flag_name}")
 
         # Priorité aux flags déjà définis dans le contexte (via matrice)
         for flag_name in flags:
