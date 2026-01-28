@@ -99,7 +99,7 @@ states:
   DUPLICATE_UBER:
     id: "T3"
     priority: 3
-    severity: "BLOCKING"  # Stoppe le workflow (réponse unique)
+    severity: "WARNING"  # Était BLOCKING - permet de répondre à la question + alerter sur le doublon
     description: "Candidat a déjà utilisé l'offre Uber 20€"
     category: "triage"
 
@@ -313,7 +313,7 @@ states:
   UBER_PROSPECT:
     id: "U-PROSPECT"
     priority: 200
-    severity: "BLOCKING"  # Doit payer avant de continuer
+    severity: "WARNING"  # Était BLOCKING - permet de répondre aux questions du prospect + rappeler le paiement
     description: "Candidat prospect Uber - paiement 20€ non effectué"
     category: "uber_eligibility"
 
@@ -348,7 +348,7 @@ states:
   UBER_DOCS_MISSING:
     id: "U-A"
     priority: 201
-    severity: "BLOCKING"  # Doit envoyer documents avant de continuer
+    severity: "WARNING"  # Était BLOCKING - permet de répondre à la question + alerter sur les docs manquants
     description: "Uber 20€ payé mais documents non envoyés"
     category: "uber_eligibility"
 
@@ -383,7 +383,7 @@ states:
   UBER_TEST_MISSING:
     id: "U-B"
     priority: 202
-    severity: "BLOCKING"  # Doit passer test avant de continuer
+    severity: "WARNING"  # Était BLOCKING - permet de répondre à la question + alerter sur le test à passer
     description: "Documents envoyés mais test de sélection non passé"
     category: "uber_eligibility"
 

@@ -15,7 +15,8 @@
 {{> salutation_personnalisee}}
 
 <!-- =====================================================================
-     SECTION 0: CONDITIONS BLOQUANTES (Uber, Résultats, Report)
+     SECTION 0: ALERTES PRIORITAIRES (Uber, Résultats, Report, Credentials)
+     Ces alertes sont affichées en premier mais n'empêchent pas Section 1
      ===================================================================== -->
 
 {{#if uber_cas_a}}
@@ -36,6 +37,10 @@
 
 {{#if uber_doublon}}
 {{> partials/uber/doublon_offre}}
+{{/if}}
+
+{{#if uber_prospect}}
+{{> partials/uber/prospect_paiement}}
 {{/if}}
 
 {{#if resultat_admis}}

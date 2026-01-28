@@ -1425,21 +1425,39 @@ L'équipe Cab Formations"""
         Génère une réponse pour demander des clarifications quand le candidat
         n'est pas trouvé dans le CRM.
 
-        Similaire à ce que Aicha a fait manuellement :
-        "Nous avons du mal à retrouver votre dossier via l'adresse mail...
-        Pouvez-vous svp nous communiquer vos coordonnées..."
+        Reconnaît l'intention du candidat avant de demander les informations.
         """
         logger.info("📝 Génération de la réponse de CLARIFICATION...")
 
         email_searched = triage_result.get('email_searched', 'non identifié')
         alternative_email = triage_result.get('alternative_email_used')
+        primary_intent = triage_result.get('primary_intent', '')
+
+        # Adapter l'intro selon l'intention détectée
+        intent_acknowledgment = ""
+        if primary_intent == 'STATUT_DOSSIER':
+            intent_acknowledgment = "Concernant votre demande sur l'avancement de votre dossier : "
+        elif primary_intent in ('DEMANDE_DATES_FUTURES', 'DEMANDE_DATE_EXAMEN'):
+            intent_acknowledgment = "Concernant votre demande sur les dates d'examen : "
+        elif primary_intent == 'REPORT_DATE':
+            intent_acknowledgment = "Concernant votre demande de changement de date : "
+        elif primary_intent == 'DEMANDE_IDENTIFIANTS':
+            intent_acknowledgment = "Concernant votre demande d'identifiants : "
+        elif primary_intent == 'DEMANDE_CONVOCATION':
+            intent_acknowledgment = "Concernant votre demande de convocation : "
+        elif primary_intent == 'CONFIRMATION_SESSION':
+            intent_acknowledgment = "Concernant votre choix de session de formation : "
+        elif primary_intent == 'RESULTAT_EXAMEN':
+            intent_acknowledgment = "Concernant votre demande de résultat d'examen : "
+        elif primary_intent:
+            intent_acknowledgment = "Concernant votre demande : "
 
         # Générer la réponse
         response_text = f"""Bonjour,
 
 Je vous remercie pour votre message.
 
-Nous avons du mal à retrouver votre dossier via l'adresse mail **{email_searched}**.
+{intent_acknowledgment}Nous avons du mal à retrouver votre dossier via l'adresse mail **{email_searched}**.
 
 Afin de pouvoir accéder à votre dossier et vous apporter une réponse précise, pourriez-vous nous communiquer les informations suivantes :
 
@@ -1447,19 +1465,20 @@ Afin de pouvoir accéder à votre dossier et vous apporter une réponse précise
 - **L'adresse email utilisée lors de votre inscription** (si différente de celle-ci)
 - **Votre numéro de téléphone**
 
-Ces informations nous permettront de retrouver votre dossier rapidement.
+Dès réception de ces informations, nous reviendrons vers vous rapidement.
 
 Bien cordialement,
 
-L'équipe Cab Formations"""
+L'équipe CAB Formations"""
 
-        logger.info(f"✅ Réponse CLARIFICATION générée ({len(response_text)} caractères)")
+        logger.info(f"✅ Réponse CLARIFICATION générée ({len(response_text)} caractères), intent={primary_intent}")
 
         return {
             'response_text': response_text,
             'is_clarification_response': True,
             'email_searched': email_searched,
             'alternative_email_tried': alternative_email,
+            'intent_acknowledged': primary_intent,
             'crm_updates': {},  # Pas de mise à jour CRM - candidat non trouvé
             'detected_scenarios': ['CANDIDATE_NOT_FOUND']
         }
