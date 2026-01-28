@@ -773,22 +773,43 @@ class StateDetector:
     def _match_consistency_state(
         self, state_name: str, detection: Dict, context: Dict
     ) -> bool:
-        """Match les états de cohérence."""
+        """
+        Match les états de cohérence formation/examen.
+
+        Utilise training_exam_consistency_data du contexte (fourni par
+        training_exam_consistency_helper.py).
+        """
+        consistency_data = context.get('training_exam_consistency_data', {})
+
         # C1: Formation manquée + examen imminent
         if state_name == 'TRAINING_MISSED_EXAM_IMMINENT':
-            # À implémenter avec les données de session
-            pass
+            if consistency_data.get('training_missed_exam_imminent') is True:
+                logger.debug(f"État {state_name} détecté via training_exam_consistency_data")
+                return True
+
+        # C3: Dossier not received (documents non reçus par la CMA)
+        if state_name == 'DOSSIER_NOT_RECEIVED':
+            if consistency_data.get('dossier_not_received') is True:
+                logger.debug(f"État {state_name} détecté via training_exam_consistency_data")
+                return True
 
         return False
 
     def _match_session_state(
         self, state_name: str, detection: Dict, context: Dict
     ) -> bool:
-        """Match les états session."""
-        # C2: Refresh session available
+        """
+        Match les états session.
+
+        Utilise session_data du contexte (fourni par session_helper.py).
+        """
+        session_data = context.get('session_data', {})
+
+        # C2: Refresh session available (session de rattrapage disponible)
         if state_name == 'REFRESH_SESSION_AVAILABLE':
-            # À implémenter
-            pass
+            if session_data.get('refresh_session_available') is True:
+                logger.debug(f"État {state_name} détecté via session_data")
+                return True
 
         return False
 
