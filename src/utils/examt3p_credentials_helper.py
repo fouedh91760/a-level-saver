@@ -300,7 +300,7 @@ def test_examt3p_connection(identifiant: str, mot_de_passe: str) -> Tuple[bool, 
         return False, str(e)
 
 
-def _is_account_paid(examt3p_data: Dict) -> bool:
+def _is_account_paid(examt3p_data: Dict, account_label: str = "compte") -> bool:
     """
     Détermine si un compte ExamT3P a déjà été payé.
 
@@ -311,15 +311,21 @@ def _is_account_paid(examt3p_data: Dict) -> bool:
 
     Args:
         examt3p_data: Données extraites du compte ExamT3P
+        account_label: Label pour les logs (ex: "CRM", "Thread")
 
     Returns:
         True si le compte est payé, False sinon
     """
+    logger.info(f"     🔍 Analyse paiement {account_label}:")
+
     if not examt3p_data or examt3p_data.get('error'):
+        logger.info(f"        ❌ Données vides ou erreur")
         return False
 
     # Vérifier le statut du dossier
     statut = examt3p_data.get('statut_dossier', '').lower()
+    logger.info(f"        📋 statut_dossier: '{examt3p_data.get('statut_dossier', 'N/A')}'")
+
     statuts_payes = [
         'valide',
         'en attente de convocation',
@@ -328,24 +334,34 @@ def _is_account_paid(examt3p_data: Dict) -> bool:
         'dossier validé'
     ]
     if any(s in statut for s in statuts_payes):
+        matched = [s for s in statuts_payes if s in statut][0]
+        logger.info(f"        ✅ PAYÉ via statut_dossier (match: '{matched}')")
         return True
 
     # Vérifier le paiement CMA
     paiement_cma = examt3p_data.get('paiement_cma', {})
+    logger.info(f"        💳 paiement_cma: {paiement_cma}")
     if paiement_cma.get('statut', '').upper() == 'VALIDÉ':
+        logger.info(f"        ✅ PAYÉ via paiement_cma.statut = 'VALIDÉ'")
         return True
 
     # Vérifier l'historique des paiements
     historique = examt3p_data.get('historique_paiements', [])
-    for paiement in historique:
+    logger.info(f"        📜 historique_paiements: {len(historique)} entrée(s)")
+    for i, paiement in enumerate(historique):
+        logger.info(f"           [{i}] {paiement}")
         if paiement.get('statut', '').upper() == 'VALIDÉ':
+            logger.info(f"        ✅ PAYÉ via historique_paiements[{i}].statut = 'VALIDÉ'")
             return True
 
     # Vérifier la progression
     progression = examt3p_data.get('progression', {})
+    logger.info(f"        📊 progression: {progression}")
     if progression.get('paiement', '').upper() == 'VALIDÉ':
+        logger.info(f"        ✅ PAYÉ via progression.paiement = 'VALIDÉ'")
         return True
 
+    logger.info(f"        ❌ NON PAYÉ (aucun critère rempli)")
     return False
 
 
@@ -580,11 +596,11 @@ def get_credentials_with_validation(
                 data_threads = extract_exament3p_sync(identifiant_threads, mdp_threads, max_retries=1)
 
                 # Analyser les statuts de paiement
-                crm_paid = _is_account_paid(data_crm)
-                threads_paid = _is_account_paid(data_threads)
+                crm_paid = _is_account_paid(data_crm, "CRM")
+                threads_paid = _is_account_paid(data_threads, "Thread")
 
-                logger.info(f"  💰 Compte CRM payé: {crm_paid}")
-                logger.info(f"  💰 Compte Thread payé: {threads_paid}")
+                logger.info(f"  💰 Résultat - Compte CRM payé: {crm_paid}")
+                logger.info(f"  💰 Résultat - Compte Thread payé: {threads_paid}")
 
                 # RÈGLES DE DÉCISION
                 if crm_paid and threads_paid:
