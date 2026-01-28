@@ -1882,12 +1882,14 @@ Génère maintenant la personnalisation (1-3 phrases):"""
         Crée une note CRM unique et consolidée avec toutes les infos du traitement.
 
         Format:
-        - Lien vers le ticket Desk
-        - Mises à jour CRM effectuées
-        - Next steps candidat (généré par IA)
-        - Next steps CAB (généré par IA)
-        - Alertes si nécessaire
+        1. Lien vers le ticket Desk
+        2. Résumé de la réponse envoyée au candidat
+        3. Mises à jour CRM effectuées
+        4. Next steps (candidat + CAB)
+        5. Alertes si nécessaire
         """
+        import anthropic
+
         lines = []
 
         # === EN-TÊTE avec lien ticket ===
@@ -1932,10 +1934,10 @@ Génère maintenant la personnalisation (1-3 phrases):"""
             lines.append("Mises à jour CRM: aucune")
         lines.append("")
 
-        # === NEXT STEPS (généré par IA) ===
-        next_steps = self._generate_next_steps_with_ai(analysis_result, response_result)
-        if next_steps:
-            lines.append(next_steps)
+        # === GÉNÉRER RÉSUMÉ + NEXT STEPS avec Claude ===
+        note_content = self._generate_note_content_with_ai(analysis_result, response_result)
+        if note_content:
+            lines.append(note_content)
             lines.append("")
 
         # === ALERTES ===
@@ -1968,60 +1970,86 @@ Génère maintenant la personnalisation (1-3 phrases):"""
 
         return "\n".join(lines)
 
-    def _generate_next_steps_with_ai(
+    def _generate_note_content_with_ai(
         self,
         analysis_result: Dict,
         response_result: Dict
     ) -> str:
         """
-        Utilise Claude Haiku pour générer les next steps intelligents.
+        Utilise Claude Sonnet pour générer:
+        1. Résumé de ce qui a été répondu au candidat
+        2. Next steps candidat et CAB
         """
         import anthropic
 
-        # Préparer le contexte pour l'IA
+        # Récupérer la réponse envoyée
+        response_text = response_result.get('response_text', '')
+
+        # Préparer le contexte
         deal_data = analysis_result.get('deal_data', {})
         examt3p_data = analysis_result.get('exament3p_data', {})
         date_result = analysis_result.get('date_examen_vtc_result', {})
-        session_data = analysis_result.get('session_data', {})
         uber_result = analysis_result.get('uber_eligibility_result', {})
 
-        context = f"""Contexte candidat VTC:
-- Statut Evalbox: {deal_data.get('Evalbox', 'Non défini')}
-- Statut ExamT3P: {examt3p_data.get('statut_dossier', 'N/A')}
-- Date examen: {date_result.get('date_examen_info', {}).get('Date_Examen', 'Non définie') if isinstance(date_result.get('date_examen_info'), dict) else 'Non définie'}
-- Session formation: {'Assignée' if deal_data.get('Session') else 'Non assignée'}
-- Cas date examen: {date_result.get('case_description', 'N/A')}
-- Deal Uber 20€: {'Oui - ' + uber_result.get('case_description', '') if uber_result.get('is_uber_20_deal') else 'Non'}
-"""
+        # État détecté
+        detected_state = response_result.get('detected_state', {})
+        state_name = detected_state.get('name', 'N/A') if isinstance(detected_state, dict) else str(detected_state)
 
-        prompt = f"""{context}
+        # Uber status
+        is_uber = uber_result.get('is_uber_20_deal', False)
+        uber_case = uber_result.get('case', '')
 
-Génère les prochaines étapes en 2-3 bullet points MAX par section.
-Sois TRÈS concis (5-10 mots par point).
+        prompt = f"""Tu es un assistant qui génère des notes CRM concises pour le suivi des candidats VTC.
 
-Format EXACT à respecter:
+CONTEXTE:
+- État: {state_name}
+- Evalbox: {deal_data.get('Evalbox', 'N/A')}
+- Deal Uber 20€: {'Oui - ' + uber_case if is_uber else 'Non'}
+- Date examen: {date_result.get('date_examen_info', {}).get('Date_Examen', 'N/A') if isinstance(date_result.get('date_examen_info'), dict) else 'N/A'}
+- Session assignée: {'Oui' if deal_data.get('Session') else 'Non'}
+
+RÉPONSE ENVOYÉE AU CANDIDAT:
+{response_text[:1500]}
+
+---
+
+Génère une note CRM avec EXACTEMENT ce format:
+
+Réponse envoyée:
+• [point clé 1 de ce qui a été communiqué]
+• [point clé 2]
+• [point clé 3 si pertinent]
+
 Next steps candidat:
-• [action 1]
-• [action 2]
+• [action concrète 1]
+• [action concrète 2 si nécessaire]
 
 Next steps CAB:
-• [action 1]
-• [action 2]
+• [action concrète 1]
+• [action concrète 2 si nécessaire]
 
-Réponds UNIQUEMENT avec ce format, rien d'autre."""
+RÈGLES:
+- Résumer ce qui a RÉELLEMENT été dit dans la réponse (pas d'invention)
+- Next steps SPÉCIFIQUES au contexte actuel
+- Si Uber ÉLIGIBLE et frais pris en charge: ne PAS dire au candidat de payer
+- Maximum 3 points par section
+- Phrases courtes (5-10 mots max)
+- Pas de formules vides comme "suivre le dossier"
+
+Réponds UNIQUEMENT avec le format demandé, rien d'autre."""
 
         try:
             client = anthropic.Anthropic()
             response = client.messages.create(
-                model="claude-3-5-haiku-20241022",
-                max_tokens=200,
+                model="claude-sonnet-4-20250514",
+                max_tokens=400,
                 messages=[{"role": "user", "content": prompt}]
             )
             return response.content[0].text.strip()
         except Exception as e:
-            logger.warning(f"Erreur génération next steps IA: {e}")
+            logger.warning(f"Erreur génération note IA: {e}")
             # Fallback basique
-            return "Next steps candidat:\n• Consulter le draft de réponse\n\nNext steps CAB:\n• Vérifier et envoyer la réponse"
+            return "Réponse envoyée:\n• Voir brouillon dans Zoho Desk\n\nNext steps candidat:\n• Consulter la réponse\n\nNext steps CAB:\n• Vérifier et envoyer"
 
     def _prepare_ticket_updates(self, response_result: Dict) -> Dict:
         """Prepare ticket field updates."""
