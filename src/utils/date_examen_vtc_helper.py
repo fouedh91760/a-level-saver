@@ -567,6 +567,61 @@ def analyze_exam_date_situation(
 
     date_is_past = is_date_in_past(date_examen_str) if date_examen_str else False
 
+    # ================================================================
+    # CAS 8 PRIORITAIRE: Deadline passée pour statuts "avant paiement"
+    # ================================================================
+    # Statuts où le paiement n'a pas encore été fait (donc report possible)
+    PRE_PAYMENT_STATUSES = [
+        'Dossier crée', 'Dossier créé',  # En cours de composition
+        'Pret a payer', 'Pret a payer par cheque',  # En attente de paiement
+        'Refusé CMA',  # Documents refusés, correction nécessaire
+    ]
+
+    date_cloture_is_past = is_date_in_past(result['date_cloture']) if result.get('date_cloture') else False
+
+    if evalbox_status in PRE_PAYMENT_STATUSES and date_cloture_is_past and not date_is_past:
+        # Date d'examen future mais deadline passée → report automatique sur prochaine session
+        result['case'] = 8
+        result['case_description'] = "Deadline passée (avant paiement) - Report automatique sur prochaine session"
+        result['should_include_in_response'] = True
+        result['deadline_passed_reschedule'] = True  # Flag pour mise à jour CRM
+
+        # Récupérer la prochaine date disponible
+        if crm_client:
+            if departement:
+                next_dates = get_next_exam_dates(crm_client, departement, limit=2)
+            else:
+                logger.info("  ⚠️ Département inconnu - récupération des dates tous départements")
+                next_dates = get_next_exam_dates_any_department(crm_client, limit=15)
+
+            result['next_dates'] = next_dates
+
+            # Stocker la nouvelle date pour mise à jour CRM
+            if next_dates:
+                new_session = next_dates[0]
+                result['new_exam_session'] = new_session
+                result['new_exam_session_id'] = new_session.get('id')
+                result['new_exam_date'] = new_session.get('Date_Examen')
+                result['new_exam_date_cloture'] = new_session.get('Date_Cloture_Inscription')
+                logger.info(f"  📅 Nouvelle date proposée: {result['new_exam_date']} (clôture: {result['new_exam_date_cloture']})")
+
+            # Dates alternatives si pas de compte ExamT3P
+            if result['can_choose_other_department'] and next_dates and departement:
+                first_date = next_dates[0].get('Date_Examen')
+                if first_date:
+                    result['alternative_department_dates'] = get_earlier_dates_other_departments(
+                        crm_client, departement, first_date, limit=3
+                    )
+
+        result['response_message'] = generate_deadline_missed_message(
+            date_examen_str,
+            result['date_cloture'],
+            evalbox_status,
+            result['next_dates']
+        )
+        logger.info(f"  ➡️ CAS 8: Deadline passée + {evalbox_status} → Report automatique")
+        return result
+
     # CAS 3: Evalbox = Refusé CMA (prioritaire car peut arriver avec date passée ou future)
     # Statut "Incomplet" sur ExamT3P = certaines pièces refusées par la CMA
     # En cas de refus, le candidat est automatiquement repositionné sur la PROCHAINE date d'examen
@@ -743,45 +798,8 @@ def analyze_exam_date_situation(
             logger.info(f"  ➡️ CAS 10: Prêt à payer ({evalbox_status})")
             return result
 
-        # Vérifier si la date de clôture est passée
-        date_cloture_is_past = is_date_in_past(result['date_cloture']) if result.get('date_cloture') else False
-
-        # CAS 8: Date future + Date_Cloture passée + Evalbox ≠ VALIDE CMA/Dossier Synchronisé
-        # = Le candidat a raté la date limite d'inscription, il sera reporté sur la prochaine session
-        if date_cloture_is_past:
-            result['case'] = 8
-            result['case_description'] = "Date future + Deadline passée + dossier non validé - Report sur prochaine session"
-            result['should_include_in_response'] = True
-
-            if crm_client:
-                if departement:
-                    result['next_dates'] = get_next_exam_dates(crm_client, departement, limit=2)
-                else:
-                    # Fallback when department is unknown
-                    logger.info("  ⚠️ Département inconnu - récupération des dates tous départements")
-                    result['next_dates'] = get_next_exam_dates_any_department(crm_client, limit=15)  # Many dates for geographic coverage
-
-                # Si pas de compte ExamT3P, chercher des dates plus tôt dans d'autres départements
-                if result['can_choose_other_department'] and result['next_dates'] and departement:
-                    first_date = result['next_dates'][0].get('Date_Examen')
-                    if first_date:
-                        result['alternative_department_dates'] = get_earlier_dates_other_departments(
-                            crm_client,
-                            departement,
-                            first_date,
-                            limit=3
-                        )
-                        if result['alternative_department_dates']:
-                            logger.info(f"  📅 {len(result['alternative_department_dates'])} date(s) plus tôt dans d'autres départements")
-
-            result['response_message'] = generate_deadline_missed_message(
-                date_examen_str,
-                result['date_cloture'],
-                evalbox_status,
-                result['next_dates']
-            )
-            logger.info(f"  ➡️ CAS 8: Date future + Deadline passée + non validé ({evalbox_status})")
-            return result
+        # Note: CAS 8 (deadline passée) est maintenant géré en priorité au début de la fonction
+        # pour les statuts PRE_PAYMENT_STATUSES. Ce bloc est un fallback pour les cas edge.
 
         # CAS 6: Date future + autre statut + deadline pas encore passée
         # La date est DÉJÀ ASSIGNÉE → pas besoin de proposer d'autres dates par défaut

@@ -800,6 +800,9 @@ class TemplateEngine:
             'compte_existe': context.get('compte_existe', False),
             'can_modify_exam_date': context.get('can_modify_exam_date', True),
             'cloture_passed': context.get('cloture_passed', False),
+            'deadline_passed_reschedule': context.get('deadline_passed_reschedule', False),
+            'new_exam_date': self._format_date(context.get('new_exam_date', '')) if context.get('new_exam_date') else '',
+            'new_exam_date_cloture': self._format_date(context.get('new_exam_date_cloture', '')) if context.get('new_exam_date_cloture') else '',
 
             # Booléens pour proposer dates/sessions
             'date_examen_vide': not date_examen,

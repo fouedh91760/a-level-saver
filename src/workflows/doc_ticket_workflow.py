@@ -352,20 +352,31 @@ class DOCTicketWorkflow:
             result['workflow_stage'] = 'DEAL_UPDATE'
 
             # Check both scenario flag and AI-extracted updates
-            has_ai_updates = bool(response_result.get('crm_updates'))
+            ai_updates = response_result.get('crm_updates', {}).copy() if response_result.get('crm_updates') else {}
+
+            # D-8: Si deadline passée avant paiement, injecter la nouvelle date d'examen
+            date_examen_vtc_result = analysis_result.get('date_examen_vtc_result', {})
+            if date_examen_vtc_result.get('deadline_passed_reschedule') and date_examen_vtc_result.get('new_exam_date'):
+                new_date = date_examen_vtc_result['new_exam_date']
+                logger.info(f"  📅 D-8: Deadline passée → inscription sur prochaine date: {new_date}")
+                ai_updates['Date_examen_VTC'] = new_date
+                result['deadline_passed_reschedule'] = True
+                result['new_exam_date'] = new_date
+
+            has_ai_updates = bool(ai_updates)
             scenario_requires_update = response_result.get('requires_crm_update')
 
             if has_ai_updates or scenario_requires_update:
                 if scenario_requires_update:
                     logger.info(f"Champs à updater (scénario): {response_result.get('crm_update_fields', [])}")
                 if has_ai_updates:
-                    logger.info(f"Champs à updater (AI): {response_result.get('crm_updates', {})}")
+                    logger.info(f"Champs à updater: {ai_updates}")
 
                 if auto_update_crm and analysis_result.get('deal_id'):
                     # Utiliser CRMUpdateAgent pour centraliser la logique
                     crm_update_result = self.crm_update_agent.update_from_ticket_response(
                         deal_id=analysis_result['deal_id'],
-                        ai_updates=response_result.get('crm_updates', {}),
+                        ai_updates=ai_updates,
                         deal_data=analysis_result.get('deal_data', {}),
                         session_data=analysis_result.get('session_data', {}),
                         ticket_id=ticket_id
@@ -1536,6 +1547,9 @@ L'équipe Cab Formations"""
             'date_cloture': date_examen_vtc_result.get('date_cloture'),
             'can_choose_other_department': date_examen_vtc_result.get('can_choose_other_department', False),
             'alternative_department_dates': date_examen_vtc_result.get('alternative_department_dates', []),
+            'deadline_passed_reschedule': date_examen_vtc_result.get('deadline_passed_reschedule', False),
+            'new_exam_date': date_examen_vtc_result.get('new_exam_date'),
+            'new_exam_date_cloture': date_examen_vtc_result.get('new_exam_date_cloture'),
 
             # Session
             'proposed_sessions': session_data.get('proposed_options', []),
