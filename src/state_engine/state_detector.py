@@ -114,7 +114,9 @@ class StateDetector:
         examt3p_data: Dict[str, Any],
         triage_result: Dict[str, Any],
         linking_result: Dict[str, Any],
-        threads_data: Optional[List[Dict]] = None
+        threads_data: Optional[List[Dict]] = None,
+        session_data: Optional[Dict[str, Any]] = None,
+        training_exam_consistency_data: Optional[Dict[str, Any]] = None
     ) -> DetectedState:
         """
         Détecte l'état principal du candidat (rétrocompatibilité).
@@ -125,13 +127,16 @@ class StateDetector:
             triage_result: Résultat du triage (action, intent, etc.)
             linking_result: Résultat du deal linking
             threads_data: Threads du ticket (optionnel)
+            session_data: Données session (optionnel, pour C2)
+            training_exam_consistency_data: Données cohérence formation/examen (optionnel, pour C1/C3)
 
         Returns:
             DetectedState principal (blocking > premier info)
         """
         # Utiliser detect_all_states et retourner le primary_state
         detected_states = self.detect_all_states(
-            deal_data, examt3p_data, triage_result, linking_result, threads_data
+            deal_data, examt3p_data, triage_result, linking_result, threads_data,
+            session_data, training_exam_consistency_data
         )
         return detected_states.primary_state
 
@@ -141,7 +146,9 @@ class StateDetector:
         examt3p_data: Dict[str, Any],
         triage_result: Dict[str, Any],
         linking_result: Dict[str, Any],
-        threads_data: Optional[List[Dict]] = None
+        threads_data: Optional[List[Dict]] = None,
+        session_data: Optional[Dict[str, Any]] = None,
+        training_exam_consistency_data: Optional[Dict[str, Any]] = None
     ) -> DetectedStates:
         """
         Détecte TOUS les états du candidat (multi-états).
@@ -155,6 +162,8 @@ class StateDetector:
             triage_result: Résultat du triage (action, intent, etc.)
             linking_result: Résultat du deal linking
             threads_data: Threads du ticket (optionnel)
+            session_data: Données session (optionnel, pour C2)
+            training_exam_consistency_data: Données cohérence formation/examen (optionnel, pour C1/C3)
 
         Returns:
             DetectedStates avec blocking_state, warning_states, info_states
@@ -163,7 +172,8 @@ class StateDetector:
 
         # Contexte pour l'évaluation des conditions
         context = self._build_context(
-            deal_data, examt3p_data, triage_result, linking_result, threads_data
+            deal_data, examt3p_data, triage_result, linking_result, threads_data,
+            session_data, training_exam_consistency_data
         )
 
         # Collecter les alertes (Uber D/E, etc.)
@@ -223,7 +233,9 @@ class StateDetector:
         examt3p_data: Dict[str, Any],
         triage_result: Dict[str, Any],
         linking_result: Dict[str, Any],
-        threads_data: Optional[List[Dict]]
+        threads_data: Optional[List[Dict]],
+        session_data: Optional[Dict[str, Any]] = None,
+        training_exam_consistency_data: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
         """Construit le contexte pour l'évaluation des conditions."""
         today = date.today()
@@ -321,7 +333,14 @@ class StateDetector:
             # Session
             'session_assigned': deal_data.get('Session') is not None,
             'preference_horaire': deal_data.get('Preference_horaire'),
+
+            # Données session et cohérence (pour détection C1, C2, C3)
+            'session_data': session_data or {},
+            'training_exam_consistency_data': training_exam_consistency_data or {},
         }
+
+        # Calculer uber_case une seule fois (source de vérité unique)
+        context['uber_case'] = self._determine_uber_case(context)
 
         # Calculer can_modify_exam_date (règle B1)
         context['can_modify_exam_date'] = self._can_modify_exam_date(context)

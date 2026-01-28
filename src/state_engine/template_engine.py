@@ -288,13 +288,24 @@ class TemplateEngine:
         # PASS 0: Chercher dans la matrice STATE:INTENTION (priorité maximale)
         # Format: "STATE_NAME:INTENTION" -> configuration spécifique
         if intention:
+            # 0a. D'abord essayer match exact STATE:INTENTION
             matrix_key = f"{state.name}:{intention}"
-            if matrix_key in self.state_intention_matrix:
-                config = self.state_intention_matrix[matrix_key]
+            config = self.state_intention_matrix.get(matrix_key)
+
+            # 0b. Si pas de match exact, essayer wildcard *:INTENTION
+            if not config:
+                wildcard_key = f"*:{intention}"
+                if wildcard_key in self.state_intention_matrix:
+                    config = self.state_intention_matrix[wildcard_key]
+                    matrix_key = wildcard_key  # Pour le logging
+                    logger.info(f"✅ Template sélectionné via wildcard: {wildcard_key}")
+
+            if config:
                 template_file = config.get('template', '')
                 # Extraire le nom du template sans extension
                 template_key = template_file.replace('.html', '').replace('.md', '')
-                logger.info(f"✅ Template sélectionné via matrice: {matrix_key} -> {template_file}")
+                if matrix_key != f"*:{intention}":  # Ne pas doubler le log pour wildcard
+                    logger.info(f"✅ Template sélectionné via matrice: {matrix_key} -> {template_file}")
 
                 # Injecter les context_flags dans le contexte global ET dans state.context_data
                 # Ces flags permettent aux templates hybrides de savoir quelle intention traiter
@@ -410,22 +421,30 @@ class TemplateEngine:
             logger.info(f"📌 Context flags injectés ({pass_name}): {list(context_flags.keys())}")
 
     def _determine_uber_case(self, context: Dict[str, Any]) -> str:
-        """Détermine le cas Uber (A, B, D, E, ELIGIBLE, NOT_UBER)."""
+        """
+        Récupère le cas Uber depuis le contexte.
+
+        La logique de détection complète (avec vérification J+1, PROSPECT, etc.)
+        est dans StateDetector._determine_uber_case() qui est la source de vérité.
+        Le résultat est stocké dans context['uber_case'] par _build_context().
+        """
+        # Priorité: utiliser la valeur calculée par StateDetector
+        if 'uber_case' in context:
+            return context['uber_case']
+
+        # Fallback pour rétrocompatibilité (si appelé sans contexte enrichi)
         if not context.get('is_uber_20_deal'):
             return 'NOT_UBER'
-
+        if context.get('is_uber_prospect'):
+            return 'PROSPECT'
         if not context.get('date_dossier_recu'):
             return 'A'
-
         if not context.get('compte_uber', True):
             return 'D'
-
         if not context.get('eligible_uber', True):
             return 'E'
-
         if not context.get('date_test_selection'):
             return 'B'
-
         return 'ELIGIBLE'
 
     def _load_template(self, template_path: str) -> Optional[str]:
@@ -1002,13 +1021,36 @@ class TemplateEngine:
 
         return result
 
-    # Mapping state → flag pour les états WARNING
+    # Mapping state → flag pour les états (utilisés par response_master.html)
+    # Ces flags permettent aux templates d'afficher les sections appropriées
     STATE_FLAG_MAP = {
+        # États Uber (BLOCKING mais peuvent devenir WARNING dans certains contextes)
+        'UBER_DOCS_MISSING': 'uber_cas_a',
+        'UBER_TEST_MISSING': 'uber_cas_b',
         'UBER_ACCOUNT_NOT_VERIFIED': 'uber_cas_d',
         'UBER_NOT_ELIGIBLE': 'uber_cas_e',
-        'PERSONAL_ACCOUNT_WARNING': 'personal_account_warning',
+        'DUPLICATE_UBER': 'uber_doublon',
+        'UBER_PROSPECT': 'uber_prospect',
+
+        # États Credentials
+        'CREDENTIALS_INVALID': 'credentials_invalid',
+        'CREDENTIALS_REFUSED_SECURITY': 'credentials_refused',
+
+        # État blocage
         'DATE_MODIFICATION_BLOCKED': 'report_bloque',
+        'PERSONAL_ACCOUNT_WARNING': 'personal_account_warning',
+
+        # État cohérence
         'TRAINING_MISSED_EXAM_IMMINENT': 'training_missed_alert',
+        'REFRESH_SESSION_AVAILABLE': 'refresh_session_available',
+
+        # États date examen (pour génération conditionnelle)
+        'EXAM_DATE_EMPTY': 'date_examen_vide',
+        'CONVOCATION_RECEIVED': 'convocation_recue',
+        'DOSSIER_SYNCHRONIZED': 'dossier_synchronise',
+        'VALIDE_CMA_WAITING_CONVOC': 'valide_cma',
+        'REFUSED_CMA': 'refus_cma',
+        'READY_TO_PAY': 'pret_a_payer',
     }
 
     # Mapping intention → flag

@@ -389,7 +389,19 @@ intentions:
     fallback: true
 
 # =============================================================================
-# SECTION 2: DÉFINITION DES ÉTATS
+# SECTION 2: DÉFINITION DES ÉTATS (DEPRECATED)
+# =============================================================================
+# ⚠️ DEPRECATED: Cette section est conservée pour référence historique UNIQUEMENT.
+#
+# LA SOURCE DE VÉRITÉ POUR LES ÉTATS EST: states/candidate_states.yaml
+#
+# Cette section n'est PAS utilisée par le code. La détection d'état est faite
+# par StateDetector qui lit candidate_states.yaml.
+#
+# Les noms d'états ici (ex: UBER_CAS_A_DOCS_MANQUANTS) diffèrent de ceux
+# utilisés dans candidate_states.yaml (ex: UBER_DOCS_MISSING).
+#
+# NE PAS MODIFIER CETTE SECTION - elle sera supprimée dans une future version.
 # =============================================================================
 
 states:
