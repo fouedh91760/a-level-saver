@@ -1414,11 +1414,18 @@ class TemplateEngine:
         all_sessions = self._flatten_session_options(session_data)
 
         # Vérifier si on doit filtrer
-        detected_intent = context.get('detected_intent', '')
+        # Utiliser primary_intent avec fallback sur detected_intent (rétrocompat)
+        primary_intent = context.get('primary_intent') or context.get('detected_intent', '')
+        secondary_intents = context.get('secondary_intents', [])
         session_preference = self._get_session_preference(context)
 
-        # Si CONFIRMATION_SESSION et préférence claire, filtrer
-        if detected_intent == 'CONFIRMATION_SESSION' and session_preference:
+        # Si CONFIRMATION_SESSION (primary OU secondary) et préférence claire, filtrer
+        is_confirmation_session = (
+            primary_intent == 'CONFIRMATION_SESSION' or
+            'CONFIRMATION_SESSION' in secondary_intents
+        )
+
+        if is_confirmation_session and session_preference:
             filtered = [s for s in all_sessions if s.get('type') == session_preference]
             if filtered:
                 logger.info(f"✅ Sessions filtrées selon préférence '{session_preference}': {len(filtered)}/{len(all_sessions)}")
