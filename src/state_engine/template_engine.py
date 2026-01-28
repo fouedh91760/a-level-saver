@@ -1313,6 +1313,20 @@ class TemplateEngine:
 <p>Nous vous invitons à contacter le support Uber via l'application <b>Uber Driver</b> (Compte → Aide) pour comprendre votre situation.</p>
 <hr>"""
 
+        if alert_type == 'personal_account_warning':
+            # Charger le partial template et résoudre les variables
+            template_content = self._load_partial_path('partials/warnings/personal_account_warning.html')
+            if template_content:
+                alert_context = {
+                    'personal_account_email': alert.get('personal_account_email', ''),
+                    'cab_account_email': alert.get('cab_account_email', '')
+                }
+                # Résoudre les conditionnels {{#if}} puis les variables {{variable}}
+                rendered = self._resolve_if_blocks(template_content, alert_context)
+                rendered, _ = self._replace_placeholders(rendered, alert_context)
+                return f"<hr>\n{rendered}\n<hr>"
+            return None
+
         return None
 
     def _insert_alert(

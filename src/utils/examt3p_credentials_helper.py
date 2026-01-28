@@ -617,9 +617,16 @@ def get_credentials_with_validation(
                     logger.warning("  → Garde du compte CRM, intervention manuelle requise")
 
                 elif crm_paid and not threads_paid:
-                    # CRM payé, threads non → Garder CRM
+                    # CRM payé, threads non → Garder CRM + AVERTISSEMENT au candidat
                     logger.info("  ✅ Compte CRM déjà payé → On le garde")
-                    # Pas de changement, on garde les identifiants CRM
+                    logger.warning(f"  ⚠️  ATTENTION: Compte personnel détecté ({identifiant_threads}) - non payé")
+                    logger.info("  → Avertissement à inclure dans la réponse au candidat")
+
+                    # Flag pour déclencher l'état A4 et le warning dans la réponse
+                    result['personal_account_warning'] = True
+                    result['personal_account_email'] = identifiant_threads
+                    result['cab_account_email'] = identifiant_crm
+                    # Pas de changement d'identifiants, on garde le compte CRM
 
                 elif not crm_paid and threads_paid:
                     # Thread payé, CRM non → Basculer sur thread!

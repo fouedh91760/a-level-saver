@@ -270,6 +270,30 @@ states:
 
     crm_updates: null
 
+  # ---------------------------------------------------------------------------
+  # A4: COMPTE PERSONNEL DÉTECTÉ (CRM payé, perso non payé)
+  # ---------------------------------------------------------------------------
+  PERSONAL_ACCOUNT_WARNING:
+    id: "A4"
+    priority: 103
+    description: "Compte CAB payé + compte personnel non payé détecté"
+    category: "analysis"
+
+    detection:
+      method: "credentials_helper"
+      condition: "personal_account_warning == true"
+
+    workflow:
+      action: "RESPOND_WITH_ALERT"
+      alert_internal: false
+
+    response:
+      generate: true
+      alert_template: "partials/warnings/personal_account_warning.html"
+      alert_position: "before_signature"
+
+    crm_updates: null
+
 # =============================================================================
 # ÉTATS ÉLIGIBILITÉ UBER (Priorité 200-299)
 # =============================================================================

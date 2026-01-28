@@ -7,6 +7,68 @@ Le workflow traite les tickets DOC en utilisant plusieurs agents spécialisés e
 
 ---
 
+## PROCESS OBLIGATOIRE : Ajout d'un Nouveau Scénario
+
+Quand un nouveau cas métier est identifié (bug, comportement inattendu, nouveau workflow), **suivre ces étapes dans l'ordre** pour respecter l'architecture du State Engine :
+
+### Étape 1 : Analyser et nommer le scénario
+- Identifier clairement la **condition de déclenchement** (quelles données, quel contexte)
+- Vérifier que le scénario n'existe pas déjà dans `states/candidate_states.yaml`
+- Choisir un ID unique (ex: A4, U-D, R3) et un nom en UPPER_SNAKE_CASE
+
+### Étape 2 : Définir l'état dans `states/candidate_states.yaml`
+```yaml
+NOM_DU_SCENARIO:
+  id: "XX"
+  priority: NNN
+  description: "Description claire"
+  category: "analysis|credentials|uber|report|result"
+  detection:
+    method: "helper_source"
+    condition: "flag_name == true"
+  workflow:
+    action: "RESPOND_WITH_ALERT|RESPOND|BLOCK|ROUTE"
+    alert_internal: true|false
+  response:
+    generate: true
+    alert_template: "partials/category/template_name.html"  # si alerte client
+    alert_position: "before_signature"
+```
+
+### Étape 3 : Ajouter le flag dans la source de données
+- Le flag doit être posé **dans le helper qui détecte la condition** (ex: `examt3p_credentials_helper.py`, `uber_eligibility_helper.py`, `date_examen_vtc_helper.py`)
+- Le flag doit être un **booléen `True`** (pas une string)
+- Ajouter aussi les données de contexte nécessaires au template (emails, dates, etc.)
+
+### Étape 4 : Propager dans le State Detector (`src/state_engine/state_detector.py`)
+1. **Contexte** : Ajouter le flag + données dans `_build_context()` (section examt3p_data ou deal_data)
+2. **Détection** : Ajouter la condition dans `_check_condition()` avec `is True` (pas truthy)
+3. **Alertes** : Si alerte client → ajouter dans `_collect_alerts()` avec type, id, position, et données de contexte
+
+### Étape 5 : Créer le template partial (si réponse/alerte client)
+- Chemin : `states/templates/partials/<category>/<nom>.html`
+- Utiliser les variables Handlebars : `{{variable}}`, `{{#if condition}}...{{/if}}`
+- Suivre le format HTML des partials existants (pas de `<html>`, `<body>`, etc.)
+
+### Étape 6 : Ajouter le rendu dans le Template Engine (`src/state_engine/template_engine.py`)
+- Ajouter le cas dans `_generate_alert_content()` pour les alertes
+- Utiliser `_load_partial_path()` + `_resolve_if_blocks()` + `_replace_placeholders()` pour rendre le template
+
+### Étape 7 : Tester
+- Tester sur un ticket réel qui déclenche le scénario
+- Vérifier : détection correcte de l'état, alerte collectée, template rendu, réponse cohérente
+
+**Résumé des fichiers touchés (dans l'ordre) :**
+| # | Fichier | Action |
+|---|---------|--------|
+| 1 | `states/candidate_states.yaml` | Définir l'état |
+| 2 | `src/utils/<helper>.py` | Poser le flag booléen + données contexte |
+| 3 | `src/state_engine/state_detector.py` | Contexte + détection + collecte alerte |
+| 4 | `states/templates/partials/<cat>/<nom>.html` | Template partial |
+| 5 | `src/state_engine/template_engine.py` | Rendu de l'alerte |
+
+---
+
 ## RÈGLE D'OR : Ne Pas Réinventer la Roue
 
 Avant de coder une nouvelle fonctionnalité, **TOUJOURS vérifier** si elle existe déjà dans :

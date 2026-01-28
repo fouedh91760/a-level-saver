@@ -223,6 +223,9 @@ class StateDetector:
             'connection_test_success': examt3p_data.get('connection_test_success', False),
             'should_respond_to_candidate': examt3p_data.get('should_respond_to_candidate', False),
             'duplicate_payment_alert': examt3p_data.get('duplicate_payment_alert', False),
+            'personal_account_warning': examt3p_data.get('personal_account_warning', False),
+            'personal_account_email': examt3p_data.get('personal_account_email', ''),
+            'cab_account_email': examt3p_data.get('cab_account_email', ''),
             'statut_dossier_examt3p': examt3p_data.get('statut_dossier', ''),
 
             # Uber spécifique
@@ -357,6 +360,21 @@ class StateDetector:
                 'type': 'personal_account',
                 'title': 'Compte personnel potentiel détecté',
                 'priority': 'info'
+            })
+
+        # Alerte A4: Compte personnel détecté (CRM payé, perso non payé)
+        # Avertissement client pour utiliser le bon compte
+        # Vérifier que c'est True (booléen) et pas une string descriptive (cas potential_personal_account)
+        if context.get('personal_account_warning') is True:
+            alerts.append({
+                'type': 'personal_account_warning',
+                'id': 'A4',
+                'title': 'Compte personnel détecté - utiliser compte CAB',
+                'template': 'partials/warnings/personal_account_warning.html',
+                'position': 'before_signature',
+                'priority': 'warning',
+                'personal_account_email': context.get('personal_account_email', ''),
+                'cab_account_email': context.get('cab_account_email', '')
             })
 
         return alerts
@@ -513,6 +531,10 @@ class StateDetector:
         # État A3: Double compte payé
         if 'duplicate_payment_alert' in condition:
             return context.get('duplicate_payment_alert', False)
+
+        # État A4: Compte personnel détecté (CRM payé, perso non payé)
+        if 'personal_account_warning' in condition:
+            return context.get('personal_account_warning') is True
 
         return False
 
