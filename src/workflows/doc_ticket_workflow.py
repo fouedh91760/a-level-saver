@@ -1159,6 +1159,34 @@ Deux comptes ExamenT3P fonctionnels ont été détectés pour ce candidat, et le
                 logger.info(f"  ✅ Date examen VTC OK (CAS {date_examen_vtc_result['case']})")
 
             # ================================================================
+            # ENRICHISSEMENT: Si intention REPORT_DATE avec mois/lieu spécifiques
+            # ================================================================
+            if triage_result.get('primary_intent') == 'REPORT_DATE':
+                intent_context = triage_result.get('intent_context', {})
+                requested_month = intent_context.get('requested_month')
+                requested_location = intent_context.get('requested_location')
+
+                if requested_month or requested_location:
+                    from src.utils.date_examen_vtc_helper import search_dates_for_month_and_location
+
+                    search_result = search_dates_for_month_and_location(
+                        crm_client=self.crm_client,
+                        requested_month=requested_month,
+                        requested_location=requested_location,
+                        candidate_region=date_examen_vtc_result.get('candidate_region')
+                    )
+
+                    # Propager les résultats
+                    date_examen_vtc_result['no_date_for_requested_month'] = search_result['no_date_for_requested_month']
+                    date_examen_vtc_result['requested_month_name'] = search_result['requested_month_name']
+                    date_examen_vtc_result['requested_location'] = requested_location
+                    date_examen_vtc_result['same_month_other_depts'] = search_result['same_month_other_depts']
+                    date_examen_vtc_result['same_dept_other_months'] = search_result['same_dept_other_months']
+
+                    if search_result['no_date_for_requested_month']:
+                        logger.info(f"  ⚠️ Pas de date en {search_result['requested_month_name']} sur {requested_location}")
+
+            # ================================================================
             # ENRICHISSEMENT: Dates alternatives si candidat demande date plus tôt
             # ================================================================
             # Si le candidat demande explicitement une date plus proche ET peut changer de département
@@ -1644,6 +1672,13 @@ L'équipe CAB Formations"""
             'deadline_passed_reschedule': date_examen_vtc_result.get('deadline_passed_reschedule', False),
             'new_exam_date': date_examen_vtc_result.get('new_exam_date'),
             'new_exam_date_cloture': date_examen_vtc_result.get('new_exam_date_cloture'),
+
+            # Données de recherche par mois/lieu (REPORT_DATE intelligent)
+            'no_date_for_requested_month': date_examen_vtc_result.get('no_date_for_requested_month', False),
+            'requested_month_name': date_examen_vtc_result.get('requested_month_name', ''),
+            'requested_location': date_examen_vtc_result.get('requested_location', ''),
+            'same_month_other_depts': date_examen_vtc_result.get('same_month_other_depts', []),
+            'same_dept_other_months': date_examen_vtc_result.get('same_dept_other_months', []),
 
             # Session
             'proposed_sessions': session_data.get('proposed_options', []),

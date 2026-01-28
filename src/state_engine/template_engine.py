@@ -995,10 +995,8 @@ class TemplateEngine:
             'resultat_non_admis': context.get('resultat_non_admis', False),
             'resultat_absent': context.get('resultat_absent', False),
 
-            # Report de date
-            'report_bloque': context.get('report_bloque', False),
-            'report_possible': context.get('report_possible', False),
-            'report_force_majeure': context.get('report_force_majeure', False),
+            # Report de date - Générer les flags depuis can_modify_exam_date et intention
+            **self._generate_report_flags(context),
 
             # Problèmes d'identifiants
             'credentials_invalid': context.get('credentials_invalid', False),
@@ -1009,9 +1007,17 @@ class TemplateEngine:
             'next_dates': self._format_next_dates_for_template(context.get('next_dates', [])),
             'preference_horaire_text': 'cours du soir' if self._get_session_preference(context) == 'soir' else 'cours du jour',
 
+            # Préférence de session (depuis intent_context ou deal)
+            'session_preference': self._get_session_preference(context),
+            'session_preference_jour': self._get_session_preference(context) == 'jour',
+            'session_preference_soir': self._get_session_preference(context) == 'soir',
+
             # Filtrage par mois demandé (REPORT_DATE)
             'no_date_for_requested_month': context.get('no_date_for_requested_month', False),
             'requested_month_name': context.get('requested_month_name', ''),
+            'requested_location': context.get('requested_location', ''),
+            'same_month_other_depts': self._format_next_dates_for_template(context.get('same_month_other_depts', [])),
+            'same_dept_other_months': self._format_next_dates_for_template(context.get('same_dept_other_months', [])),
 
             # Flags pour le template master (architecture modulaire)
             # Sections à afficher
@@ -1456,6 +1462,35 @@ class TemplateEngine:
             return session_data['session_preference']
 
         return ''
+
+    def _generate_report_flags(self, context: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Génère les flags pour les demandes de report de date.
+        Ces flags sont utilisés par Section 0 du response_master.
+        """
+        can_modify = context.get('can_modify_exam_date', True)
+        primary_intent = context.get('primary_intent') or context.get('detected_intent', '')
+        intent_context = context.get('intent_context', {})
+        mentions_force_majeure = intent_context.get('mentions_force_majeure', False)
+
+        report_bloque = False
+        report_possible = False
+        report_force_majeure = False
+
+        # Seulement si l'intention est REPORT_DATE
+        if primary_intent == 'REPORT_DATE':
+            if can_modify:
+                report_possible = True
+            elif mentions_force_majeure:
+                report_force_majeure = True
+            else:
+                report_bloque = True
+
+        return {
+            'report_bloque': report_bloque,
+            'report_possible': report_possible,
+            'report_force_majeure': report_force_majeure,
+        }
 
     def _flatten_session_options_filtered(self, context: Dict[str, Any]) -> list:
         """

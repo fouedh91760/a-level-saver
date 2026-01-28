@@ -5,17 +5,33 @@
 {{#if date_cloture}} La date de clôture des inscriptions étant le {{date_cloture}}, un changement est encore possible.{{/if}}<br>
 <br>
 {{#if no_date_for_requested_month}}
-<b>Note importante :</b> Il n'y a pas de date d'examen prévue en {{requested_month_name}} pour votre département. Voici les prochaines dates disponibles :<br>
+<b>Note importante :</b> Il n'y a pas de date d'examen prévue en <b>{{requested_month_name}}</b>{{#if requested_location}} sur le département {{requested_location}}{{/if}}.<br>
 <br>
+{{#if same_month_other_depts}}
+<b>En {{requested_month_name}} dans votre région :</b><br>
+{{#each same_month_other_depts}}
+&nbsp;&nbsp;→ <b>{{this.date_examen_formatted}}</b> — Département {{this.Departement}}<br>
+{{/each}}
+<br>
+{{/if}}
+{{#if same_dept_other_months}}
+<b>Sur le département {{requested_location}} (autres mois) :</b><br>
+{{#each same_dept_other_months}}
+&nbsp;&nbsp;→ <b>{{this.date_examen_formatted}}</b> (clôture : {{this.date_cloture_formatted}})<br>
+{{/each}}
+<br>
+{{/if}}
 {{else}}
-Voici les prochaines dates disponibles :<br>
+<b>Voici les prochaines dates disponibles :</b><br>
 <br>
 {{/if}}
 {{#if has_next_dates}}
+{{#unless no_date_for_requested_month}}
 {{#each next_dates}}
-📅 <b>{{this.date_examen_formatted}}</b> — Département {{this.Departement}}<br>
+&nbsp;&nbsp;→ <b>{{this.date_examen_formatted}}</b> — Département {{this.Departement}}<br>
 &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Clôture des inscriptions : {{this.date_cloture_formatted}}<br>
 {{/each}}
+{{/unless}}
 <br>
 {{/if}}
 Merci de nous confirmer la nouvelle date souhaitée pour que nous puissions effectuer le changement.<br>

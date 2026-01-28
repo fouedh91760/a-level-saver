@@ -1650,3 +1650,95 @@ def filter_dates_by_region_relevance(
     logger.info(f"     ({len(candidate_region_dates)} dans {region} + {len(filtered_other_dates)} antérieures d'autres régions)")
 
     return result
+
+
+def search_dates_for_month_and_location(
+    crm_client,
+    requested_month: int = None,
+    requested_location: str = None,
+    candidate_region: str = None
+) -> Dict[str, Any]:
+    """
+    Recherche des dates pour un mois et département spécifiques.
+    Si pas trouvé, propose des alternatives intelligentes.
+
+    Args:
+        crm_client: Client Zoho CRM
+        requested_month: Mois demandé (1-12)
+        requested_location: Département demandé (ex: "34", "75")
+        candidate_region: Région du candidat (optionnel)
+
+    Returns:
+        {
+            'exact_match_dates': [],  # Dates pour le mois/lieu exact
+            'same_month_other_depts': [],  # Même mois, autres depts de la région
+            'same_dept_other_months': [],  # Même dept, autres mois
+            'no_date_for_requested_month': bool,
+            'requested_month_name': str,
+        }
+    """
+    result = {
+        'exact_match_dates': [],
+        'same_month_other_depts': [],
+        'same_dept_other_months': [],
+        'no_date_for_requested_month': False,
+        'requested_month_name': '',
+    }
+
+    if requested_month:
+        # Nom du mois en français
+        mois_fr = ['', 'janvier', 'février', 'mars', 'avril', 'mai', 'juin',
+                   'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre']
+        result['requested_month_name'] = mois_fr[requested_month] if 1 <= requested_month <= 12 else ''
+
+    # Récupérer toutes les dates disponibles
+    all_dates = get_next_exam_dates_any_department(crm_client, limit=50)
+
+    if not all_dates:
+        return result
+
+    # Déterminer la région du département demandé
+    region_depts = []
+    if requested_location:
+        region = DEPT_TO_REGION.get(str(requested_location))
+        if region:
+            region_depts = REGION_TO_DEPTS.get(region, [])
+    elif candidate_region:
+        region_depts = REGION_TO_DEPTS.get(candidate_region, [])
+
+    for date_info in all_dates:
+        date_str = date_info.get('Date_Examen', '')
+        dept = str(date_info.get('Departement', ''))
+
+        # Parser le mois de la date
+        try:
+            date_obj = datetime.strptime(date_str[:10], '%Y-%m-%d')
+            date_month = date_obj.month
+        except Exception:
+            continue
+
+        # Catégoriser
+        if requested_month and requested_location:
+            if date_month == requested_month and dept == str(requested_location):
+                result['exact_match_dates'].append(date_info)
+            elif date_month == requested_month and dept in region_depts:
+                result['same_month_other_depts'].append(date_info)
+            elif dept == str(requested_location):
+                result['same_dept_other_months'].append(date_info)
+        elif requested_month:
+            # Seulement le mois demandé
+            if date_month == requested_month:
+                result['exact_match_dates'].append(date_info)
+        elif requested_location:
+            # Seulement le département demandé
+            if dept == str(requested_location):
+                result['exact_match_dates'].append(date_info)
+
+    # Flag si pas de date exacte
+    if (requested_month or requested_location) and not result['exact_match_dates']:
+        result['no_date_for_requested_month'] = True
+
+    logger.info(f"  🔍 Recherche dates: mois={requested_month}, dept={requested_location}")
+    logger.info(f"     → Exact: {len(result['exact_match_dates'])}, Même mois autres depts: {len(result['same_month_other_depts'])}, Même dept autres mois: {len(result['same_dept_other_months'])}")
+
+    return result

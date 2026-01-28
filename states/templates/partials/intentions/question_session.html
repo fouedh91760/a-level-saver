@@ -1,16 +1,29 @@
 <!-- Partial: Réponse à l'intention QUESTION_SESSION -->
 <b>Concernant les sessions de formation</b><br>
 <br>
+{{#if session_preference_soir}}
+Les <b>cours du soir</b> que vous souhaitez se déroulent de 18h à 22h.<br>
+C'est idéal pour les personnes en activité professionnelle.<br>
+La formation dure 2 semaines (10 soirées du lundi au vendredi).<br>
+{{else}}
+{{#if session_preference_jour}}
+Les <b>cours du jour</b> que vous souhaitez se déroulent de 9h à 17h.<br>
+La formation est intensive sur 1 semaine (5 jours du lundi au vendredi).<br>
+{{else}}
 Nous proposons deux types de sessions :<br>
 <ul>
-<li><b>Cours du jour</b> : formation intensive en journée (9h-17h)</li>
-<li><b>Cours du soir</b> : formation en soirée pour les personnes en activité (18h-22h)</li>
+<li><b>Cours du jour</b> : formation intensive sur 1 semaine (9h-17h)</li>
+<li><b>Cours du soir</b> : formation sur 2 semaines pour les personnes en activité (18h-22h)</li>
 </ul>
+{{/if}}
+{{/if}}
 {{#if has_sessions_proposees}}
 <br>
-Voici les sessions disponibles pour votre date d'examen :<br>
+Voici les sessions disponibles :<br>
+<ul>
 {{#each sessions_proposees}}
 <li>{{this.nom}} ({{this.type}}) : du {{this.debut}} au {{this.fin}}</li>
 {{/each}}
+</ul>
 {{/if}}
 <br>
