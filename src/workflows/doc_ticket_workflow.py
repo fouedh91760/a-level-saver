@@ -1680,7 +1680,8 @@ L'équipe Cab Formations"""
         requested_month = intent_context.get('requested_month')
         requested_location = intent_context.get('requested_location')
 
-        if requested_month and next_dates:
+        # Validation: requested_month doit être entre 1 et 12
+        if requested_month and isinstance(requested_month, int) and 1 <= requested_month <= 12 and next_dates:
             from datetime import datetime
             filtered_dates = []
             has_date_in_exact_month = False

@@ -111,7 +111,7 @@ states:
       action: "RESPOND_AND_STOP"
 
     response:
-      template: "duplicate_uber.md"
+      template: "duplicate_uber.html"
       blocks_required:
         - "salutation"
         - "explication_offre_unique"
@@ -137,13 +137,13 @@ states:
 
     detection:
       method: "deal_linking_agent"
-      condition: "deal_id == null AND routing_action == 'NEEDS_CLARIFICATION'"
+      condition: "deal_id == null AND needs_clarification == true"
 
     workflow:
       action: "RESPOND_AND_STOP"
 
     response:
-      template: "candidate_not_found.md"
+      template: "candidate_not_found.html"
       blocks_required:
         - "salutation"
         - "demande_informations"
@@ -180,7 +180,7 @@ states:
       skip_session_analysis: true
 
     response:
-      template: "credentials_refused_security.md"
+      template: "credentials_refused_security.html"
       blocks_required:
         - "salutation"
         - "comprendre_besoin_identifiants"
@@ -327,7 +327,7 @@ states:
       skip_session_analysis: true
 
     response:
-      template: "uber_prospect.md"
+      template: "uber_prospect.html"
       blocks_required:
         - "salutation"
         - "explication_offre"
@@ -362,7 +362,7 @@ states:
       skip_session_analysis: true
 
     response:
-      template: "uber_case_a.md"
+      template: "uber_case_a.html"
       blocks_required:
         - "salutation"
         - "confirmation_paiement"
@@ -397,7 +397,7 @@ states:
       skip_session_analysis: true
 
     response:
-      template: "uber_case_b.md"
+      template: "uber_case_b.html"
       blocks_required:
         - "salutation"
         - "confirmation_documents"
@@ -431,7 +431,7 @@ states:
       # Continue le workflow normal mais ajoute une alerte dans la réponse
 
     response:
-      alert_template: "uber_case_d_alert.md"
+      alert_template: "uber_case_d_alert.html"
       alert_position: "after_main_content"
       ai_section: null  # Pas de personnalisation sur l'alerte
 
@@ -456,7 +456,7 @@ states:
       # Continue le workflow normal mais ajoute une alerte dans la réponse
 
     response:
-      alert_template: "uber_case_e_alert.md"
+      alert_template: "uber_case_e_alert.html"
       alert_position: "after_main_content"
       ai_section: null
 
@@ -484,7 +484,7 @@ states:
       action: "RESPOND"
 
     response:
-      template: "propose_dates.md"
+      template: "propose_dates.html"
       blocks_required:
         - "salutation"
         - "explication_situation"
@@ -522,7 +522,7 @@ states:
       action: "RESPOND"
 
     response:
-      template: "propose_dates_past.md"
+      template: "propose_dates_past.html"
       blocks_required:
         - "salutation"
         - "explication_date_passee"
@@ -557,7 +557,7 @@ states:
       action: "RESPOND"
 
     response:
-      template: "refused_cma.md"
+      template: "refused_cma.html"
       blocks_required:
         - "salutation"
         - "explication_refus"
@@ -596,14 +596,14 @@ states:
 
     response:
       # Le template varie selon days_until_exam (géré par TemplateEngine)
-      template: "valide_cma.md"
+      template: "valide_cma.html"
       template_variants:
         - condition: "days_until_exam > 10"
-          template: "valide_cma_normal.md"
+          template: "valide_cma_normal.html"
         - condition: "days_until_exam <= 10 AND days_until_exam > 7"
-          template: "valide_cma_check_spam.md"
+          template: "valide_cma_check_spam.html"
         - condition: "days_until_exam <= 7"
-          template: "valide_cma_report_auto.md"
+          template: "valide_cma_report_auto.html"
 
       blocks_required:
         - "salutation"
@@ -639,7 +639,7 @@ states:
       action: "RESPOND"
 
     response:
-      template: "dossier_synchronise.md"
+      template: "dossier_synchronise.html"
       blocks_required:
         - "salutation"
         - "confirmation_transmission"
@@ -704,7 +704,7 @@ states:
     response:
       template_variants:
         - condition: "has_indices_not_passed == true"
-          template: "clarification_exam.md"
+          template: "clarification_exam.html"
         - condition: "has_indices_not_passed == false"
           template: null  # Pas de message spécifique, considéré comme passé
 
@@ -735,7 +735,7 @@ states:
       action: "RESPOND"
 
     response:
-      template: "deadline_missed.md"
+      template: "deadline_missed.html"
       blocks_required:
         - "salutation"
         - "explication_deadline"
@@ -772,7 +772,7 @@ states:
       action: "RESPOND"
 
     response:
-      template: "convocation_received.md"
+      template: "convocation_received.html"
       blocks_required:
         - "salutation"
         - "annonce_convocation"
@@ -810,7 +810,7 @@ states:
       action: "RESPOND"
 
     response:
-      template: "ready_to_pay.md"
+      template: "ready_to_pay.html"
       blocks_required:
         - "salutation"
         - "confirmation_dossier_complet"
@@ -855,11 +855,11 @@ states:
     response:
       template_variants:
         - condition: "can_modify_exam_date == true"
-          template: "report_date_possible.md"
+          template: "report_date_possible.html"
         - condition: "can_modify_exam_date == false AND mentions_force_majeure == true"
-          template: "report_date_force_majeure.md"
+          template: "report_date_force_majeure.html"
         - condition: "can_modify_exam_date == false AND mentions_force_majeure == false"
-          template: "report_date_blocked.md"
+          template: "report_date_blocked.html"
 
       blocks_required:
         - "salutation"
@@ -893,7 +893,7 @@ states:
       action: "RESPOND_AND_UPDATE_CRM"
 
     response:
-      template: "confirmation_session.md"
+      template: "confirmation_session.html"
       blocks_required:
         - "salutation"
         - "confirmation_choix"
@@ -936,7 +936,7 @@ states:
       action: "RESPOND"
 
     response:
-      template: "identifiants_examt3p.md"
+      template: "identifiants_examt3p.html"
       blocks_required:
         - "salutation"
         - "identifiants_examt3p"
@@ -972,7 +972,7 @@ states:
       # Combine avec l'état date_examen pour donner le statut complet
 
     response:
-      template: "statut_dossier.md"
+      template: "statut_dossier.html"
       blocks_required:
         - "salutation"
         - "statut_actuel"
@@ -1008,7 +1008,7 @@ states:
       action: "RESPOND"
 
     response:
-      template: "confirmation_paiement.md"
+      template: "confirmation_paiement.html"
       blocks_required:
         - "salutation"
         - "confirmation_paiement"
@@ -1045,11 +1045,11 @@ states:
     response:
       template_variants:
         - condition: "evalbox == 'Refusé CMA'"
-          template: "documents_refuses.md"
+          template: "documents_refuses.html"
         - condition: "has_documents_manquants == true"
-          template: "documents_manquants.md"
+          template: "documents_manquants.html"
         - condition: "default"
-          template: "documents_general.md"
+          template: "documents_general.html"
 
       blocks_required:
         - "salutation"
@@ -1085,11 +1085,11 @@ states:
     response:
       template_variants:
         - condition: "exam_passed == true"
-          template: "resultat_admis.md"
+          template: "resultat_admis.html"
         - condition: "exam_passed == false"
-          template: "resultat_echec.md"
+          template: "resultat_echec.html"
         - condition: "exam_result_unknown == true"
-          template: "resultat_attente.md"
+          template: "resultat_attente.html"
 
       blocks_required:
         - "salutation"
@@ -1122,7 +1122,7 @@ states:
       action: "RESPOND"
 
     response:
-      template: "question_generale.md"
+      template: "question_generale.html"
       blocks_required:
         - "salutation"
         - "signature"
@@ -1155,7 +1155,7 @@ states:
       action: "RESPOND_AND_UPDATE_CRM"
 
     response:
-      template: "confirmation_date_examen.md"
+      template: "confirmation_date_examen.html"
       blocks_required:
         - "salutation"
         - "confirmation_date"
@@ -1197,7 +1197,7 @@ states:
       action: "RESPOND"
 
     response:
-      template: "training_missed.md"
+      template: "training_missed.html"
       blocks_required:
         - "salutation"
         - "constat_situation"
@@ -1292,7 +1292,7 @@ states:
 
     response:
       # Inclure dans la réponse une explication du blocage
-      alert_template: "date_modification_blocked_alert.md"
+      alert_template: "date_modification_blocked_alert.html"
       alert_position: "in_context"
 
     crm_updates: null  # BLOQUÉ
@@ -1316,7 +1316,7 @@ states:
       action: "RESPOND"
 
     response:
-      template: "general_response.md"
+      template: "general_response.html"
       blocks_required:
         - "salutation"
         - "signature"

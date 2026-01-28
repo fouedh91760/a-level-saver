@@ -321,6 +321,9 @@ class StateDetector:
             'personal_account_email': examt3p_data.get('personal_account_email', ''),
             'cab_account_email': examt3p_data.get('cab_account_email', ''),
             'statut_dossier_examt3p': examt3p_data.get('statut_dossier', ''),
+            # Flags pour EXAMT3P_DOWN (A2)
+            'extraction_failed': examt3p_data.get('extraction_failed', False),
+            'error_type': examt3p_data.get('error_type'),  # 'technical' ou 'credentials'
 
             # Uber spécifique
             'is_uber_20_deal': amount == 20 and 'GAGN' in str(stage).upper(),

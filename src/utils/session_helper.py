@@ -146,7 +146,8 @@ def get_sessions_for_exam_date(
                     date_fin_obj = datetime.strptime(date_fin, "%Y-%m-%d")
                     days_before_exam = (exam_date_obj - date_fin_obj).days
                     session['days_before_exam'] = days_before_exam
-                except:
+                except ValueError as e:
+                    logger.warning(f"Erreur parsing date_fin '{date_fin}': {e}")
                     session['days_before_exam'] = 999
 
             # Catégoriser par type
@@ -240,14 +241,16 @@ def format_session_for_display(session: Dict[str, Any]) -> str:
         if date_debut:
             date_obj = datetime.strptime(date_debut, "%Y-%m-%d")
             date_debut_formatted = date_obj.strftime("%d/%m/%Y")
-    except:
+    except ValueError as e:
+        logger.debug(f"Erreur parsing date_debut '{date_debut}': {e}")
         date_debut_formatted = date_debut
 
     try:
         if date_fin:
             date_obj = datetime.strptime(date_fin, "%Y-%m-%d")
             date_fin_formatted = date_obj.strftime("%d/%m/%Y")
-    except:
+    except ValueError as e:
+        logger.debug(f"Erreur parsing date_fin '{date_fin}': {e}")
         date_fin_formatted = date_fin
 
     result = f"**{session_type_label}** : du {date_debut_formatted} au {date_fin_formatted}"
@@ -279,7 +282,8 @@ def format_exam_with_sessions(
         if exam_date:
             date_obj = datetime.strptime(exam_date, "%Y-%m-%d")
             exam_date_formatted = date_obj.strftime("%d/%m/%Y")
-    except:
+    except ValueError as e:
+        logger.debug(f"Erreur parsing exam_date '{exam_date}': {e}")
         exam_date_formatted = exam_date
 
     # Formater la date de clôture
@@ -293,8 +297,8 @@ def format_exam_with_sessions(
             else:
                 cloture_obj = datetime.strptime(str(date_cloture), "%Y-%m-%d")
             cloture_formatted = cloture_obj.strftime("%d/%m/%Y")
-        except:
-            pass
+        except (ValueError, TypeError) as e:
+            logger.debug(f"Erreur parsing date_cloture '{date_cloture}': {e}")
 
     result = f"📅 **Examen du {exam_date_formatted}**"
     if cloture_formatted:
@@ -490,8 +494,8 @@ def analyze_session_situation(
                 if session_end_obj.date() < datetime.now().date():
                     result['current_session_is_past'] = True
                     logger.info("  ⚠️ Session actuelle TERMINÉE (dans le passé)")
-            except:
-                pass
+            except ValueError as e:
+                logger.debug(f"Erreur parsing session_end_date '{session_end_date}': {e}")
 
     # 2. Détecter la préférence jour/soir
     # Priorité: 1) TriageAgent 2) Deal CRM 3) Threads
@@ -639,14 +643,16 @@ def generate_refresh_session_message(refresh_session: Dict) -> str:
         if date_debut:
             date_obj = datetime.strptime(date_debut, "%Y-%m-%d")
             date_debut_formatted = date_obj.strftime("%d/%m/%Y")
-    except:
+    except ValueError as e:
+        logger.debug(f"Erreur parsing date_debut '{date_debut}': {e}")
         date_debut_formatted = date_debut
 
     try:
         if date_fin:
             date_obj = datetime.strptime(date_fin, "%Y-%m-%d")
             date_fin_formatted = date_obj.strftime("%d/%m/%Y")
-    except:
+    except ValueError as e:
+        logger.debug(f"Erreur parsing date_fin '{date_fin}': {e}")
         date_fin_formatted = date_fin
 
     # Formater la date d'examen
@@ -656,7 +662,8 @@ def generate_refresh_session_message(refresh_session: Dict) -> str:
         if exam_date:
             date_obj = datetime.strptime(exam_date, "%Y-%m-%d")
             exam_date_formatted = date_obj.strftime("%d/%m/%Y")
-    except:
+    except ValueError as e:
+        logger.debug(f"Erreur parsing exam_date '{exam_date}': {e}")
         exam_date_formatted = exam_date
 
     message = f"""📚 **PROPOSITION DE RAFRAÎCHISSEMENT (sans frais supplémentaires)**

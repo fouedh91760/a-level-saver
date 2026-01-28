@@ -52,8 +52,10 @@ ORDRE DE VÉRIFICATION:
 7. ÉLIGIBLE
 """
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Dict, Optional, Any
+
+from src.utils.date_utils import parse_date_flexible, format_date_for_display
 
 logger = logging.getLogger(__name__)
 
@@ -195,22 +197,12 @@ def analyze_uber_eligibility(deal_data: Dict[str, Any]) -> Dict[str, Any]:
     # Avant ce délai, on ne sait pas encore → ne pas bloquer
     # ================================================================
     verification_done = False
-    try:
-        if date_dossier_recu:
-            if 'T' in str(date_dossier_recu):
-                dossier_date = datetime.fromisoformat(str(date_dossier_recu).replace('Z', '+00:00')).date()
-            else:
-                dossier_date = datetime.strptime(str(date_dossier_recu)[:10], '%Y-%m-%d').date()
-
-            # Vérification faite si Date_Dossier_recu + 1 jour est passé
-            from datetime import timedelta
-            verification_date = dossier_date + timedelta(days=1)
-            today = datetime.now().date()
-            verification_done = today >= verification_date
-            logger.info(f"  📋 Vérification Uber: {'✅ Faite' if verification_done else '⏳ En attente'} (dossier: {dossier_date}, vérif: {verification_date})")
-    except (ValueError, TypeError) as e:
-        logger.warning(f"  ⚠️ Impossible de parser la date dossier pour vérif: {date_dossier_recu} - {e}")
-        verification_done = False
+    dossier_date = parse_date_flexible(date_dossier_recu, "Date_Dossier_recu")
+    if dossier_date:
+        verification_date = dossier_date + timedelta(days=1)
+        today = datetime.now().date()
+        verification_done = today >= verification_date
+        logger.info(f"  📋 Vérification Uber: {'✅ Faite' if verification_done else '⏳ En attente'} (dossier: {dossier_date}, vérif: {verification_date})")
 
     # CAS D & E : Vérification Compte_Uber et ELIGIBLE (uniquement si vérification faite)
     if verification_done:
@@ -245,18 +237,11 @@ def analyze_uber_eligibility(deal_data: Dict[str, Any]) -> Dict[str, Any]:
     TEST_SELECTION_MANDATORY_FROM = datetime(2025, 5, 19).date()
 
     # Déterminer si le test est obligatoire en fonction de la date de réception
+    # Note: dossier_date déjà parsé plus haut via parse_date_flexible
     test_is_mandatory = False
-    try:
-        if date_dossier_recu:
-            if 'T' in str(date_dossier_recu):
-                dossier_date = datetime.fromisoformat(str(date_dossier_recu).replace('Z', '+00:00')).date()
-            else:
-                dossier_date = datetime.strptime(str(date_dossier_recu)[:10], '%Y-%m-%d').date()
-            test_is_mandatory = dossier_date > TEST_SELECTION_MANDATORY_FROM
-            logger.info(f"  📅 Date dossier: {dossier_date} | Test obligatoire: {test_is_mandatory} (seuil: {TEST_SELECTION_MANDATORY_FROM})")
-    except (ValueError, TypeError) as e:
-        logger.warning(f"  ⚠️ Impossible de parser la date dossier: {date_dossier_recu} - {e}")
-        test_is_mandatory = False  # En cas de doute, ne pas bloquer
+    if dossier_date:
+        test_is_mandatory = dossier_date > TEST_SELECTION_MANDATORY_FROM
+        logger.info(f"  📅 Date dossier: {dossier_date} | Test obligatoire: {test_is_mandatory} (seuil: {TEST_SELECTION_MANDATORY_FROM})")
 
     if not date_test_selection and test_is_mandatory:
         result['case'] = 'B'
@@ -279,21 +264,8 @@ def analyze_uber_eligibility(deal_data: Dict[str, Any]) -> Dict[str, Any]:
     return result
 
 
-def format_date_for_display(date_str: str) -> str:
-    """
-    Formate une date pour affichage (DD/MM/YYYY).
-    """
-    if not date_str:
-        return ""
-
-    try:
-        if 'T' in str(date_str):
-            date_obj = datetime.fromisoformat(str(date_str).replace('Z', '+00:00'))
-        else:
-            date_obj = datetime.strptime(str(date_str), "%Y-%m-%d")
-        return date_obj.strftime("%d/%m/%Y")
-    except:
-        return str(date_str)
+# Note: format_date_for_display est importé depuis date_utils
+# La fonction originale a été supprimée au profit de la version centralisée
 
 
 def generate_prospect_message() -> str:
