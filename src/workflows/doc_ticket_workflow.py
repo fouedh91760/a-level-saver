@@ -1683,6 +1683,7 @@ L'équipe Cab Formations"""
         if requested_month and next_dates:
             from datetime import datetime
             filtered_dates = []
+            has_date_in_exact_month = False
             for date_info in next_dates:
                 date_str = date_info.get('Date_Examen') or date_info.get('date_examen')
                 if date_str:
@@ -1691,17 +1692,27 @@ L'équipe Cab Formations"""
                         # Garder les dates du mois demandé ou après
                         if date_obj.month >= requested_month:
                             filtered_dates.append(date_info)
+                            # Vérifier si on a une date exactement dans le mois demandé
+                            if date_obj.month == requested_month:
+                                has_date_in_exact_month = True
                     except ValueError:
                         filtered_dates.append(date_info)  # En cas d'erreur, garder la date
+
+            month_names = ['', 'janvier', 'février', 'mars', 'avril', 'mai', 'juin',
+                           'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre']
 
             if filtered_dates:
                 logger.info(f"  📅 Filtrage par mois {requested_month}: {len(next_dates)} → {len(filtered_dates)} date(s)")
                 detected_state.context_data['next_dates'] = filtered_dates
+
+                # Si pas de date exactement dans le mois demandé, ajouter le message explicatif
+                if not has_date_in_exact_month:
+                    logger.info(f"  ℹ️ Pas de date exactement en {month_names[requested_month]} - dates ultérieures proposées")
+                    detected_state.context_data['no_date_for_requested_month'] = True
+                    detected_state.context_data['requested_month_name'] = month_names[requested_month] if 1 <= requested_month <= 12 else str(requested_month)
             else:
-                # Aucune date ne correspond - ajouter un message explicatif
-                logger.warning(f"  ⚠️ Aucune date en mois {requested_month} - on garde toutes les dates")
-                month_names = ['', 'janvier', 'février', 'mars', 'avril', 'mai', 'juin',
-                               'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre']
+                # Aucune date ne correspond - garder toutes les dates et ajouter message
+                logger.warning(f"  ⚠️ Aucune date en mois {requested_month} ou après - on garde toutes les dates")
                 detected_state.context_data['no_date_for_requested_month'] = True
                 detected_state.context_data['requested_month_name'] = month_names[requested_month] if 1 <= requested_month <= 12 else str(requested_month)
 

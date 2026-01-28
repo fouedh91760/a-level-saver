@@ -2023,8 +2023,8 @@ base_templates:
     for_condition: "can_modify_exam_date == true"
     context_flags:
       report_possible: true
-      intention_report_date: true
-      show_dates_section: true
+      # NE PAS inclure intention_report_date car report_possible couvre déjà le REPORT_DATE
+      show_dates_section: false  # dates affichées dans le partial report/possible
       show_sessions_section: true
 
   credentials_refused:

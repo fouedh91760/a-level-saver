@@ -326,6 +326,12 @@ class TemplateEngine:
                     if 'for_condition' in config:
                         if not self._evaluate_condition(config['for_condition'], context):
                             continue  # Condition non satisfaite, passer au suivant
+                    # Injecter les context_flags (FIX: manquait dans PASS 1)
+                    context_flags = config.get('context_flags', {})
+                    if context_flags:
+                        context.update(context_flags)
+                        state.context_data.update(context_flags)
+                        logger.info(f"📌 Context flags injectés (PASS 1): {list(context_flags.keys())}")
                     return template_key, config
 
         # PASS 1.5: Templates avec for_state (état spécifique)
@@ -831,7 +837,7 @@ class TemplateEngine:
             except:
                 pass
 
-        return {
+        result = {
             # Infos candidat (depuis Contact, pas Deal)
             'prenom': prenom or 'Bonjour',
             'nom': nom,
@@ -952,6 +958,10 @@ class TemplateEngine:
             'next_dates': self._format_next_dates_for_template(context.get('next_dates', [])),
             'preference_horaire_text': 'cours du soir' if self._get_session_preference(context) == 'soir' else 'cours du jour',
 
+            # Filtrage par mois demandé (REPORT_DATE)
+            'no_date_for_requested_month': context.get('no_date_for_requested_month', False),
+            'requested_month_name': context.get('requested_month_name', ''),
+
             # Flags pour le template master (architecture modulaire)
             # Sections à afficher
             'show_statut_section': True,  # Toujours afficher le statut
@@ -961,6 +971,13 @@ class TemplateEngine:
             # Actions requises (déterminées par l'état)
             **self._determine_required_actions(context, evalbox),
         }
+
+        # Debug logging pour templates hybrides
+        logger.debug(f"placeholder_data: has_next_dates={result.get('has_next_dates')}, "
+                     f"len(next_dates)={len(result.get('next_dates', []))}, "
+                     f"report_possible={result.get('report_possible')}")
+
+        return result
 
     # Mapping state → flag pour les états WARNING
     STATE_FLAG_MAP = {
@@ -1035,11 +1052,28 @@ class TemplateEngine:
         # Récupérer l'intention principale (rétrocompatibilité + nouveau format)
         primary_intent = context.get('primary_intent') or context.get('detected_intent', '')
 
+        # Flags Section 0 qui couvrent déjà certaines intentions
+        # Si ces flags sont actifs, ne pas auto-mapper l'intention correspondante pour éviter la duplication
+        section0_overrides = {
+            'intention_report_date': ['report_possible', 'report_bloque', 'report_force_majeure'],
+            'intention_resultat_examen': ['resultat_admis', 'resultat_non_admis', 'resultat_absent'],
+            'intention_demande_identifiants': ['credentials_invalid', 'credentials_inconnus'],
+        }
+
         # Auto-mapper l'intention principale
         if primary_intent in self.INTENTION_FLAG_MAP:
             flag_name = self.INTENTION_FLAG_MAP[primary_intent]
-            flags[flag_name] = True
-            logger.debug(f"Auto-mapped primary_intent {primary_intent} -> {flag_name}")
+            # Vérifier si un flag Section 0 couvre déjà cette intention
+            skip_mapping = False
+            if flag_name in section0_overrides:
+                for section0_flag in section0_overrides[flag_name]:
+                    if context.get(section0_flag):
+                        skip_mapping = True
+                        logger.debug(f"Skipping auto-map {flag_name} - covered by Section 0 flag {section0_flag}")
+                        break
+            if not skip_mapping:
+                flags[flag_name] = True
+                logger.debug(f"Auto-mapped primary_intent {primary_intent} -> {flag_name}")
 
         # Auto-mapper les intentions secondaires (NOUVEAU)
         secondary_intents = context.get('secondary_intents', [])
