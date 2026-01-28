@@ -651,6 +651,21 @@ class DOCTicketWorkflow:
 
         # Rule #3: UTILISER L'IA POUR LE TRIAGE INTELLIGENT
         # L'IA comprend le contexte et évite les faux positifs
+
+        # IMPORTANT: Enrichir le deal avec la vraie date d'examen (lookup → module)
+        # Les champs lookup contiennent juste {'name': '...', 'id': '...'}, pas les vraies données
+        if selected_deal and selected_deal.get('Date_examen_VTC'):
+            date_lookup = selected_deal.get('Date_examen_VTC')
+            if isinstance(date_lookup, dict) and date_lookup.get('id'):
+                try:
+                    exam_session = self.crm_client.get_record('Dates_Examens_VTC_TAXI', date_lookup['id'])
+                    if exam_session:
+                        selected_deal['_real_exam_date'] = exam_session.get('Date_Examen')
+                        selected_deal['_real_exam_departement'] = exam_session.get('Departement')
+                        logger.info(f"  📅 Date examen enrichie: {selected_deal['_real_exam_date']} (dept {selected_deal['_real_exam_departement']})")
+                except Exception as e:
+                    logger.warning(f"  ⚠️ Impossible d'enrichir Date_examen_VTC: {e}")
+
         logger.info("🤖 Triage IA en cours...")
         ai_triage = self.triage_agent.triage_ticket(
             ticket_subject=subject,

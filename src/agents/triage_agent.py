@@ -83,10 +83,13 @@ Un candidat peut avoir PLUSIEURS intentions dans un même message - c'est très 
 INTENTIONS POSSIBLES (par ordre de spécificité - préfère les intentions spécifiques):
 
 **Intentions liées aux DATES D'EXAMEN:**
-- DEMANDE_DATES_FUTURES: Demande de dates d'examen disponibles
-  Exemples: "Quelles sont les prochaines dates ?", "dates disponibles", "dates pour juillet", "dates à Montpellier"
-- REPORT_DATE: Veut CHANGER sa date d'examen actuelle
+- DEMANDE_DATES_FUTURES: Demande de dates d'examen disponibles (candidat SANS date assignée)
+  Exemples: "Quelles sont les prochaines dates ?", "dates disponibles"
+  ⚠️ Utiliser SEULEMENT si "Date examen actuelle" = "Aucune date assignée"
+- REPORT_DATE: Veut CHANGER sa date d'examen actuelle (candidat AVEC date assignée)
   Exemples: "Je voudrais reporter", "changer ma date", "décaler mon examen"
+  ⚠️ Si "Date examen actuelle" contient une date ET que le candidat demande une autre date/mois/département → c'est REPORT_DATE !
+  Exemples avec date existante: "je voudrais juillet au lieu de mars", "dates à Montpellier" (si sa date actuelle est ailleurs), "je ne peux pas en mars"
 - DEMANDE_AUTRES_DEPARTEMENTS: Veut voir des dates dans d'autres villes/départements
   Exemples: "dates ailleurs", "autre département", "dates à Lyon", "d'autres options"
 
@@ -122,7 +125,8 @@ INTENTIONS POSSIBLES (par ordre de spécificité - préfère les intentions spé
 
 **EXEMPLES DE MULTI-INTENTIONS (très fréquent):**
 - "Je voudrais les dates de Montpellier pour juillet et des infos sur les cours du soir"
-  → primary_intent: DEMANDE_DATES_FUTURES, secondary_intents: ["QUESTION_SESSION"]
+  → SI Date examen actuelle = "Aucune date assignée": primary_intent: DEMANDE_DATES_FUTURES, secondary_intents: ["QUESTION_SESSION"]
+  → SI Date examen actuelle = "31/03/2026": primary_intent: REPORT_DATE, secondary_intents: ["QUESTION_SESSION", "DEMANDE_AUTRES_DEPARTEMENTS"]
 - "Où en est mon dossier ? Et quand est mon examen ?"
   → primary_intent: STATUT_DOSSIER, secondary_intents: ["DEMANDE_DATES_FUTURES"]
 - "Je confirme le cours du soir. C'est quoi les prochaines étapes ?"
@@ -250,11 +254,24 @@ Pour CONFIRMATION_SESSION, extraire la préférence:
 
         # Ajouter les infos du deal si disponibles
         if deal_data:
+            # Utiliser la vraie date d'examen (enrichie par le workflow depuis le module Sessions_d_examen)
+            # Le champ Date_examen_VTC est un lookup qui contient juste {'name': '...', 'id': '...'}
+            # La vraie date est dans _real_exam_date (ajoutée par le workflow)
+            date_examen_info = "Aucune date assignée"
+            real_exam_date = deal_data.get('_real_exam_date')
+            if real_exam_date:
+                # Format YYYY-MM-DD → affichage plus lisible
+                date_examen_info = f"{real_exam_date} (date assignée)"
+            elif deal_data.get('Date_examen_VTC'):
+                # Fallback: lookup non enrichi, on indique juste qu'une date existe
+                date_examen_info = "Date assignée (détails non disponibles)"
+
             deal_info = [
                 f"**Deal trouvé:** {deal_data.get('Deal_Name', 'N/A')}",
                 f"**Montant:** {deal_data.get('Amount', 'N/A')}€",
                 f"**Stage:** {deal_data.get('Stage', 'N/A')}",
-                f"**Evalbox:** {deal_data.get('Evalbox', 'N/A')}"
+                f"**Evalbox:** {deal_data.get('Evalbox', 'N/A')}",
+                f"**Date examen actuelle:** {date_examen_info}"
             ]
             context_parts.append("\n".join(deal_info))
 

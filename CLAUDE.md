@@ -440,10 +440,43 @@ client.add_deal_note(deal_id, note_title, note_content)
 client.search_deals(criteria="(Email:equals:test@example.com)")
 ```
 
-**ATTENTION - Champs Lookup :**
+**ATTENTION - Champs Lookup (CRITIQUE) :**
+
+Les champs `Date_examen_VTC` et `Session` sont des **lookups** vers d'autres modules CRM.
+
+**En LECTURE (get_deal) :**
+```python
+deal = crm_client.get_deal(deal_id)
+deal['Date_examen_VTC']  # → {'name': '34_2026-03-31', 'id': '1456177001550147229'}
+deal['Session']          # → {'name': 'cds-mars-2026', 'id': '1456177001234567890'}
+```
+⚠️ **Ce n'est PAS la vraie date/session !** C'est juste une référence (name + id).
+
+**Pour obtenir les vraies données, TOUJOURS faire un appel API supplémentaire :**
+```python
+# Pour Date_examen_VTC → module "Dates_Examens_VTC_TAXI"
+exam_session_id = deal['Date_examen_VTC']['id']
+exam_session = crm_client.get_record('Dates_Examens_VTC_TAXI', exam_session_id)
+real_date = exam_session['Date_Examen']  # → '2026-03-31' (vraie date)
+departement = exam_session['Departement']  # → '34'
+
+# Pour Session → module "Sessions"
+session_id = deal['Session']['id']
+session = crm_client.get_record('Sessions', session_id)
+session_name = session['Name']  # → 'Cours du soir mars 2026'
+session_type = session['session_type']  # → 'soir'
+```
+
+**En ÉCRITURE (update_deal) :**
 - `Date_examen_VTC` → Attend un **ID** (bigint), pas une date string
-- `Session` → Attend un **ID** (bigint), pas un nom de session (⚠️ PAS `Session_choisie`)
-- Utiliser `find_exam_session_by_date_and_dept()` pour obtenir l'ID
+- `Session` → Attend un **ID** (bigint), pas un nom de session
+- Utiliser `find_exam_session_by_date_and_dept()` pour obtenir l'ID depuis une date
+
+**Modules de référence :**
+| Champ CRM | Module associé | Champs utiles |
+|-----------|----------------|---------------|
+| `Date_examen_VTC` | `Dates_Examens_VTC_TAXI` | `Date_Examen`, `Departement`, `Date_Cloture_Inscription` |
+| `Session` | `Sessions1` | `Name`, `session_type`, `Date_d_but`, `Date_de_fin` |
 
 ---
 
