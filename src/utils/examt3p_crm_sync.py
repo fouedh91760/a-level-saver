@@ -488,13 +488,32 @@ def find_exam_session_by_date_and_dept(
         return None
 
 
-def get_crm_exam_date(deal_data: Dict[str, Any]) -> Optional[str]:
+def get_crm_exam_date(
+    deal_data: Dict[str, Any],
+    enriched_lookups: Optional[Dict[str, Any]] = None
+) -> Optional[str]:
     """
     Extrait la date d'examen du deal CRM au format dd/mm/yyyy.
 
+    Args:
+        deal_data: Données du deal CRM
+        enriched_lookups: Lookups enrichis depuis crm_lookup_helper (optionnel, recommandé)
+
     Returns:
-        Date formatée ou None
+        Date formatée (dd/mm/yyyy) ou None
     """
+    from src.utils.date_utils import parse_date_flexible, format_date_for_display
+
+    # Méthode préférée: utiliser les lookups enrichis
+    if enriched_lookups and enriched_lookups.get('date_examen'):
+        date_value = enriched_lookups['date_examen']
+        # Convertir de YYYY-MM-DD vers dd/mm/yyyy
+        parsed = parse_date_flexible(date_value)
+        if parsed:
+            return format_date_for_display(parsed)
+        return None
+
+    # Fallback: méthode legacy avec regex sur le champ "name"
     import re
 
     date_examen_vtc = deal_data.get('Date_examen_VTC')
@@ -502,8 +521,8 @@ def get_crm_exam_date(deal_data: Dict[str, Any]) -> Optional[str]:
         return None
 
     if isinstance(date_examen_vtc, dict):
-        # Lookup - extraire la date
-        date_value = date_examen_vtc.get('Date_Examen') or date_examen_vtc.get('name', '')
+        # Lookup - extraire la date du name
+        date_value = date_examen_vtc.get('name', '')
 
         # Essayer d'extraire une date au format dd/mm/yyyy
         if date_value and '/' in str(date_value):
@@ -511,13 +530,15 @@ def get_crm_exam_date(deal_data: Dict[str, Any]) -> Optional[str]:
             if match:
                 return match.group(1)
 
-        # Essayer format yyyy-mm-dd
-        if date_value and len(str(date_value)) == 10 and '-' in str(date_value):
-            try:
-                date_obj = datetime.strptime(str(date_value), "%Y-%m-%d")
-                return date_obj.strftime("%d/%m/%Y")
-            except Exception as e:
-                pass
+        # Essayer format yyyy-mm-dd dans le name
+        if date_value:
+            match = re.search(r'(\d{4}-\d{2}-\d{2})', str(date_value))
+            if match:
+                try:
+                    date_obj = datetime.strptime(match.group(1), "%Y-%m-%d")
+                    return date_obj.strftime("%d/%m/%Y")
+                except Exception as e:
+                    pass
 
     return None
 

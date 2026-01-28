@@ -854,17 +854,21 @@ class TemplateEngine:
         deal_data = context.get('deal_data', {})
         contact_data = context.get('contact_data', {})  # Données du Contact lié (First_Name, Last_Name)
         examt3p_data = context.get('examt3p_data', {})
+        enriched_lookups = context.get('enriched_lookups', {})
 
         # Extraire le prénom et nom depuis Contact (pas Deal)
         prenom = self._extract_prenom_from_contact(contact_data, deal_data)
         nom = contact_data.get('Last_Name', '') or ''
 
-        # Formater les dates - utiliser date_examen_vtc_value si disponible (extraite du lookup)
-        date_examen = context.get('date_examen_vtc_value') or context.get('date_examen')
+        # Utiliser les lookups enrichis (v2.2) si disponibles, sinon fallback
+        if enriched_lookups.get('date_examen'):
+            date_examen = enriched_lookups['date_examen']
+        else:
+            date_examen = context.get('date_examen_vtc_value') or context.get('date_examen')
         date_examen_formatted = self._format_date(date_examen) if date_examen else ''
 
-        # Département
-        departement = context.get('departement', '')
+        # Département depuis lookups enrichis ou fallback
+        departement = enriched_lookups.get('departement') or context.get('departement', '')
 
         # Préparer les dates proposées
         dates_proposees = self._format_dates_list(context.get('next_dates', []))
@@ -905,9 +909,9 @@ class TemplateEngine:
             # Département
             'departement': departement,
 
-            # Session - utilise les données du legacy session_helper
+            # Session - utilise les lookups enrichis (v2.2) ou fallback sur legacy
             # Le legacy fournit la logique (quelles sessions proposer), le State Engine formate l'affichage
-            'session_choisie': self._format_session(deal_data.get('Session')),
+            'session_choisie': enriched_lookups.get('session_name') or self._format_session(deal_data.get('Session')),
             'session_message': context.get('session_data', {}).get('message', ''),
             # session_preference: priorité à intent_context (détecté par triage) puis session_data (legacy)
             'session_preference': self._get_session_preference(context),

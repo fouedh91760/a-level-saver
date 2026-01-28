@@ -47,6 +47,7 @@ from knowledge_base.scenarios_mapping import (
 
 # State Engine - Architecture State-Driven
 from src.state_engine import StateDetector, TemplateEngine, ResponseValidator, CRMUpdater
+from src.utils.crm_lookup_helper import enrich_deal_lookups
 import anthropic
 
 logger = logging.getLogger(__name__)
@@ -774,30 +775,24 @@ class DOCTicketWorkflow:
             contact_data['contact_id'] = contact_id
 
         # ================================================================
-        # EXTRAIRE LA DATE DEPUIS LE LOOKUP Date_examen_VTC
+        # ENRICHIR LES LOOKUPS CRM (Date_examen_VTC et Session)
         # ================================================================
-        # Date_examen_VTC est un lookup vers le module Dates_Examens_VTC_TAXI
-        # On extrait la vraie date (pas juste le record ID)
-        date_examen_vtc_value = None
-        date_examen_lookup = deal_data.get('Date_examen_VTC')
-        if date_examen_lookup:
-            if isinstance(date_examen_lookup, dict):
-                # C'est un lookup, récupérer la date depuis le module Dates_Examens_VTC_TAXI
-                lookup_id = date_examen_lookup.get('id')
-                if lookup_id:
-                    try:
-                        date_record = self.crm_client.get_record('Dates_Examens_VTC_TAXI', lookup_id)
-                        if date_record:
-                            date_examen_vtc_value = date_record.get('Date_Examen')
-                            logger.info(f"  📅 Date_Examen récupérée du module: {date_examen_vtc_value}")
-                    except Exception as e:
-                        logger.warning(f"  ⚠️  Erreur récupération date examen: {e}")
-                if not date_examen_vtc_value:
+        # Utilise le helper centralisé pour récupérer les vraies données
+        # des modules Zoho CRM au lieu de parser le champ "name"
+        lookup_cache = {}  # Cache partagé pour éviter les appels répétés
+        enriched_lookups = enrich_deal_lookups(self.crm_client, deal_data, lookup_cache)
+
+        # Extraire la date d'examen enrichie pour compatibilité
+        date_examen_vtc_value = enriched_lookups.get('date_examen')
+        if not date_examen_vtc_value:
+            # Fallback: essayer de récupérer depuis le lookup name (compatibilité legacy)
+            date_examen_lookup = deal_data.get('Date_examen_VTC')
+            if date_examen_lookup:
+                if isinstance(date_examen_lookup, dict):
                     date_examen_vtc_value = date_examen_lookup.get('name')
-            else:
-                # C'est peut-être déjà une string (compatibilité)
-                date_examen_vtc_value = date_examen_lookup
-            logger.debug(f"  📅 Date_examen_VTC extraite: {date_examen_vtc_value}")
+                else:
+                    date_examen_vtc_value = date_examen_lookup
+        logger.debug(f"  📅 Date_examen_VTC extraite: {date_examen_vtc_value}")
 
         if not deal_id:
             logger.warning("  ⚠️  No deal found for this ticket")
@@ -1350,6 +1345,9 @@ Deux comptes ExamenT3P fonctionnels ont été détectés pour ce candidat, et le
             'uber_case_blocks_dates': uber_case_blocks_dates,
             # Cohérence formation/examen (cas manqué formation + examen imminent)
             'training_exam_consistency_result': training_exam_consistency_result,
+            # Lookups CRM enrichis (v2.2) - données complètes depuis les modules Zoho
+            'enriched_lookups': enriched_lookups,
+            'lookup_cache': lookup_cache,
         }
 
     def _generate_duplicate_uber_response(

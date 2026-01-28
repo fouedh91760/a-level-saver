@@ -227,6 +227,44 @@ session = find_exam_session_by_date_and_dept(crm_client, "2026-03-31", "75")
 session_id = session.get('id')  # Utiliser cet ID pour update_deal
 ```
 
+### Lookups CRM Enrichis (`src/utils/crm_lookup_helper.py`) - NOUVEAU v2.2
+
+**Helper centralisé pour lire les champs lookup CRM (Date_examen_VTC, Session).**
+
+Les champs `Date_examen_VTC` et `Session` sont des lookups qui retournent `{name, id}`.
+Ce helper appelle les modules Zoho CRM pour récupérer les vraies données via `get_record()`.
+
+```python
+from src.utils.crm_lookup_helper import (
+    enrich_deal_lookups,       # Enrichit tous les lookups d'un deal
+    enrich_lookup_field,       # Enrichit un champ lookup spécifique
+    get_real_exam_date,        # Date d'examen (YYYY-MM-DD)
+    get_real_cloture_date,     # Date de clôture
+    get_real_departement,      # Département de l'examen
+    get_session_type,          # 'jour' ou 'soir'
+    get_session_details,       # Détails complets de la session
+)
+
+# Utilisation recommandée dans le workflow
+lookup_cache = {}  # Cache partagé pour éviter les appels répétés
+enriched_lookups = enrich_deal_lookups(crm_client, deal_data, lookup_cache)
+
+# Accéder aux données
+date_examen = enriched_lookups['date_examen']        # '2026-03-31'
+date_cloture = enriched_lookups['date_cloture']      # '2026-03-15'
+departement = enriched_lookups['departement']        # '75'
+session_type = enriched_lookups['session_type']      # 'jour' ou 'soir'
+session_name = enriched_lookups['session_name']      # 'Cours du soir mars 2026'
+```
+
+**Modules de référence :**
+| Champ lookup | Module CRM | Champs utiles |
+|--------------|------------|---------------|
+| `Date_examen_VTC` | `Dates_Examens_VTC_TAXI` | `Date_Examen`, `Departement`, `Date_Cloture_Inscription` |
+| `Session` | `Sessions1` | `Name`, `session_type`, `Date_d_but`, `Date_de_fin` |
+
+**⚠️ NE JAMAIS utiliser regex sur `lookup.get('name')` !** Toujours utiliser ce helper.
+
 ### Gestion des identifiants ExamT3P (`src/utils/examt3p_credentials_helper.py`)
 
 **Utilise l'IA (Haiku) pour extraire les identifiants des emails.**

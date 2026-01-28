@@ -315,20 +315,31 @@ def format_exam_with_sessions(
     return result
 
 
-def detect_session_preference_from_deal(deal_data: Dict[str, Any]) -> Optional[str]:
+def detect_session_preference_from_deal(
+    deal_data: Dict[str, Any],
+    enriched_lookups: Optional[Dict[str, Any]] = None
+) -> Optional[str]:
     """
     Détecte la préférence de session (jour/soir) à partir des données du deal.
 
     Args:
         deal_data: Données du deal CRM
+        enriched_lookups: Lookups enrichis depuis crm_lookup_helper (optionnel, recommandé)
 
     Returns:
         'jour', 'soir', ou None si pas de préférence détectée
     """
-    # Vérifier le champ Session existant
+    # Méthode préférée: utiliser les lookups enrichis
+    if enriched_lookups and enriched_lookups.get('session_type'):
+        session_type = enriched_lookups['session_type']
+        if session_type in ('jour', 'soir'):
+            return session_type
+
+    # Vérifier le champ Session existant (fallback)
     session = deal_data.get('Session')
     if session:
         if isinstance(session, dict):
+            # Fallback: parser le name (legacy)
             session_name = session.get('name', '').lower()
         else:
             session_name = str(session).lower()

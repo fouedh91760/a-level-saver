@@ -148,7 +148,8 @@ class StateDetector:
         linking_result: Dict[str, Any],
         threads_data: Optional[List[Dict]] = None,
         session_data: Optional[Dict[str, Any]] = None,
-        training_exam_consistency_data: Optional[Dict[str, Any]] = None
+        training_exam_consistency_data: Optional[Dict[str, Any]] = None,
+        enriched_lookups: Optional[Dict[str, Any]] = None
     ) -> DetectedStates:
         """
         Détecte TOUS les états du candidat (multi-états).
@@ -164,6 +165,7 @@ class StateDetector:
             threads_data: Threads du ticket (optionnel)
             session_data: Données session (optionnel, pour C2)
             training_exam_consistency_data: Données cohérence formation/examen (optionnel, pour C1/C3)
+            enriched_lookups: Lookups CRM enrichis (v2.2) depuis crm_lookup_helper
 
         Returns:
             DetectedStates avec blocking_state, warning_states, info_states
@@ -173,7 +175,7 @@ class StateDetector:
         # Contexte pour l'évaluation des conditions
         context = self._build_context(
             deal_data, examt3p_data, triage_result, linking_result, threads_data,
-            session_data, training_exam_consistency_data
+            session_data, training_exam_consistency_data, enriched_lookups
         )
 
         # Collecter les alertes (Uber D/E, etc.)
@@ -235,16 +237,25 @@ class StateDetector:
         linking_result: Dict[str, Any],
         threads_data: Optional[List[Dict]],
         session_data: Optional[Dict[str, Any]] = None,
-        training_exam_consistency_data: Optional[Dict[str, Any]] = None
+        training_exam_consistency_data: Optional[Dict[str, Any]] = None,
+        enriched_lookups: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
         """Construit le contexte pour l'évaluation des conditions."""
         today = date.today()
 
+        # Utiliser les lookups enrichis si disponibles, sinon fallback sur les méthodes legacy
+        if enriched_lookups:
+            date_examen = enriched_lookups.get('date_examen')
+            date_cloture = enriched_lookups.get('date_cloture')
+            departement = enriched_lookups.get('departement')
+        else:
+            # Fallback: méthodes legacy avec regex sur le champ "name"
+            date_examen = self._extract_date_examen(deal_data)
+            date_cloture = self._extract_date_cloture(deal_data)
+            departement = self._extract_departement(deal_data)
+
         # Extraire les champs importants du deal
         evalbox = deal_data.get('Evalbox', '')
-        date_examen = self._extract_date_examen(deal_data)
-        date_cloture = self._extract_date_cloture(deal_data)
-        departement = self._extract_departement(deal_data)
         amount = deal_data.get('Amount', 0)
         stage = deal_data.get('Stage', '')
 
@@ -340,6 +351,9 @@ class StateDetector:
             # Données session et cohérence (pour détection C1, C2, C3)
             'session_data': session_data or {},
             'training_exam_consistency_data': training_exam_consistency_data or {},
+
+            # Lookups CRM enrichis (v2.2)
+            'enriched_lookups': enriched_lookups or {},
         }
 
         # Calculer uber_case une seule fois (source de vérité unique)
