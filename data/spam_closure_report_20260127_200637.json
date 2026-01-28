@@ -1,0 +1,11 @@
+{
+  "timestamp": "2026-01-27T20:06:37.053120",
+  "source_file": "data/lot2_analysis_11_20.json",
+  "dry_run": true,
+  "spam_count": 2,
+  "closed": [
+    "198709000448028379",
+    "198709000448043164"
+  ],
+  "errors": []
+}

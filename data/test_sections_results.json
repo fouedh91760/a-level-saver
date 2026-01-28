@@ -1,0 +1,67 @@
+[
+  {
+    "ticket_id": "198709000448019181",
+    "state": "EXAM_DATE_EMPTY",
+    "intention": "STATUT_DOSSIER",
+    "template": "response_master",
+    "sections": {
+      "intention": true,
+      "statut": true,
+      "action": true
+    },
+    "all_ok": true,
+    "response_preview": "Bonjour Abdelkader,<br>\n\n<b>Concernant l'avancement de votre dossier</b><br>\n<br>\n\n<b>Statut de votre dossier</b><br>\n<br>\n\nVotre dossier est <b>en attente de traitement</b>. Nous reviendrons vers vous rapidement avec plus d'informations.<br>\n\n<br>\n\n<b style=\"color: #d35400;\">Prochaine étape pour av"
+  },
+  {
+    "ticket_id": "198709000448043841",
+    "state": "EXAM_DATE_ASSIGNED_WAITING",
+    "intention": "CONFIRMATION_SESSION",
+    "template": "response_master",
+    "sections": {
+      "intention": true,
+      "statut": true,
+      "action": true
+    },
+    "all_ok": true,
+    "response_preview": "Bonjour Sandrine,<br>\n\n<b>Concernant votre session de formation</b><br>\n<br>\n\nNous avons bien noté votre préférence pour les <b>cours du jour</b>.<br>\n\n<br>\n\n<b>Statut de votre dossier</b><br>\n<br>\n\nVotre dossier est <b>en attente de traitement</b>. Nous reviendrons vers vous rapidement avec plus d'"
+  },
+  {
+    "ticket_id": "198709000448028627",
+    "state": "EXAM_DATE_EMPTY",
+    "intention": "DEMANDE_IDENTIFIANTS",
+    "template": "response_master",
+    "sections": {
+      "intention": true,
+      "statut": true,
+      "action": true
+    },
+    "all_ok": true,
+    "response_preview": "Bonjour Wassim,<br>\n\n<b>Vos identifiants ExamT3P</b><br>\n<br>\n\nNous n'avons pas encore vos identifiants ExamT3P dans notre système.<br>\n\nIls seront créés lors de la constitution de votre dossier CMA.<br>\n\n<br>\n\n<b>Statut de votre dossier</b><br>\n<br>\n\nVotre dossier est <b>en attente de traitement</b"
+  },
+  {
+    "ticket_id": "198709000448028260",
+    "state": "EXAM_DATE_ASSIGNED_WAITING",
+    "intention": "CONFIRMATION_SESSION",
+    "template": "response_master",
+    "sections": {
+      "intention": true,
+      "statut": true,
+      "action": true
+    },
+    "all_ok": true,
+    "response_preview": "Bonjour Yoan,<br>\n\n<b>Concernant votre session de formation</b><br>\n<br>\n\nNous avons bien noté votre préférence pour les <b>cours du jour</b>.<br>\n\n<br>\n\n<b>Statut de votre dossier</b><br>\n<br>\n\nVotre dossier est <b>en attente de traitement</b>. Nous reviendrons vers vous rapidement avec plus d'info"
+  },
+  {
+    "ticket_id": "198709000448029779",
+    "state": "EXAM_DATE_PAST_VALIDATED",
+    "intention": "STATUT_DOSSIER",
+    "template": "response_master",
+    "sections": {
+      "intention": true,
+      "statut": true,
+      "action": true
+    },
+    "all_ok": true,
+    "response_preview": "Bonjour Papa,<br>\n\n<b>Concernant l'avancement de votre dossier</b><br>\n<br>\n\n<b>Statut de votre dossier</b><br>\n<br>\n\nVotre dossier est <b>validé et payé</b>. Vous êtes inscrit à l'examen du <b>28/01/2025</b>.<br>\n<i>La convocation sera disponible environ 10 jours avant l'examen.</i><br>\n\n<br>\n\n<b s"
+  }
+]

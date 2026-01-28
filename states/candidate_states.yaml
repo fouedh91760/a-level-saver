@@ -56,6 +56,7 @@ states:
   SPAM:
     id: "T1"
     priority: 1
+    severity: "BLOCKING"  # Stoppe le workflow
     description: "Message spam/publicité - Clôturer sans réponse"
     category: "triage"
 
@@ -77,6 +78,7 @@ states:
   ROUTE_DEPARTMENT:
     id: "T2"
     priority: 2
+    severity: "BLOCKING"  # Stoppe le workflow (transfert)
     description: "Ticket à transférer vers un autre département"
     category: "triage"
 
@@ -97,6 +99,7 @@ states:
   DUPLICATE_UBER:
     id: "T3"
     priority: 3
+    severity: "BLOCKING"  # Stoppe le workflow (réponse unique)
     description: "Candidat a déjà utilisé l'offre Uber 20€"
     category: "triage"
 
@@ -128,6 +131,7 @@ states:
   CANDIDATE_NOT_FOUND:
     id: "T4"
     priority: 4
+    severity: "BLOCKING"  # Stoppe le workflow (clarification)
     description: "Aucun deal trouvé pour cet email"
     category: "triage"
 
@@ -162,6 +166,7 @@ states:
   CREDENTIALS_REFUSED_SECURITY:
     id: "A0"
     priority: 95  # Plus haute priorité que CREDENTIALS_INVALID
+    severity: "INFO"  # Combinable avec d'autres états
     description: "Le candidat refuse de partager ses identifiants pour raison de sécurité"
     category: "analysis"
 
@@ -194,6 +199,7 @@ states:
   CREDENTIALS_INVALID:
     id: "A1"
     priority: 100
+    severity: "INFO"  # Pas BLOCKING car CAB crée le compte pour candidats Uber
     description: "Identifiants ExamT3P invalides ou manquants"
     category: "analysis"
 
@@ -230,6 +236,7 @@ states:
   EXAMT3P_DOWN:
     id: "A2"
     priority: 101
+    severity: "BLOCKING"  # Intervention manuelle requise
     description: "Erreur technique ExamT3P - intervention manuelle requise"
     category: "analysis"
 
@@ -253,6 +260,7 @@ states:
   DOUBLE_ACCOUNT_PAID:
     id: "A3"
     priority: 102
+    severity: "BLOCKING"  # Intervention manuelle requise
     description: "Deux comptes ExamT3P payés détectés"
     category: "analysis"
 
@@ -270,6 +278,31 @@ states:
 
     crm_updates: null
 
+  # ---------------------------------------------------------------------------
+  # A4: COMPTE PERSONNEL DÉTECTÉ (CRM payé, perso non payé)
+  # ---------------------------------------------------------------------------
+  PERSONAL_ACCOUNT_WARNING:
+    id: "A4"
+    priority: 103
+    severity: "WARNING"  # Alerte ajoutée mais workflow continue
+    description: "Compte CAB payé + compte personnel non payé détecté"
+    category: "analysis"
+
+    detection:
+      method: "credentials_helper"
+      condition: "personal_account_warning == true"
+
+    workflow:
+      action: "RESPOND_WITH_ALERT"
+      alert_internal: false
+
+    response:
+      generate: true
+      alert_template: "partials/warnings/personal_account_warning.html"
+      alert_position: "before_signature"
+
+    crm_updates: null
+
 # =============================================================================
 # ÉTATS ÉLIGIBILITÉ UBER (Priorité 200-299)
 # =============================================================================
@@ -280,6 +313,7 @@ states:
   UBER_PROSPECT:
     id: "U-PROSPECT"
     priority: 200
+    severity: "BLOCKING"  # Doit payer avant de continuer
     description: "Candidat prospect Uber - paiement 20€ non effectué"
     category: "uber_eligibility"
 
@@ -314,6 +348,7 @@ states:
   UBER_DOCS_MISSING:
     id: "U-A"
     priority: 201
+    severity: "BLOCKING"  # Doit envoyer documents avant de continuer
     description: "Uber 20€ payé mais documents non envoyés"
     category: "uber_eligibility"
 
@@ -348,6 +383,7 @@ states:
   UBER_TEST_MISSING:
     id: "U-B"
     priority: 202
+    severity: "BLOCKING"  # Doit passer test avant de continuer
     description: "Documents envoyés mais test de sélection non passé"
     category: "uber_eligibility"
 
@@ -382,6 +418,7 @@ states:
   UBER_ACCOUNT_NOT_VERIFIED:
     id: "U-D"
     priority: 203
+    severity: "WARNING"  # Continue le workflow mais ajoute alerte
     description: "Compte Uber Driver non vérifié après J+1"
     category: "uber_eligibility"
 
@@ -406,6 +443,7 @@ states:
   UBER_NOT_ELIGIBLE:
     id: "U-E"
     priority: 204
+    severity: "WARNING"  # Continue le workflow mais ajoute alerte
     description: "Non éligible selon vérification Uber"
     category: "uber_eligibility"
 
@@ -434,6 +472,7 @@ states:
   EXAM_DATE_EMPTY:
     id: "D-1"
     priority: 300
+    severity: "INFO"  # Combinable avec intentions
     description: "Pas de date d'examen assignée - proposer dates"
     category: "date_examen"
 
@@ -471,6 +510,7 @@ states:
   EXAM_DATE_PAST_NOT_VALIDATED:
     id: "D-2"
     priority: 301
+    severity: "INFO"  # Combinable avec intentions
     description: "Date d'examen passée, dossier non validé - proposer nouvelles dates"
     category: "date_examen"
 
@@ -505,6 +545,7 @@ states:
   REFUSED_CMA:
     id: "D-3"
     priority: 302
+    severity: "INFO"  # Combinable avec intentions
     description: "Dossier refusé par la CMA - pièces à corriger"
     category: "date_examen"
 
@@ -542,6 +583,7 @@ states:
   VALIDE_CMA_WAITING_CONVOC:
     id: "D-4"
     priority: 303
+    severity: "INFO"  # Combinable avec intentions
     description: "Dossier validé par CMA - convocation à venir"
     category: "date_examen"
 
@@ -585,6 +627,7 @@ states:
   DOSSIER_SYNCHRONIZED:
     id: "D-5"
     priority: 304
+    severity: "INFO"  # Combinable avec intentions
     description: "Dossier transmis à la CMA - instruction en cours"
     category: "date_examen"
 
@@ -620,6 +663,7 @@ states:
   EXAM_DATE_ASSIGNED_WAITING:
     id: "D-6"
     priority: 305
+    severity: "INFO"  # Combinable avec intentions
     description: "Date assignée, en attente de synchronisation"
     category: "date_examen"
 
@@ -645,6 +689,7 @@ states:
   EXAM_DATE_PAST_VALIDATED:
     id: "D-7"
     priority: 306
+    severity: "INFO"  # Combinable avec intentions
     description: "Date passée avec dossier validé - vérifier si examen passé"
     category: "date_examen"
 
@@ -678,6 +723,7 @@ states:
   DEADLINE_MISSED:
     id: "D-8"
     priority: 307
+    severity: "INFO"  # Combinable avec intentions
     description: "Date de clôture passée - report automatique"
     category: "date_examen"
 
@@ -714,6 +760,7 @@ states:
   CONVOCATION_RECEIVED:
     id: "D-9"
     priority: 308
+    severity: "INFO"  # Combinable avec intentions
     description: "Convocation disponible - transmettre identifiants"
     category: "date_examen"
 
@@ -751,6 +798,7 @@ states:
   READY_TO_PAY:
     id: "D-10"
     priority: 309
+    severity: "INFO"  # Combinable avec intentions
     description: "Dossier prêt pour paiement CMA"
     category: "date_examen"
 
@@ -792,6 +840,7 @@ states:
   REPORT_DATE_REQUEST:
     id: "I1"
     priority: 400
+    severity: "INFO"  # Combinable avec autres états
     description: "Candidat demande à reporter sa date d'examen"
     category: "intention"
 
@@ -832,6 +881,7 @@ states:
   CONFIRMATION_SESSION:
     id: "I2"
     priority: 401
+    severity: "INFO"  # Combinable avec autres états
     description: "Candidat confirme son choix de session de formation"
     category: "intention"
 
@@ -874,6 +924,7 @@ states:
   DEMANDE_IDENTIFIANTS:
     id: "I3"
     priority: 402
+    severity: "INFO"  # Combinable avec autres états
     description: "Candidat demande ses identifiants ExamT3P (mot de passe oublié, etc.)"
     category: "intention"
 
@@ -908,6 +959,7 @@ states:
   STATUT_DOSSIER:
     id: "I4"
     priority: 403
+    severity: "INFO"  # Combinable avec autres états
     description: "Candidat demande où en est son dossier"
     category: "intention"
 
@@ -944,6 +996,7 @@ states:
   CONFIRMATION_PAIEMENT:
     id: "I5"
     priority: 404
+    severity: "INFO"  # Combinable avec autres états
     description: "Candidat demande confirmation de paiement ou facture"
     category: "intention"
 
@@ -977,6 +1030,7 @@ states:
   DOCUMENT_QUESTION:
     id: "I6"
     priority: 405
+    severity: "INFO"  # Combinable avec autres états
     description: "Candidat pose une question sur les documents"
     category: "intention"
 
@@ -1017,6 +1071,7 @@ states:
   RESULTAT_EXAMEN:
     id: "I7"
     priority: 406
+    severity: "INFO"  # Combinable avec autres états
     description: "Candidat demande son résultat d'examen"
     category: "intention"
 
@@ -1055,6 +1110,7 @@ states:
   QUESTION_GENERALE:
     id: "I8"
     priority: 407
+    severity: "INFO"  # Combinable avec autres états
     description: "Autre question générale du candidat"
     category: "intention"
 
@@ -1084,6 +1140,7 @@ states:
   CONFIRMATION_DATE_EXAMEN:
     id: "I9"
     priority: 408
+    severity: "INFO"  # Combinable avec autres états
     description: "Candidat confirme son choix de date d'examen"
     category: "intention"
 
@@ -1128,6 +1185,7 @@ states:
   TRAINING_MISSED_EXAM_IMMINENT:
     id: "C1"
     priority: 500
+    severity: "WARNING"  # Alerte importante mais workflow continue
     description: "Formation manquée alors que l'examen est imminent"
     category: "consistency"
 
@@ -1163,6 +1221,7 @@ states:
   REFRESH_SESSION_AVAILABLE:
     id: "C2"
     priority: 501
+    severity: "INFO"  # Information additionnelle
     description: "Formation terminée mais examen futur - proposer rafraîchissement"
     category: "consistency"
 
@@ -1186,6 +1245,7 @@ states:
   DOSSIER_NOT_RECEIVED:
     id: "C3"
     priority: 502
+    severity: "INFO"  # Combinable avec intentions
     description: "Deal Uber 20€ sans dossier reçu - candidat doit finaliser inscription"
     category: "consistency"
 
@@ -1218,6 +1278,7 @@ states:
   DATE_MODIFICATION_BLOCKED:
     id: "B1"
     priority: 600
+    severity: "WARNING"  # Alerte dans réponse (pas BLOCKING car workflow continue)
     description: "Modification de date impossible - dossier validé et clôture passée"
     category: "blocking"
 
@@ -1243,6 +1304,7 @@ states:
   GENERAL:
     id: "DEFAULT"
     priority: 999
+    severity: "INFO"  # État par défaut combinable
     description: "État par défaut - réponse contextuelle"
     category: "default"
 

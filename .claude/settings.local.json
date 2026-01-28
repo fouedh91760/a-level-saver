@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(set PYTHONIOENCODING=utf-8)",
+      "Bash(python:*)",
+      "Bash(chcp 6500)",
+      "Bash(PYTHONIOENCODING=utf-8 python test_doc_workflow_with_examt3p.py:*)",
+      "Bash(git push:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(ls:*)",
+      "Bash(dir:*)",
+      "Bash(head:*)",
+      "Bash(del temp_test_result.txt temp_test_result2.txt temp_test_result3.txt)",
+      "Bash(Remove-Item temp_test_result*.txt -ErrorAction SilentlyContinue)"
+    ]
+  }
+}

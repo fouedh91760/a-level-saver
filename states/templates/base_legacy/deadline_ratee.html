@@ -1,0 +1,21 @@
+{{> salutation_personnalisee}}
+<b>Report automatique sur la prochaine session</b><br>
+La date limite d'inscription pour l'examen du <b>{{date_examen}}</b> est passée (clôture le {{date_cloture}}).<br>
+<br>
+{{#if new_exam_date}}
+Votre dossier sera automatiquement reporté sur la prochaine session :<br>
+- <b>Nouvel examen : {{new_exam_date}}</b><br>
+{{#if new_exam_date_cloture}}- Date limite d'inscription : {{new_exam_date_cloture}}<br>{{/if}}
+<br>
+{{else}}
+Votre dossier sera automatiquement reporté sur la prochaine session disponible.<br>
+<br>
+{{#if prochaines_dates}}
+<b>Prochaines dates disponibles :</b><br>
+{{#each prochaines_dates}}
+- <b>{{this.date}}</b> (département {{this.departement}}) - clôture le {{this.cloture}}<br>
+{{/each}}
+<br>
+{{/if}}
+{{/if}}
+{{> signature}}

@@ -67,7 +67,7 @@ def test_doc_workflow(ticket_id: str, use_state_engine: bool = True,
 
     Args:
         ticket_id: ID du ticket à traiter
-        use_state_engine: Utiliser le State Engine (True) ou Legacy mode (False)
+        use_state_engine: Ignoré (toujours State Engine maintenant)
         auto_create_draft: Créer le draft dans Zoho Desk
         auto_update_crm: Mettre à jour le CRM
         quiet: Mode silencieux (moins de logs)
@@ -77,17 +77,17 @@ def test_doc_workflow(ticket_id: str, use_state_engine: bool = True,
     """
     if not quiet:
         print("\n" + "=" * 80)
-        print("🧪 TEST WORKFLOW DOC COMPLET (avec validation ExamT3P)")
+        print("TEST WORKFLOW DOC COMPLET (avec validation ExamT3P)")
         print("=" * 80)
         print(f"Ticket ID: {ticket_id}")
-        print(f"Mode: {'🎯 STATE ENGINE (déterministe)' if use_state_engine else '🤖 LEGACY (IA)'}")
+        print(f"Mode: STATE ENGINE (deterministe)")
         if not auto_create_draft or not auto_update_crm:
-            print(f"⚠️  DRY RUN: CRM update={auto_update_crm}, Draft={auto_create_draft}")
+            print(f"DRY RUN: CRM update={auto_update_crm}, Draft={auto_create_draft}")
         print()
 
     from src.workflows.doc_ticket_workflow import DOCTicketWorkflow
 
-    workflow = DOCTicketWorkflow(use_state_engine=use_state_engine)
+    workflow = DOCTicketWorkflow()
 
     try:
         if not quiet:
@@ -98,7 +98,7 @@ def test_doc_workflow(ticket_id: str, use_state_engine: bool = True,
             ticket_id=ticket_id,
             auto_create_draft=auto_create_draft,    # Créer le draft dans Zoho Desk
             auto_update_crm=auto_update_crm,        # Mettre à jour le CRM automatiquement
-            auto_update_ticket=False                # Ne pas mettre à jour le ticket automatiquement
+            auto_update_ticket=auto_update_crm      # Mettre à jour le ticket (routing, tags) si pas dry-run
         )
 
         # Afficher les résultats (seulement si pas quiet)

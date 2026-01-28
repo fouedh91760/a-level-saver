@@ -1,0 +1,19 @@
+{{> salutation_personnalisee}}
+<b>Report automatique effectué</b><br>
+La date limite d'inscription pour l'examen du <b>{{date_examen}}</b> étant passée, votre dossier a été automatiquement reporté.<br>
+<br>
+{{#if new_exam_date}}
+<b>Votre nouvelle date d'examen :</b><br>
+- Examen : <b>{{new_exam_date}}</b><br>
+{{#if new_exam_date_cloture}}- Date limite d'inscription : {{new_exam_date_cloture}}<br>{{/if}}
+<br>
+{{else}}
+{{#if prochaines_dates}}
+<b>Prochaines dates disponibles :</b><br>
+{{#each prochaines_dates}}
+- <b>{{this.date}}</b> (département {{this.departement}}) - clôture le {{this.cloture}}<br>
+{{/each}}
+<br>
+{{/if}}
+{{/if}}
+{{> signature}}

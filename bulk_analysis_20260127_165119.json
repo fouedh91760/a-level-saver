@@ -1,0 +1,267 @@
+{
+  "timestamp": "20260127_165119",
+  "stats": {
+    "total": 10,
+    "success": 0,
+    "no_deal": 10,
+    "routed": 0,
+    "by_state": {},
+    "by_intention": {},
+    "by_template": {},
+    "by_ecart_type": {}
+  },
+  "ajustements_suggeres": {},
+  "ecarts_details": [],
+  "results": [
+    {
+      "ticket_id": "198709000448029779",
+      "success": false,
+      "step_reached": "DEAL_LINKED",
+      "data": {
+        "subject": "Re: Rappel pour rejoindre - Formation VTC - 13/01/2025 au 24/01/2025",
+        "contact_email": "ssalioubethioniane@gmail.com",
+        "customer_message": "<div><div dir=\"auto\">Bonjour.<div dir=\"auto\">Je demande si j'ai toujours la possibilité de faire la formation.</div><div dir=\"auto\"><br/></div><div dir=\"auto\">Merci.</div><div dir=\"auto\">Tln. 0748212976</div></div><br/><div class=\"x_2099536831gmail_quote x_2099536831gmail_quote_container\"><div dir=\"ltr\" class=\"x_2099536831gmail_attr\">Le ven. 24 janv. 2025, 17:56, CAB FORMATIONS &lt;<a href=\"mailto:noreply@zohomeeting.com\" target=\"_blank\" rel=\"noreferrer noopener\">noreply@zohomeeting.com</a>&gt; ",
+        "deal_id": "1456177001142165350",
+        "deal_name": "N/A",
+        "stage": "N/A",
+        "amount": null,
+        "evalbox": "N/A"
+      },
+      "response": {},
+      "analysis": {},
+      "ecarts": [
+        {
+          "type": "NO_DEAL",
+          "message": "Aucun deal CRM trouvé pour ce ticket",
+          "details": "Email: ssalioubethioniane@gmail.com"
+        }
+      ],
+      "ajustements": []
+    },
+    {
+      "ticket_id": "198709000447513275",
+      "success": false,
+      "step_reached": "DEAL_LINKED",
+      "data": {
+        "subject": "Re: Convocation à l’épreuve d’admissibilité",
+        "contact_email": "elmehdielwaddi@gmail.com",
+        "customer_message": "<div><div dir=\"ltr\"><div>Bonjour,</div><div>Je vous remercie de votre retour.</div><div>J'ai des contraintes personnelles qui ne me permettront malheureusement pas de passer l'examen demain (Ma femme est actuellement en déplacement hors france et c'est moi qui dépose mon enfant à l'école),serait-il possible de le reporter à une date ultérieure, cela me laissera le temps pour bien m'organiser.</div><div><br></div><div>Je vous remercie d'avance de votre compréhension.</div><div><br></div><div>Cord",
+        "deal_id": "1456177001582437186",
+        "deal_name": "N/A",
+        "stage": "N/A",
+        "amount": null,
+        "evalbox": "N/A"
+      },
+      "response": {},
+      "analysis": {},
+      "ecarts": [
+        {
+          "type": "NO_DEAL",
+          "message": "Aucun deal CRM trouvé pour ce ticket",
+          "details": "Email: elmehdielwaddi@gmail.com"
+        }
+      ],
+      "ajustements": []
+    },
+    {
+      "ticket_id": "198709000448029532",
+      "success": false,
+      "step_reached": "DEAL_LINKED",
+      "data": {
+        "subject": "Re: Récapitulatif de votre inscription à l'examen VTC",
+        "contact_email": "anthonywassi@gmail.com",
+        "customer_message": "<div dir=\"auto\" class=\"zm_4544690314423625129_parse_6797568659471473715\">Bonjour,<div><br/></div><div>Aujourd’hui devait avoir lieu l’examen theorique VTC Je suis arrivé à midi heure de ma convocation et j’ai du patienter plus de 2 heures derrière une queue immense sans que personne n’entre j’ai attendu jusqu’à 14 h sous la pluie toujours rien, aucun personnel d’accompagnement, des annonces qui n’aboutissent pas. Je souhaiterai avoir une nouvelle date de passage car le manque d’organisation d’au",
+        "deal_id": null,
+        "deal_name": "N/A",
+        "stage": "N/A",
+        "amount": null,
+        "evalbox": "N/A"
+      },
+      "response": {},
+      "analysis": {},
+      "ecarts": [
+        {
+          "type": "NO_DEAL",
+          "message": "Aucun deal CRM trouvé pour ce ticket",
+          "details": "Email: anthonywassi@gmail.com"
+        }
+      ],
+      "ajustements": []
+    },
+    {
+      "ticket_id": "198709000448030487",
+      "success": false,
+      "step_reached": "DEAL_LINKED",
+      "data": {
+        "subject": "[Service client] Dossier evalbox incomplet et non réception de convocation à l’examen",
+        "contact_email": "hooocine958@gmail.com",
+        "customer_message": "<meta content=\"text/html; charset=utf-8\">\r\n      \r\n  <div id=\"x_2125896621mimemail-body\" class=\"x_2125896621contact-page-mail\">\r\n    <div id=\"x_2125896621center\">\r\n      <div id=\"x_2125896621main\">\r\n        Hocine (<a href=\"https://cab-formations.fr/users/hocine-196\" target=\"_blank\" rel=\"noreferrer\">https://cab-formations.fr/users/hocine-196</a>) a envoyé un message en utilisant le formulaire de contact suivant : <a href=\"https://cab-formations.fr/contact\" target=\"_blank\" rel=\"noreferrer\">https:",
+        "deal_id": "1456177001482717345",
+        "deal_name": "N/A",
+        "stage": "N/A",
+        "amount": null,
+        "evalbox": "N/A"
+      },
+      "response": {},
+      "analysis": {},
+      "ecarts": [
+        {
+          "type": "NO_DEAL",
+          "message": "Aucun deal CRM trouvé pour ce ticket",
+          "details": "Email: hooocine958@gmail.com"
+        }
+      ],
+      "ajustements": []
+    },
+    {
+      "ticket_id": "198709000432908817",
+      "success": false,
+      "step_reached": "DEAL_LINKED",
+      "data": {
+        "subject": "Re: DEMANDE D'INFORMATIONS EXAMEN THEORIQUE",
+        "contact_email": "julesmake@hotmail.fr",
+        "customer_message": "<meta content=\"text/html; charset=Windows-1252\">\r\n\r\n<div>\r\n<div dir=\"ltr\" style=\"font-family: Aptos, Aptos_MSFontService, -apple-system, Roboto, Arial, Helvetica, sans-serif; font-size: 12pt\">\r\nBonjour, comment puis-je accéder au courant en ligne</div>\r\n<div id=\"x_1218873892ms-outlook-mobile-body-separator-line\" style=\"font-family: Aptos, Aptos_MSFontService, -apple-system, Roboto, Arial, Helvetica, sans-serif; font-size: 12pt\" dir=\"ltr\">\r\n<div style=\"font-family: Aptos, Aptos_MSFontService, -ap",
+        "deal_id": "1456177001479949394",
+        "deal_name": "N/A",
+        "stage": "N/A",
+        "amount": null,
+        "evalbox": "N/A"
+      },
+      "response": {},
+      "analysis": {},
+      "ecarts": [
+        {
+          "type": "NO_DEAL",
+          "message": "Aucun deal CRM trouvé pour ce ticket",
+          "details": "Email: julesmake@hotmail.fr"
+        }
+      ],
+      "ajustements": []
+    },
+    {
+      "ticket_id": "198709000448030107",
+      "success": false,
+      "step_reached": "DEAL_LINKED",
+      "data": {
+        "subject": "Re: Convocation à l’épreuve d’admissibilité",
+        "contact_email": "assane.gadiaga@live.fr",
+        "customer_message": "<meta content=\"text/html; charset=Windows-1252\">\r\n\r\n<div class=\"zm_4589649371477403540_parse_3258083128701937839\">\r\n<div style=\"font-family: Aptos, -apple-system, HelveticaNeue, sans-serif; font-size: 12pt\">\r\n<div style=\"font-family: Aptos, Aptos_MSFontService, -apple-system, Roboto, Arial, Helvetica, sans-serif; font-size: 12pt; color: rgb(0, 0, 0)\" dir=\"ltr\">\r\nBonjour,</div>\r\n<div style=\"font-family: Aptos, Aptos_MSFontService, -apple-system, Roboto, Arial, Helvetica, sans-serif; font-size: 12",
+        "deal_id": "1456177001545156341",
+        "deal_name": "N/A",
+        "stage": "N/A",
+        "amount": null,
+        "evalbox": "N/A"
+      },
+      "response": {},
+      "analysis": {},
+      "ecarts": [
+        {
+          "type": "NO_DEAL",
+          "message": "Aucun deal CRM trouvé pour ce ticket",
+          "details": "Email: assane.gadiaga@live.fr"
+        }
+      ],
+      "ajustements": []
+    },
+    {
+      "ticket_id": "198709000447819499",
+      "success": false,
+      "step_reached": "DEAL_LINKED",
+      "data": {
+        "subject": "Je voudrais avoir les prochaines dates d’examen ",
+        "contact_email": "jamel.eddine34@gmail.com",
+        "customer_message": "<table width=\"100%\" cellspacing=\"0\" cellpadding=\"0\" border=\"0\" style=\"border-top: 1px solid rgb(245, 245, 245); word-break: break-all\"><tbody><tr><td style=\"background-color: rgb(251, 251, 251); width: 175px; max-width: 250px !important; min-width: 175px !important; overflow: hidden\"><div style=\"font-size: 12px; font-family: Arial, Helvetica, sans-serif, Tahoma; color: rgb(51, 51, 51); padding-right: 10px; text-align: right\"><i><b>Question</b></i></div></td><td style=\"border-bottom: 1px solid rg",
+        "deal_id": "1456177001604688022",
+        "deal_name": "N/A",
+        "stage": "N/A",
+        "amount": null,
+        "evalbox": "N/A"
+      },
+      "response": {},
+      "analysis": {},
+      "ecarts": [
+        {
+          "type": "NO_DEAL",
+          "message": "Aucun deal CRM trouvé pour ce ticket",
+          "details": "Email: jamel.eddine34@gmail.com"
+        }
+      ],
+      "ajustements": []
+    },
+    {
+      "ticket_id": "198709000448029003",
+      "success": false,
+      "step_reached": "DEAL_LINKED",
+      "data": {
+        "subject": "Re: Test de sélection réussi - Examen VTC",
+        "contact_email": "rami.ghelila@nesetcite.com",
+        "customer_message": "\n\n<div class=\"zm_3555733019379153250_parse_8086742656952025514\">\n<div style=\"font-family: Aptos, -apple-system, HelveticaNeue, sans-serif; font-size: 12pt\">\n<p dir=\"ltr\" style=\"line-height: normal; margin: 0px 0px 12px\"><span style=\"font-family: Aptos, Aptos_MSFontService, -apple-system, Roboto, Arial, Helvetica, sans-serif; font-size: 12pt; color: rgb(0, 0, 0)\">Bonjour,</span></p>\n<p style=\"line-height: normal; margin: 0px 0px 12px; min-height: 13.8px\"><span style=\"font-family: Aptos, Aptos_MSF",
+        "deal_id": "1456177001666568368",
+        "deal_name": "N/A",
+        "stage": "N/A",
+        "amount": null,
+        "evalbox": "N/A"
+      },
+      "response": {},
+      "analysis": {},
+      "ecarts": [
+        {
+          "type": "NO_DEAL",
+          "message": "Aucun deal CRM trouvé pour ce ticket",
+          "details": "Email: rami.ghelila@nesetcite.com"
+        }
+      ],
+      "ajustements": []
+    },
+    {
+      "ticket_id": "198709000448014900",
+      "success": false,
+      "step_reached": "DEAL_LINKED",
+      "data": {
+        "subject": "INSCRIPTION",
+        "contact_email": "akotni69@gmail.com",
+        "customer_message": "<div><div dir=\"ltr\">Bonjour,&nbsp;<div><br></div><div>Je m'appelle Aymen Kotni et j'ai payé la formation VTC via UBER à 20 euros lorsque je me connecte je n'arrive pas à voir les formations théorique à effectuer.&nbsp;</div><div><br></div><div>Cordialement&nbsp;</div><div>bonne journée&nbsp;</div><div><br></div><div>Aymen Kotni&nbsp;</div><div>0766810191</div></div>\r\n</div>",
+        "deal_id": "1456177001569992160",
+        "deal_name": "N/A",
+        "stage": "N/A",
+        "amount": null,
+        "evalbox": "N/A"
+      },
+      "response": {},
+      "analysis": {},
+      "ecarts": [
+        {
+          "type": "NO_DEAL",
+          "message": "Aucun deal CRM trouvé pour ce ticket",
+          "details": "Email: akotni69@gmail.com"
+        }
+      ],
+      "ajustements": []
+    },
+    {
+      "ticket_id": "198709000448021650",
+      "success": false,
+      "step_reached": "DEAL_LINKED",
+      "data": {
+        "subject": "Inscription ",
+        "contact_email": "yanis199973@hotmail.fr",
+        "customer_message": "\n\n<div dir=\"auto\">\nBonjour,\n<div dir=\"ltr\"></div>\n<div><br/>\n</div>\n<div>Je me suis récemment inscrit et j’ai passé mon test de sélection, puis j’ai reçu ce mail d’une adresse ressemblante, mais pas similaire, me demandant mes identifiants et mot de passe.</div>\n<div><br/>\n</div>\n<div><img alt=\"image0.png\" src=\"/api/v1/threads/198709000448021654/inlineImages/edbsnd1e370f5c6c5d3ab779c5ad06317ead83dec0bed4e5e8481483479e4fc60e25b58519da5f15aebf73be5c5dea201a39a24864bd7739d8401fb4166b9419a8ba0f9cd12",
+        "deal_id": "1456177001595074962",
+        "deal_name": "N/A",
+        "stage": "N/A",
+        "amount": null,
+        "evalbox": "N/A"
+      },
+      "response": {},
+      "analysis": {},
+      "ecarts": [
+        {
+          "type": "NO_DEAL",
+          "message": "Aucun deal CRM trouvé pour ce ticket",
+          "details": "Email: yanis199973@hotmail.fr"
+        }
+      ],
+      "ajustements": []
+    }
+  ]
+}

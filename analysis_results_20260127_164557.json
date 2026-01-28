@@ -1,0 +1,348 @@
+{
+  "timestamp": "20260127_164557",
+  "stats": {
+    "total": 15,
+    "success": 0,
+    "errors": 15,
+    "by_state": {},
+    "by_intention": {},
+    "by_template": {},
+    "force_majeure_types": {},
+    "validation_errors": {},
+    "ecarts_count": 15
+  },
+  "ecarts": [
+    {
+      "ticket_id": "198709000447513275",
+      "subject": "Re: Convocation à l’épreuve d’admissibilité",
+      "ecarts": [
+        "Pas de deal CRM lié"
+      ]
+    },
+    {
+      "ticket_id": "198709000448029532",
+      "subject": "Re: Récapitulatif de votre inscription à l'examen ",
+      "ecarts": [
+        "Pas de deal CRM lié"
+      ]
+    },
+    {
+      "ticket_id": "198709000448030487",
+      "subject": "[Service client] Dossier evalbox incomplet et non ",
+      "ecarts": [
+        "Pas de deal CRM lié"
+      ]
+    },
+    {
+      "ticket_id": "198709000432908817",
+      "subject": "Re: DEMANDE D'INFORMATIONS EXAMEN THEORIQUE",
+      "ecarts": [
+        "Pas de deal CRM lié"
+      ]
+    },
+    {
+      "ticket_id": "198709000448030107",
+      "subject": "Re: Convocation à l’épreuve d’admissibilité",
+      "ecarts": [
+        "Pas de deal CRM lié"
+      ]
+    },
+    {
+      "ticket_id": "198709000447819499",
+      "subject": "Je voudrais avoir les prochaines dates d’examen ",
+      "ecarts": [
+        "Pas de deal CRM lié"
+      ]
+    },
+    {
+      "ticket_id": "198709000448029003",
+      "subject": "Re: Test de sélection réussi - Examen VTC",
+      "ecarts": [
+        "Pas de deal CRM lié"
+      ]
+    },
+    {
+      "ticket_id": "198709000448014900",
+      "subject": "INSCRIPTION",
+      "ecarts": [
+        "Pas de deal CRM lié"
+      ]
+    },
+    {
+      "ticket_id": "198709000448021650",
+      "subject": "Inscription ",
+      "ecarts": [
+        "Pas de deal CRM lié"
+      ]
+    },
+    {
+      "ticket_id": "198709000448021504",
+      "subject": "Re: Examen VTC : Quel est votre compte Uber ?",
+      "ecarts": [
+        "Pas de deal CRM lié"
+      ]
+    },
+    {
+      "ticket_id": "198709000448020795",
+      "subject": "Re:[## 1094887 ##] Demande d'attestation de format",
+      "ecarts": [
+        "Pas de deal CRM lié"
+      ]
+    },
+    {
+      "ticket_id": "198709000448020640",
+      "subject": "Re: Test de sélection réussi - Examen VTC",
+      "ecarts": [
+        "Pas de deal CRM lié"
+      ]
+    },
+    {
+      "ticket_id": "198709000448014561",
+      "subject": "RE: Examen VTC : Quel est votre compte Uber ?",
+      "ecarts": [
+        "Pas de deal CRM lié"
+      ]
+    },
+    {
+      "ticket_id": "198709000381479684",
+      "subject": "Inscription examen vtc uber 20e",
+      "ecarts": [
+        "Pas de deal CRM lié"
+      ]
+    },
+    {
+      "ticket_id": "198709000448019288",
+      "subject": "Re: Test de sélection réussi - Examen VTC",
+      "ecarts": [
+        "Pas de deal CRM lié"
+      ]
+    }
+  ],
+  "results": [
+    {
+      "ticket_id": "198709000447513275",
+      "success": false,
+      "triage": {},
+      "state": {},
+      "validation": {},
+      "ecarts": [
+        "Pas de deal CRM lié"
+      ],
+      "subject": "Re: Convocation à l’épreuve d’admissibilité",
+      "contact_email": "elmehdielwaddi@gmail.com",
+      "deal_name": "N/A",
+      "deal_stage": "N/A",
+      "evalbox": "N/A"
+    },
+    {
+      "ticket_id": "198709000448029532",
+      "success": false,
+      "triage": {},
+      "state": {},
+      "validation": {},
+      "ecarts": [
+        "Pas de deal CRM lié"
+      ],
+      "subject": "Re: Récapitulatif de votre inscription à l'examen VTC",
+      "contact_email": "anthonywassi@gmail.com",
+      "deal_name": "N/A",
+      "deal_stage": "N/A",
+      "evalbox": "N/A"
+    },
+    {
+      "ticket_id": "198709000448030487",
+      "success": false,
+      "triage": {},
+      "state": {},
+      "validation": {},
+      "ecarts": [
+        "Pas de deal CRM lié"
+      ],
+      "subject": "[Service client] Dossier evalbox incomplet et non réception de convocation à l’examen",
+      "contact_email": "hooocine958@gmail.com",
+      "deal_name": "N/A",
+      "deal_stage": "N/A",
+      "evalbox": "N/A"
+    },
+    {
+      "ticket_id": "198709000432908817",
+      "success": false,
+      "triage": {},
+      "state": {},
+      "validation": {},
+      "ecarts": [
+        "Pas de deal CRM lié"
+      ],
+      "subject": "Re: DEMANDE D'INFORMATIONS EXAMEN THEORIQUE",
+      "contact_email": "julesmake@hotmail.fr",
+      "deal_name": "N/A",
+      "deal_stage": "N/A",
+      "evalbox": "N/A"
+    },
+    {
+      "ticket_id": "198709000448030107",
+      "success": false,
+      "triage": {},
+      "state": {},
+      "validation": {},
+      "ecarts": [
+        "Pas de deal CRM lié"
+      ],
+      "subject": "Re: Convocation à l’épreuve d’admissibilité",
+      "contact_email": "assane.gadiaga@live.fr",
+      "deal_name": "N/A",
+      "deal_stage": "N/A",
+      "evalbox": "N/A"
+    },
+    {
+      "ticket_id": "198709000447819499",
+      "success": false,
+      "triage": {},
+      "state": {},
+      "validation": {},
+      "ecarts": [
+        "Pas de deal CRM lié"
+      ],
+      "subject": "Je voudrais avoir les prochaines dates d’examen ",
+      "contact_email": "jamel.eddine34@gmail.com",
+      "deal_name": "N/A",
+      "deal_stage": "N/A",
+      "evalbox": "N/A"
+    },
+    {
+      "ticket_id": "198709000448029003",
+      "success": false,
+      "triage": {},
+      "state": {},
+      "validation": {},
+      "ecarts": [
+        "Pas de deal CRM lié"
+      ],
+      "subject": "Re: Test de sélection réussi - Examen VTC",
+      "contact_email": "rami.ghelila@nesetcite.com",
+      "deal_name": "N/A",
+      "deal_stage": "N/A",
+      "evalbox": "N/A"
+    },
+    {
+      "ticket_id": "198709000448014900",
+      "success": false,
+      "triage": {},
+      "state": {},
+      "validation": {},
+      "ecarts": [
+        "Pas de deal CRM lié"
+      ],
+      "subject": "INSCRIPTION",
+      "contact_email": "akotni69@gmail.com",
+      "deal_name": "N/A",
+      "deal_stage": "N/A",
+      "evalbox": "N/A"
+    },
+    {
+      "ticket_id": "198709000448021650",
+      "success": false,
+      "triage": {},
+      "state": {},
+      "validation": {},
+      "ecarts": [
+        "Pas de deal CRM lié"
+      ],
+      "subject": "Inscription ",
+      "contact_email": "yanis199973@hotmail.fr",
+      "deal_name": "N/A",
+      "deal_stage": "N/A",
+      "evalbox": "N/A"
+    },
+    {
+      "ticket_id": "198709000448021504",
+      "success": false,
+      "triage": {},
+      "state": {},
+      "validation": {},
+      "ecarts": [
+        "Pas de deal CRM lié"
+      ],
+      "subject": "Re: Examen VTC : Quel est votre compte Uber ?",
+      "contact_email": "lutonafiston@gmail.com",
+      "deal_name": "N/A",
+      "deal_stage": "N/A",
+      "evalbox": "N/A"
+    },
+    {
+      "ticket_id": "198709000448020795",
+      "success": false,
+      "triage": {},
+      "state": {},
+      "validation": {},
+      "ecarts": [
+        "Pas de deal CRM lié"
+      ],
+      "subject": "Re:[## 1094887 ##] Demande d'attestation de formation",
+      "contact_email": "bo@cab-formations.fr",
+      "deal_name": "N/A",
+      "deal_stage": "N/A",
+      "evalbox": "N/A"
+    },
+    {
+      "ticket_id": "198709000448020640",
+      "success": false,
+      "triage": {},
+      "state": {},
+      "validation": {},
+      "ecarts": [
+        "Pas de deal CRM lié"
+      ],
+      "subject": "Re: Test de sélection réussi - Examen VTC",
+      "contact_email": "abdel-laroussi@outlook.fr",
+      "deal_name": "N/A",
+      "deal_stage": "N/A",
+      "evalbox": "N/A"
+    },
+    {
+      "ticket_id": "198709000448014561",
+      "success": false,
+      "triage": {},
+      "state": {},
+      "validation": {},
+      "ecarts": [
+        "Pas de deal CRM lié"
+      ],
+      "subject": "RE: Examen VTC : Quel est votre compte Uber ?",
+      "contact_email": "djibril.ab@outlook.fr",
+      "deal_name": "N/A",
+      "deal_stage": "N/A",
+      "evalbox": "N/A"
+    },
+    {
+      "ticket_id": "198709000381479684",
+      "success": false,
+      "triage": {},
+      "state": {},
+      "validation": {},
+      "ecarts": [
+        "Pas de deal CRM lié"
+      ],
+      "subject": "Inscription examen vtc uber 20e",
+      "contact_email": "h.laoubi@hotmail.fr",
+      "deal_name": "N/A",
+      "deal_stage": "N/A",
+      "evalbox": "N/A"
+    },
+    {
+      "ticket_id": "198709000448019288",
+      "success": false,
+      "triage": {},
+      "state": {},
+      "validation": {},
+      "ecarts": [
+        "Pas de deal CRM lié"
+      ],
+      "subject": "Re: Test de sélection réussi - Examen VTC",
+      "contact_email": "guillaume.rouchel26@gmail.com",
+      "deal_name": "N/A",
+      "deal_stage": "N/A",
+      "evalbox": "N/A"
+    }
+  ]
+}

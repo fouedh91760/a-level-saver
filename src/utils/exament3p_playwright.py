@@ -560,7 +560,18 @@ class ExamenT3PPlaywright:
         elif re.search(r'Documents justificatifs.*?EN ATTENTE', text_content, re.DOTALL | re.IGNORECASE):
             self.data['progression']['documents'] = 'EN ATTENTE'
 
-        # Paiement
+        # Paiement - même pattern que les autres champs de progression
+        # IMPORTANT: Chercher "À VALIDER" EN PREMIER pour éviter de matcher "VALIDÉ" dans "À VALIDER"
+        if re.search(r'Paiement.*?À VALIDER', text_content, re.DOTALL | re.IGNORECASE):
+            self.data['progression']['paiement'] = 'À VALIDER'
+        elif re.search(r'Paiement.*?EN ATTENTE', text_content, re.DOTALL | re.IGNORECASE):
+            self.data['progression']['paiement'] = 'EN ATTENTE'
+        elif re.search(r'Paiement.*?REFUSÉ', text_content, re.DOTALL | re.IGNORECASE):
+            self.data['progression']['paiement'] = 'REFUSÉ'
+        elif re.search(r'Paiement.*?VALIDÉ', text_content, re.DOTALL | re.IGNORECASE):
+            self.data['progression']['paiement'] = 'VALIDÉ'
+
+        # Pattern complet avec détails du paiement (date, montant, mode, statut) - pour paiement_cma
         paiement_match = re.search(r'Paiement\s*\n\s*(\d{2}/\d{2}/\d{4})\s*\n\s*(\d+[.,]\d{2})\s*€\s*-\s*Paiement par\s*(\w+)\s*\n\s*(VALIDÉ|EN ATTENTE|REFUSÉ)', text_content, re.IGNORECASE)
         if paiement_match:
             self.data['paiement_cma'] = {
@@ -569,13 +580,6 @@ class ExamenT3PPlaywright:
                 'mode': paiement_match.group(3),
                 'statut': paiement_match.group(4).upper()
             }
-            self.data['progression']['paiement'] = paiement_match.group(4).upper()
-        else:
-            if re.search(r'Paiement.*?VALIDÉ', text_content, re.DOTALL | re.IGNORECASE):
-                self.data['progression']['paiement'] = 'VALIDÉ'
-                match = re.search(r'(\d+[.,]\d{2})\s*€', text_content)
-                if match:
-                    self.data['paiement_cma'] = {'montant': float(match.group(1).replace(',', '.')), 'statut': 'VALIDÉ'}
 
         # Informations personnelles
         if re.search(r'Informations personnelles.*?À VALIDER', text_content, re.DOTALL | re.IGNORECASE):
@@ -904,9 +908,10 @@ class ExamenT3PPlaywright:
 
         self.data['historique_paiements'] = []
 
-        # Chercher les lignes de paiement dans le tableau
-        pattern = r'(\d{8})\s+(\d{2}/\d{2}/\d{4})\s+([^\n]+?)\s+(\d+[.,]\d{2})\s*€\s+(VALIDÉ|REFUSÉ|EN ATTENTE)'
-        matches = re.findall(pattern, text_content, re.IGNORECASE)
+        # Pattern 1: Paiement avec date et montant réels
+        # Ex: "00039634    15/01/2026    Examen complet    241,00 €    VALIDÉ"
+        pattern_complete = r'(\d{8})[\s\n]+(\d{2}/\d{2}/\d{4})[\s\n]+(.+?)[\s\n]+(\d+[.,]\d{2})\s*€[\s\n]*(VALIDÉ|REFUSÉ|EN ATTENTE)'
+        matches = re.findall(pattern_complete, text_content, re.IGNORECASE | re.DOTALL)
 
         for match in matches:
             self.data['historique_paiements'].append({
@@ -914,16 +919,50 @@ class ExamenT3PPlaywright:
                 'date': match[1],
                 'description': match[2].strip(),
                 'montant': float(match[3].replace(',', '.')),
-                'statut': match[4].upper()
+                'statut': match[4].upper().replace(' ', '_')
             })
 
-        # Si pas de match, essayer d'extraire au moins le montant total
+        # Pattern 2: Paiement en attente avec "--" pour date et montant (format avec tabs)
+        # Format réel: "00039617\t--\t\n\nExamen complet (Théorique + Pratique)\n\t-- €\tEN ATTENTE\tPayer"
         if not self.data['historique_paiements']:
-            match = re.search(r'(\d+[.,]\d{2})\s*€', text_content)
-            if match:
+            # Chercher: num_dossier + tab + -- + tab + ... + -- € + tab + statut
+            pattern_pending = r'(\d{8})\t--\t.*?--\s*€\t(EN ATTENTE|VALIDÉ|REFUSÉ)'
+            matches = re.findall(pattern_pending, text_content, re.DOTALL | re.IGNORECASE)
+
+            for match in matches:
+                # Extraire la description séparément
+                desc_match = re.search(r'Examen[^\t]+', text_content)
+                description = desc_match.group(0).strip() if desc_match else 'Examen'
+
+                self.data['historique_paiements'].append({
+                    'num_dossier': match[0],
+                    'date': None,
+                    'description': description,
+                    'montant': None,
+                    'statut': 'EN_ATTENTE' if 'attente' in match[1].lower() else match[1].upper()
+                })
+
+        # Fallback: chercher juste le numéro de dossier et le statut
+        if not self.data['historique_paiements']:
+            # Chercher un numéro de dossier 8 chiffres suivi quelque part de "EN ATTENTE"
+            has_num = re.search(r'\d{8}', text_content)
+            has_attente = re.search(r'EN.ATTENTE', text_content, re.IGNORECASE)
+
+            if has_num and has_attente:
+                num_match = re.search(r'(\d{8})', text_content)
+                self.data['historique_paiements'].append({
+                    'num_dossier': num_match.group(1) if num_match else None,
+                    'date': None,
+                    'description': 'Examen',
+                    'montant': None,
+                    'statut': 'EN_ATTENTE'
+                })
+            # Ou chercher un montant validé
+            elif re.search(r'(\d+[.,]\d{2})\s*€', text_content):
+                match = re.search(r'(\d+[.,]\d{2})\s*€', text_content)
                 self.data['historique_paiements'].append({
                     'montant': float(match.group(1).replace(',', '.')),
-                    'statut': 'VALIDÉ' if 'VALIDÉ' in text_content else 'INCONNU'
+                    'statut': 'VALIDÉ' if 'VALIDÉ' in text_content.upper() else 'INCONNU'
                 })
 
     async def _extract_messages(self):

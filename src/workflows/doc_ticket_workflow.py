@@ -27,6 +27,10 @@ from datetime import datetime
 project_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(project_root))
 
+# Load environment variables (for Anthropic API key)
+from dotenv import load_dotenv
+load_dotenv(project_root / ".env")
+
 from src.agents.deal_linking_agent import DealLinkingAgent
 from src.agents.examt3p_agent import ExamT3PAgent
 from src.agents.dispatcher_agent import TicketDispatcherAgent
@@ -254,22 +258,15 @@ class DOCTicketWorkflow:
             analysis_result = self._run_analysis(ticket_id, triage_result)
             result['analysis_result'] = analysis_result
 
-            # Check VÉRIFICATION #0: Connexion ExamT3P (SEUL critère de blocage)
-            exament3p_data = analysis_result.get('exament3p_data', {})
-            if not exament3p_data.get('compte_existe') and not exament3p_data.get('extraction_success', True):
-                logger.warning("⚠️  ÉCHEC CONNEXION EXAMENT3P → Alerte interne")
-                logger.warning("🛑 STOP WORKFLOW (impossible d'extraire les données ExamT3P)")
-                result['workflow_stage'] = 'STOPPED_EXAMT3P_FAILED'
-                result['success'] = True
-                return result
-
             # Check VÉRIFICATION #1: Identifiants ExamenT3P
-            # exament3p_data already retrieved above
+            exament3p_data = analysis_result.get('exament3p_data', {})
             if exament3p_data.get('should_respond_to_candidate'):
                 logger.warning("⚠️  IDENTIFIANTS EXAMENT3P INVALIDES OU MANQUANTS")
                 logger.info("→ L'agent rédacteur intégrera la demande d'identifiants dans la réponse globale")
             elif not exament3p_data.get('compte_existe'):
-                logger.warning("⚠️  COMPTE EXAMENT3P N'EXISTE PAS OU EXTRACTION ÉCHOUÉE")
+                # Pas de compte ExamT3P = cas normal (compte à créer par CAB)
+                # Le State Engine détectera l'état approprié (NO_COMPTE_EXAMT3P, UBER_DOCS_MISSING, etc.)
+                logger.info("ℹ️  Pas de compte ExamT3P → compte à créer")
             else:
                 logger.info(f"✅ Identifiants validés (source: {exament3p_data.get('credentials_source')})")
 
@@ -352,20 +349,31 @@ class DOCTicketWorkflow:
             result['workflow_stage'] = 'DEAL_UPDATE'
 
             # Check both scenario flag and AI-extracted updates
-            has_ai_updates = bool(response_result.get('crm_updates'))
+            ai_updates = response_result.get('crm_updates', {}).copy() if response_result.get('crm_updates') else {}
+
+            # D-8: Si deadline passée avant paiement, injecter la nouvelle date d'examen
+            date_examen_vtc_result = analysis_result.get('date_examen_vtc_result', {})
+            if date_examen_vtc_result.get('deadline_passed_reschedule') and date_examen_vtc_result.get('new_exam_date'):
+                new_date = date_examen_vtc_result['new_exam_date']
+                logger.info(f"  📅 D-8: Deadline passée → inscription sur prochaine date: {new_date}")
+                ai_updates['Date_examen_VTC'] = new_date
+                result['deadline_passed_reschedule'] = True
+                result['new_exam_date'] = new_date
+
+            has_ai_updates = bool(ai_updates)
             scenario_requires_update = response_result.get('requires_crm_update')
 
             if has_ai_updates or scenario_requires_update:
                 if scenario_requires_update:
                     logger.info(f"Champs à updater (scénario): {response_result.get('crm_update_fields', [])}")
                 if has_ai_updates:
-                    logger.info(f"Champs à updater (AI): {response_result.get('crm_updates', {})}")
+                    logger.info(f"Champs à updater: {ai_updates}")
 
                 if auto_update_crm and analysis_result.get('deal_id'):
                     # Utiliser CRMUpdateAgent pour centraliser la logique
                     crm_update_result = self.crm_update_agent.update_from_ticket_response(
                         deal_id=analysis_result['deal_id'],
-                        ai_updates=response_result.get('crm_updates', {}),
+                        ai_updates=ai_updates,
                         deal_data=analysis_result.get('deal_data', {}),
                         session_data=analysis_result.get('session_data', {}),
                         ticket_id=ticket_id
@@ -399,7 +407,7 @@ class DOCTicketWorkflow:
 
             if auto_create_draft:
                 # Convertir markdown en HTML pour des liens cliquables
-                draft_content = response_result['response_text']
+                draft_content = response_result.get('response_text', '')
                 import re
                 html_content = draft_content
 
@@ -543,12 +551,39 @@ class DOCTicketWorkflow:
         current_department = ticket.get('departmentId') or ticket.get('department', {}).get('name', 'DOC')
 
         # Get threads for content analysis
+        # API returns newest first, but we want the most MEANINGFUL customer message
+        # Skip: feedback/ratings, very short messages, "lisez mon mail précédent"
         threads = self.desk_client.get_all_threads_with_full_content(ticket_id)
         last_thread_content = ""
+        min_meaningful_length = 80  # Ignore very short messages
+
+        # Patterns to skip (feedback, automated, follow-ups asking to read previous)
+        skip_patterns = [
+            "a évalué la réponse",
+            "a evalué la reponse",
+            "lisez mon mail",
+            "lire mon mail",
+            "voir mon message",
+            "mon précédent mail",
+            "mon precedent mail",
+        ]
+
         for thread in threads:
             if thread.get('direction') == 'in':
-                last_thread_content = get_clean_thread_content(thread)
-                break
+                content = get_clean_thread_content(thread)
+                content_lower = content.lower()
+
+                # Skip feedback/automated messages
+                if any(pattern in content_lower for pattern in skip_patterns):
+                    continue
+
+                # Take the first customer message that's meaningful (>80 chars)
+                if len(content) >= min_meaningful_length:
+                    last_thread_content = content
+                    break
+                # Fallback to any customer message if none are long enough
+                elif not last_thread_content:
+                    last_thread_content = content
 
         # Default result
         triage_result = {
@@ -616,6 +651,21 @@ class DOCTicketWorkflow:
 
         # Rule #3: UTILISER L'IA POUR LE TRIAGE INTELLIGENT
         # L'IA comprend le contexte et évite les faux positifs
+
+        # IMPORTANT: Enrichir le deal avec la vraie date d'examen (lookup → module)
+        # Les champs lookup contiennent juste {'name': '...', 'id': '...'}, pas les vraies données
+        if selected_deal and selected_deal.get('Date_examen_VTC'):
+            date_lookup = selected_deal.get('Date_examen_VTC')
+            if isinstance(date_lookup, dict) and date_lookup.get('id'):
+                try:
+                    exam_session = self.crm_client.get_record('Dates_Examens_VTC_TAXI', date_lookup['id'])
+                    if exam_session:
+                        selected_deal['_real_exam_date'] = exam_session.get('Date_Examen')
+                        selected_deal['_real_exam_departement'] = exam_session.get('Departement')
+                        logger.info(f"  📅 Date examen enrichie: {selected_deal['_real_exam_date']} (dept {selected_deal['_real_exam_departement']})")
+                except Exception as e:
+                    logger.warning(f"  ⚠️ Impossible d'enrichir Date_examen_VTC: {e}")
+
         logger.info("🤖 Triage IA en cours...")
         ai_triage = self.triage_agent.triage_ticket(
             ticket_subject=subject,
@@ -637,6 +687,9 @@ class DOCTicketWorkflow:
         # Copier l'intention détectée et son contexte (pour State Engine)
         triage_result['detected_intent'] = ai_triage.get('detected_intent')
         triage_result['intent_context'] = ai_triage.get('intent_context', {})
+        # Multi-intentions
+        triage_result['primary_intent'] = ai_triage.get('primary_intent')
+        triage_result['secondary_intents'] = ai_triage.get('secondary_intents', [])
 
         # Log intention si détectée
         if triage_result.get('detected_intent'):
@@ -704,12 +757,47 @@ class DOCTicketWorkflow:
         deal_id = linking_result.get('deal_id')
         deal_data = linking_result.get('selected_deal') or linking_result.get('deal') or {}
 
+        # ================================================================
+        # RÉCUPÉRER LES DONNÉES DU CONTACT LIÉ (First_Name, Last_Name)
+        # ================================================================
         contact_data = {}
+        contact_id = deal_data.get('Contact_Name', {}).get('id') if deal_data else None
+        if contact_id:
+            try:
+                contact_data = self.crm_client.get_contact(contact_id)
+                logger.info(f"  ✅ Contact récupéré: {contact_data.get('First_Name', '')} {contact_data.get('Last_Name', '')}")
+            except Exception as e:
+                logger.warning(f"  ⚠️  Erreur récupération contact: {e}")
+
         if email:
-            contact_data = {
-                'email': email,
-                'contact_id': deal_data.get('Contact_Name', {}).get('id') if deal_data else None
-            }
+            contact_data['email'] = email
+            contact_data['contact_id'] = contact_id
+
+        # ================================================================
+        # EXTRAIRE LA DATE DEPUIS LE LOOKUP Date_examen_VTC
+        # ================================================================
+        # Date_examen_VTC est un lookup vers le module Dates_Examens_VTC_TAXI
+        # On extrait la vraie date (pas juste le record ID)
+        date_examen_vtc_value = None
+        date_examen_lookup = deal_data.get('Date_examen_VTC')
+        if date_examen_lookup:
+            if isinstance(date_examen_lookup, dict):
+                # C'est un lookup, récupérer la date depuis le module Dates_Examens_VTC_TAXI
+                lookup_id = date_examen_lookup.get('id')
+                if lookup_id:
+                    try:
+                        date_record = self.crm_client.get_record('Dates_Examens_VTC_TAXI', lookup_id)
+                        if date_record:
+                            date_examen_vtc_value = date_record.get('Date_Examen')
+                            logger.info(f"  📅 Date_Examen récupérée du module: {date_examen_vtc_value}")
+                    except Exception as e:
+                        logger.warning(f"  ⚠️  Erreur récupération date examen: {e}")
+                if not date_examen_vtc_value:
+                    date_examen_vtc_value = date_examen_lookup.get('name')
+            else:
+                # C'est peut-être déjà une string (compatibilité)
+                date_examen_vtc_value = date_examen_lookup
+            logger.debug(f"  📅 Date_examen_VTC extraite: {date_examen_vtc_value}")
 
         if not deal_id:
             logger.warning("  ⚠️  No deal found for this ticket")
@@ -1017,18 +1105,32 @@ Deux comptes ExamenT3P fonctionnels ont été détectés pour ce candidat, et le
         skip_reason = None
 
         # Raison 1: Identifiants non accessibles
+        # EXCEPTION: Pour les candidats Uber ÉLIGIBLES, CAB gère le compte pour eux
+        # Donc on NE BLOQUE PAS sur les identifiants manquants
+        is_uber_eligible = uber_eligibility_result.get('is_eligible', False)
+        has_exam_date = bool(deal_data.get('Date_examen_VTC'))
+
         if exament3p_data.get('should_respond_to_candidate') and not exament3p_data.get('compte_existe'):
-            if exament3p_data.get('credentials_request_sent'):
+            if is_uber_eligible or has_exam_date:
+                # Uber éligible ou date déjà assignée → on continue l'analyse
+                logger.info("  ℹ️ Identifiants manquants MAIS candidat Uber éligible ou date assignée")
+                logger.info("  → On continue l'analyse dates/sessions (CAB gère le compte)")
+                # Ne pas skip, on répond à la question du candidat
+            elif exament3p_data.get('credentials_request_sent'):
                 logger.warning("  🚨 DEMANDE D'IDENTIFIANTS DÉJÀ ENVOYÉE MAIS PAS DE RÉPONSE")
                 logger.warning("  → La réponse doit confirmer que c'est normal et redemander les identifiants")
+                skip_date_session_analysis = True
+                skip_reason = 'credentials_invalid'
             elif exament3p_data.get('account_creation_requested'):
                 logger.warning("  🚨 CRÉATION DE COMPTE DEMANDÉE MAIS PAS D'IDENTIFIANTS REÇUS")
                 logger.warning("  → La réponse doit relancer le candidat sur la création de compte")
+                skip_date_session_analysis = True
+                skip_reason = 'credentials_invalid'
             else:
                 logger.warning("  🚨 IDENTIFIANTS INVALIDES → SKIP analyse dates/sessions")
                 logger.warning("  → La réponse doit UNIQUEMENT demander les bons identifiants")
-            skip_date_session_analysis = True
-            skip_reason = 'credentials_invalid'
+                skip_date_session_analysis = True
+                skip_reason = 'credentials_invalid'
 
         # Raison 2: CAS A, B, D ou E (problème Uber - vérification/éligibilité)
         if uber_case_blocks_dates:
@@ -1222,9 +1324,10 @@ Deux comptes ExamenT3P fonctionnels ont été détectés pour ce candidat, et le
             logger.info("  📝 CONFIRMATION_SESSION: dates alternatives supprimées du contexte IA")
 
         return {
-            'contact_data': contact_data,
+            'contact_data': contact_data,  # Données du contact lié (First_Name, Last_Name)
             'deal_id': deal_id,
             'deal_data': deal_data,
+            'date_examen_vtc_value': date_examen_vtc_value,  # Date réelle extraite du lookup
             'exament3p_data': exament3p_data,
             'uber_eligibility_result': uber_eligibility_result,  # Éligibilité Uber 20€
             'date_examen_vtc_result': date_examen_vtc_result,
@@ -1444,7 +1547,8 @@ L'équipe Cab Formations"""
             'needs_clarification': analysis_result.get('needs_clarification', False),
         }
 
-        detected_state = self.state_detector.detect_state(
+        # MULTI-ÉTATS: Utiliser detect_all_states pour collecter tous les états
+        detected_states = self.state_detector.detect_all_states(
             deal_data=deal_data,
             examt3p_data=examt3p_data,
             triage_result=triage_result,
@@ -1452,18 +1556,38 @@ L'équipe Cab Formations"""
             threads_data=threads_data
         )
 
+        # Pour rétrocompatibilité, on utilise primary_state comme référence principale
+        detected_state = detected_states.primary_state
+
         state_id = detected_state.id
         state_name = detected_state.name
         priority = detected_state.priority
 
-        logger.info(f"  ✅ État détecté: {state_id} - {state_name} (priorité {priority})")
+        logger.info(f"  ✅ État primaire: {state_id} - {state_name} (priorité {priority})")
+
+        # Log multi-états détaillés
+        if detected_states.blocking_state:
+            logger.info(f"  🚫 État BLOCKING: {detected_states.blocking_state.name}")
+        if detected_states.warning_states:
+            warning_names = [s.name for s in detected_states.warning_states]
+            logger.info(f"  ⚠️ États WARNING: {warning_names}")
+        if detected_states.info_states:
+            info_names = [s.name for s in detected_states.info_states]
+            logger.info(f"  ℹ️ États INFO: {info_names}")
+
+        # Log intentions (multi-intentions)
+        primary_intent = triage_result.get('primary_intent') or triage_result.get('detected_intent')
+        secondary_intents = triage_result.get('secondary_intents', [])
+        if primary_intent:
+            logger.info(f"  🎯 Intention principale: {primary_intent}")
+        if secondary_intents:
+            logger.info(f"  🎯 Intentions secondaires: {secondary_intents}")
 
         # Log context for debugging
         ctx = detected_state.context_data
         logger.debug(f"     Evalbox: {ctx.get('evalbox')}")
         logger.debug(f"     Uber case: {ctx.get('uber_case')}")
         logger.debug(f"     Date case: {ctx.get('date_case')}")
-        logger.debug(f"     Intent: {ctx.get('detected_intent')}")
 
         # ================================================================
         # STEP 2: Generate Response from Template
@@ -1476,11 +1600,17 @@ L'équipe Cab Formations"""
         session_data = analysis_result.get('session_data', {})
         uber_result = analysis_result.get('uber_eligibility_result', {})
 
+        # Récupérer contact_data et date_examen_vtc_value depuis analysis_result
+        contact_data = analysis_result.get('contact_data', {})
+        date_examen_vtc_value = analysis_result.get('date_examen_vtc_value')
+
         detected_state.context_data.update({
             # Données brutes
             'deal_data': deal_data,
+            'contact_data': contact_data,  # Données du contact (First_Name, Last_Name)
             'examt3p_data': examt3p_data,
             'date_examen_vtc_data': date_examen_vtc_result,
+            'date_examen_vtc_value': date_examen_vtc_value,  # Date réelle extraite du lookup
             'session_data': session_data,
             'uber_eligibility_data': uber_result,
             'training_exam_consistency_data': analysis_result.get('training_exam_consistency_result', {}),
@@ -1494,6 +1624,9 @@ L'équipe Cab Formations"""
             'date_cloture': date_examen_vtc_result.get('date_cloture'),
             'can_choose_other_department': date_examen_vtc_result.get('can_choose_other_department', False),
             'alternative_department_dates': date_examen_vtc_result.get('alternative_department_dates', []),
+            'deadline_passed_reschedule': date_examen_vtc_result.get('deadline_passed_reschedule', False),
+            'new_exam_date': date_examen_vtc_result.get('new_exam_date'),
+            'new_exam_date_cloture': date_examen_vtc_result.get('new_exam_date_cloture'),
 
             # Session
             'proposed_sessions': session_data.get('proposed_options', []),
@@ -1542,6 +1675,47 @@ L'équipe Cab Formations"""
                 detected_state.context_data['next_dates'] = next_dates
                 logger.info(f"  ✅ {len(next_dates)} date(s) chargées")
 
+        # FILTRER next_dates selon le mois demandé par le candidat
+        intent_context = triage_result.get('intent_context', {})
+        requested_month = intent_context.get('requested_month')
+        requested_location = intent_context.get('requested_location')
+
+        if requested_month and next_dates:
+            from datetime import datetime
+            filtered_dates = []
+            has_date_in_exact_month = False
+            for date_info in next_dates:
+                date_str = date_info.get('Date_Examen') or date_info.get('date_examen')
+                if date_str:
+                    try:
+                        date_obj = datetime.strptime(date_str, '%Y-%m-%d')
+                        # Garder les dates du mois demandé ou après
+                        if date_obj.month >= requested_month:
+                            filtered_dates.append(date_info)
+                            # Vérifier si on a une date exactement dans le mois demandé
+                            if date_obj.month == requested_month:
+                                has_date_in_exact_month = True
+                    except ValueError:
+                        filtered_dates.append(date_info)  # En cas d'erreur, garder la date
+
+            month_names = ['', 'janvier', 'février', 'mars', 'avril', 'mai', 'juin',
+                           'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre']
+
+            if filtered_dates:
+                logger.info(f"  📅 Filtrage par mois {requested_month}: {len(next_dates)} → {len(filtered_dates)} date(s)")
+                detected_state.context_data['next_dates'] = filtered_dates
+
+                # Si pas de date exactement dans le mois demandé, ajouter le message explicatif
+                if not has_date_in_exact_month:
+                    logger.info(f"  ℹ️ Pas de date exactement en {month_names[requested_month]} - dates ultérieures proposées")
+                    detected_state.context_data['no_date_for_requested_month'] = True
+                    detected_state.context_data['requested_month_name'] = month_names[requested_month] if 1 <= requested_month <= 12 else str(requested_month)
+            else:
+                # Aucune date ne correspond - garder toutes les dates et ajouter message
+                logger.warning(f"  ⚠️ Aucune date en mois {requested_month} ou après - on garde toutes les dates")
+                detected_state.context_data['no_date_for_requested_month'] = True
+                detected_state.context_data['requested_month_name'] = month_names[requested_month] if 1 <= requested_month <= 12 else str(requested_month)
+
         # Create AI generator for personalization sections
         # This uses Sonnet to generate contextual personalization based on threads/message
         def ai_personalization_generator(state, instructions="", max_length=150):
@@ -1553,9 +1727,13 @@ L'équipe Cab Formations"""
                 max_length=max_length
             )
 
-        # Generate response from template with AI personalization
-        template_result = self.template_engine.generate_response(
-            state=detected_state,
+        # MULTI-ÉTATS: Generate response using generate_response_multi
+        # Enrichir le primary_state avec le contexte combiné (y compris warnings)
+        detected_states.primary_state = detected_state  # Avec le context_data enrichi
+
+        template_result = self.template_engine.generate_response_multi(
+            detected_states=detected_states,
+            triage_result=triage_result,
             ai_generator=ai_personalization_generator
         )
         response_text = template_result.get('response_text', '')
@@ -1563,6 +1741,10 @@ L'équipe Cab Formations"""
         logger.info(f"  ✅ Réponse générée ({len(response_text)} caractères)")
         if template_result.get('template_used'):
             logger.info(f"     Template: {template_result['template_used']}")
+        if template_result.get('states_used'):
+            logger.info(f"     États utilisés: {template_result['states_used']}")
+        if template_result.get('intents_handled'):
+            logger.info(f"     Intentions traitées: {template_result['intents_handled']}")
 
         # ================================================================
         # STEP 3: Validate Response
@@ -1654,7 +1836,15 @@ L'équipe Cab Formations"""
                 'context': ctx,
                 'crm_updates_blocked': crm_update_result.updates_blocked,
                 'crm_updates_skipped': crm_update_result.updates_skipped,
-            }
+            },
+            # Multi-états / Multi-intentions metadata
+            'states_used': template_result.get('states_used', []),
+            'warning_states': template_result.get('warning_states', []),
+            'info_states': template_result.get('info_states', []),
+            'intents_handled': template_result.get('intents_handled', []),
+            'is_blocking': template_result.get('is_blocking', False),
+            'primary_intent': template_result.get('primary_intent'),
+            'secondary_intents': template_result.get('secondary_intents', []),
         }
 
         return response_result
@@ -1826,12 +2016,14 @@ Génère maintenant la personnalisation (1-3 phrases):"""
         Crée une note CRM unique et consolidée avec toutes les infos du traitement.
 
         Format:
-        - Lien vers le ticket Desk
-        - Mises à jour CRM effectuées
-        - Next steps candidat (généré par IA)
-        - Next steps CAB (généré par IA)
-        - Alertes si nécessaire
+        1. Lien vers le ticket Desk
+        2. Résumé de la réponse envoyée au candidat
+        3. Mises à jour CRM effectuées
+        4. Next steps (candidat + CAB)
+        5. Alertes si nécessaire
         """
+        import anthropic
+
         lines = []
 
         # === EN-TÊTE avec lien ticket ===
@@ -1876,10 +2068,10 @@ Génère maintenant la personnalisation (1-3 phrases):"""
             lines.append("Mises à jour CRM: aucune")
         lines.append("")
 
-        # === NEXT STEPS (généré par IA) ===
-        next_steps = self._generate_next_steps_with_ai(analysis_result, response_result)
-        if next_steps:
-            lines.append(next_steps)
+        # === GÉNÉRER RÉSUMÉ + NEXT STEPS avec Claude ===
+        note_content = self._generate_note_content_with_ai(analysis_result, response_result)
+        if note_content:
+            lines.append(note_content)
             lines.append("")
 
         # === ALERTES ===
@@ -1912,71 +2104,94 @@ Génère maintenant la personnalisation (1-3 phrases):"""
 
         return "\n".join(lines)
 
-    def _generate_next_steps_with_ai(
+    def _generate_note_content_with_ai(
         self,
         analysis_result: Dict,
         response_result: Dict
     ) -> str:
         """
-        Utilise Claude Haiku pour générer les next steps intelligents.
+        Utilise Claude Sonnet pour générer:
+        1. Résumé de ce qui a été répondu au candidat
+        2. Next steps candidat et CAB
         """
         import anthropic
 
-        # Préparer le contexte pour l'IA
+        # Récupérer la réponse envoyée
+        response_text = response_result.get('response_text', '')
+
+        # Préparer le contexte
         deal_data = analysis_result.get('deal_data', {})
         examt3p_data = analysis_result.get('exament3p_data', {})
         date_result = analysis_result.get('date_examen_vtc_result', {})
-        session_data = analysis_result.get('session_data', {})
         uber_result = analysis_result.get('uber_eligibility_result', {})
 
-        context = f"""Contexte candidat VTC:
-- Statut Evalbox: {deal_data.get('Evalbox', 'Non défini')}
-- Statut ExamT3P: {examt3p_data.get('statut_dossier', 'N/A')}
-- Date examen: {date_result.get('date_examen_info', {}).get('Date_Examen', 'Non définie') if isinstance(date_result.get('date_examen_info'), dict) else 'Non définie'}
-- Session formation: {'Assignée' if deal_data.get('Session') else 'Non assignée'}
-- Cas date examen: {date_result.get('case_description', 'N/A')}
-- Deal Uber 20€: {'Oui - ' + uber_result.get('case_description', '') if uber_result.get('is_uber_20_deal') else 'Non'}
-"""
+        # État détecté
+        detected_state = response_result.get('detected_state', {})
+        state_name = detected_state.get('name', 'N/A') if isinstance(detected_state, dict) else str(detected_state)
 
-        prompt = f"""{context}
+        # Uber status
+        is_uber = uber_result.get('is_uber_20_deal', False)
+        uber_case = uber_result.get('case', '')
 
-Génère les prochaines étapes en 2-3 bullet points MAX par section.
-Sois TRÈS concis (5-10 mots par point).
+        prompt = f"""Tu es un assistant qui génère des notes CRM concises pour le suivi des candidats VTC.
 
-Format EXACT à respecter:
+CONTEXTE:
+- État: {state_name}
+- Evalbox: {deal_data.get('Evalbox', 'N/A')}
+- Deal Uber 20€: {'Oui - ' + uber_case if is_uber else 'Non'}
+- Date examen: {date_result.get('date_examen_info', {}).get('Date_Examen', 'N/A') if isinstance(date_result.get('date_examen_info'), dict) else 'N/A'}
+- Session assignée: {'Oui' if deal_data.get('Session') else 'Non'}
+
+RÉPONSE ENVOYÉE AU CANDIDAT:
+{response_text[:1500]}
+
+---
+
+Génère une note CRM avec EXACTEMENT ce format:
+
+Réponse envoyée:
+• [point clé 1 de ce qui a été communiqué]
+• [point clé 2]
+• [point clé 3 si pertinent]
+
 Next steps candidat:
-• [action 1]
-• [action 2]
+• [action concrète 1]
+• [action concrète 2 si nécessaire]
 
 Next steps CAB:
-• [action 1]
-• [action 2]
+• [action concrète 1]
+• [action concrète 2 si nécessaire]
 
-Réponds UNIQUEMENT avec ce format, rien d'autre."""
+RÈGLES:
+- Résumer ce qui a RÉELLEMENT été dit dans la réponse (pas d'invention)
+- Next steps SPÉCIFIQUES au contexte actuel
+- Si Uber ÉLIGIBLE et frais pris en charge: ne PAS dire au candidat de payer
+- Maximum 3 points par section
+- Phrases courtes (5-10 mots max)
+- Pas de formules vides comme "suivre le dossier"
+
+Réponds UNIQUEMENT avec le format demandé, rien d'autre."""
 
         try:
             client = anthropic.Anthropic()
             response = client.messages.create(
-                model="claude-3-5-haiku-20241022",
-                max_tokens=200,
+                model="claude-sonnet-4-20250514",
+                max_tokens=400,
                 messages=[{"role": "user", "content": prompt}]
             )
             return response.content[0].text.strip()
         except Exception as e:
-            logger.warning(f"Erreur génération next steps IA: {e}")
+            logger.warning(f"Erreur génération note IA: {e}")
             # Fallback basique
-            return "Next steps candidat:\n• Consulter le draft de réponse\n\nNext steps CAB:\n• Vérifier et envoyer la réponse"
+            return "Réponse envoyée:\n• Voir brouillon dans Zoho Desk\n\nNext steps candidat:\n• Consulter la réponse\n\nNext steps CAB:\n• Vérifier et envoyer"
 
     def _prepare_ticket_updates(self, response_result: Dict) -> Dict:
         """Prepare ticket field updates."""
         updates = {}
 
-        # Could update tags, status, priority based on scenario
-        scenarios = response_result.get('detected_scenarios', [])
-
-        if scenarios:
-            # Add scenario tags
-            updates['tags'] = scenarios[:3]  # Max 3 tags
+        # Note: Les tags Zoho Desk ne peuvent pas être mis à jour via l'API standard
+        # (erreur "An extra parameter 'tags' is found")
+        # Pour le moment, on ne met pas à jour les tags automatiquement
 
         return updates
 

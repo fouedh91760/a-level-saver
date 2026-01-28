@@ -24,13 +24,13 @@ from pathlib import Path
 from typing import Dict, Any, Optional, List, Tuple
 from datetime import datetime
 
-from .state_detector import DetectedState
+from .state_detector import DetectedState, DetectedStates
 
 logger = logging.getLogger(__name__)
 
 # Chemins vers les ressources
 STATES_PATH = Path(__file__).parent.parent.parent / "states"
-TEMPLATES_BASE_PATH = STATES_PATH / "templates" / "base"
+TEMPLATES_BASE_PATH = STATES_PATH / "templates" / "base_legacy"  # Migrated to partials
 BLOCKS_PATH = STATES_PATH / "blocks"
 MATRIX_PATH = STATES_PATH / "state_intention_matrix.yaml"
 
@@ -55,7 +55,7 @@ class TemplateEngine:
             states_path: Chemin vers le dossier states (optionnel)
         """
         self.states_path = states_path or STATES_PATH
-        self.templates_base_path = self.states_path / "templates" / "base"
+        self.templates_base_path = self.states_path / "templates" / "base_legacy"  # Migrated to partials
         self.blocks_path = self.states_path / "blocks"
         self.matrix_path = self.states_path / "state_intention_matrix.yaml"
 
@@ -83,6 +83,101 @@ class TemplateEngine:
         except Exception as e:
             logger.error(f"Erreur chargement matrice: {e}")
             return {}
+
+    def generate_response_multi(
+        self,
+        detected_states: DetectedStates,
+        triage_result: Dict[str, Any],
+        ai_generator: Optional[callable] = None
+    ) -> Dict[str, Any]:
+        """
+        Génère une réponse composite gérant multi-intentions et multi-états.
+
+        Args:
+            detected_states: Tous les états détectés (blocking, warning, info)
+            triage_result: Résultat du triage avec primary_intent et secondary_intents
+            ai_generator: Fonction pour générer les sections IA (optionnel)
+
+        Returns:
+            {
+                'response_text': str,
+                'template_used': str,
+                'states_used': List[str],
+                'intents_handled': List[str],
+                ...
+            }
+        """
+        # 1. Si état BLOCKING → réponse unique (comportement actuel)
+        if detected_states.blocking_state:
+            logger.info(f"🚫 État BLOCKING détecté - réponse unique pour {detected_states.blocking_state.name}")
+            result = self.generate_response(detected_states.blocking_state, ai_generator)
+            result['states_used'] = [detected_states.blocking_state.name]
+            result['is_blocking'] = True
+            return result
+
+        # 2. Sinon, combiner les flags de tous les états et intentions
+        primary_state = detected_states.primary_state
+        if not primary_state:
+            logger.warning("Aucun état primaire - utilisation de GENERAL")
+            primary_state = self._create_default_state()
+
+        # Copier le contexte du primary_state
+        combined_context = primary_state.context_data.copy()
+
+        # Ajouter les flags des états WARNING
+        warning_flags = self._map_warning_state_flags(detected_states.warning_states)
+        combined_context.update(warning_flags)
+
+        # Ajouter les intentions du triage (primary + secondary)
+        combined_context['primary_intent'] = triage_result.get('primary_intent')
+        combined_context['secondary_intents'] = triage_result.get('secondary_intents', [])
+
+        # Enrichir le primary_state avec le contexte combiné
+        primary_state.context_data = combined_context
+
+        # Collecter les alertes de tous les WARNING states
+        all_alerts = list(primary_state.alerts)
+        for warning_state in detected_states.warning_states:
+            all_alerts.extend(warning_state.alerts)
+        primary_state.alerts = all_alerts
+
+        # 3. Générer la réponse avec le contexte combiné
+        result = self.generate_response(primary_state, ai_generator)
+
+        # 4. Ajouter les métadonnées multi-états
+        result['states_used'] = [s.name for s in detected_states.all_states]
+        result['warning_states'] = [s.name for s in detected_states.warning_states]
+        result['info_states'] = [s.name for s in detected_states.info_states]
+        result['primary_intent'] = triage_result.get('primary_intent')
+        result['secondary_intents'] = triage_result.get('secondary_intents', [])
+        result['is_blocking'] = False
+
+        intents_handled = []
+        if triage_result.get('primary_intent'):
+            intents_handled.append(triage_result['primary_intent'])
+        intents_handled.extend(triage_result.get('secondary_intents', []))
+        result['intents_handled'] = intents_handled
+
+        logger.info(f"📝 Réponse multi-états générée: states={result['states_used']}, intents={intents_handled}")
+
+        return result
+
+    def _create_default_state(self) -> DetectedState:
+        """Crée un état GENERAL par défaut."""
+        return DetectedState(
+            id='DEFAULT',
+            name='GENERAL',
+            priority=999,
+            category='default',
+            description='État par défaut',
+            workflow_action='RESPOND',
+            response_config={},
+            crm_updates_config=None,
+            detection_reason='Fallback vers état GENERAL',
+            severity='INFO',
+            context_data={},
+            alerts=[]
+        )
 
     def generate_response(
         self,
@@ -231,6 +326,12 @@ class TemplateEngine:
                     if 'for_condition' in config:
                         if not self._evaluate_condition(config['for_condition'], context):
                             continue  # Condition non satisfaite, passer au suivant
+                    # Injecter les context_flags (FIX: manquait dans PASS 1)
+                    context_flags = config.get('context_flags', {})
+                    if context_flags:
+                        context.update(context_flags)
+                        state.context_data.update(context_flags)
+                        logger.info(f"📌 Context flags injectés (PASS 1): {list(context_flags.keys())}")
                     return template_key, config
 
         # PASS 1.5: Templates avec for_state (état spécifique)
@@ -633,8 +734,13 @@ class TemplateEngine:
 
     def _get_context_value(self, key: str, context: Dict[str, Any]) -> Any:
         """Récupère une valeur du contexte, avec support des clés imbriquées."""
-        # Mapping des variables de template vers le contexte
-        # Variables booléennes courantes
+        # PRIORITÉ 1: Vérifier si la clé existe directement dans le contexte
+        # Ceci permet à placeholder_data de surcharger les mappings legacy
+        if key in context:
+            return context[key]
+
+        # PRIORITÉ 2: Mappings legacy pour rétrocompatibilité
+        # (utilisés uniquement si la clé n'existe pas directement)
         if key == 'uber_20':
             return context.get('is_uber_20_deal', False)
         if key == 'can_choose_other_department':
@@ -666,11 +772,7 @@ class TemplateEngine:
                 return formatted_dates
             return []
 
-        # Chercher directement dans le contexte
-        if key in context:
-            return context[key]
-
-        # Chercher dans deal_data
+        # Chercher dans deal_data (fallback pour clés non mappées)
         deal_data = context.get('deal_data', {})
         if key in deal_data:
             return deal_data[key]
@@ -703,13 +805,15 @@ class TemplateEngine:
         """Prépare les données pour remplacer les placeholders."""
         context = state.context_data
         deal_data = context.get('deal_data', {})
+        contact_data = context.get('contact_data', {})  # Données du Contact lié (First_Name, Last_Name)
         examt3p_data = context.get('examt3p_data', {})
 
-        # Extraire le prénom
-        prenom = self._extract_prenom(deal_data)
+        # Extraire le prénom et nom depuis Contact (pas Deal)
+        prenom = self._extract_prenom_from_contact(contact_data, deal_data)
+        nom = contact_data.get('Last_Name', '') or ''
 
-        # Formater les dates
-        date_examen = context.get('date_examen')
+        # Formater les dates - utiliser date_examen_vtc_value si disponible (extraite du lookup)
+        date_examen = context.get('date_examen_vtc_value') or context.get('date_examen')
         date_examen_formatted = self._format_date(date_examen) if date_examen else ''
 
         # Département
@@ -733,11 +837,11 @@ class TemplateEngine:
             except:
                 pass
 
-        return {
-            # Infos candidat
+        result = {
+            # Infos candidat (depuis Contact, pas Deal)
             'prenom': prenom or 'Bonjour',
-            'nom': deal_data.get('Last_Name', ''),
-            'email': deal_data.get('Email', ''),
+            'nom': nom,
+            'email': contact_data.get('Email') or deal_data.get('Email', ''),
 
             # Identifiants ExamT3P
             'identifiant_examt3p': examt3p_data.get('identifiant', ''),
@@ -789,12 +893,23 @@ class TemplateEngine:
             'prochaines_etapes': self._get_prochaines_etapes(state),
 
             # Booléens pour les conditions (aussi disponibles comme placeholders)
+            # Note: uber_20 et is_uber_20_deal sont synonymes pour supporter les deux notations dans les templates
             'uber_20': context.get('is_uber_20_deal', False),
+            'is_uber_20_deal': context.get('is_uber_20_deal', False),
+            # uber_eligible = Uber 20€ + Compte_Uber vérifié + ELIGIBLE vérifié
+            'uber_eligible': (
+                context.get('is_uber_20_deal', False) and
+                context.get('compte_uber', False) and
+                context.get('eligible_uber', False)
+            ),
             'can_choose_other_department': context.get('can_choose_other_department', False) or not context.get('compte_existe', True),
             'session_assigned': context.get('session_assigned', False),
             'compte_existe': context.get('compte_existe', False),
             'can_modify_exam_date': context.get('can_modify_exam_date', True),
             'cloture_passed': context.get('cloture_passed', False),
+            'deadline_passed_reschedule': context.get('deadline_passed_reschedule', False),
+            'new_exam_date': self._format_date(context.get('new_exam_date', '')) if context.get('new_exam_date') else '',
+            'new_exam_date_cloture': self._format_date(context.get('new_exam_date_cloture', '')) if context.get('new_exam_date_cloture') else '',
 
             # Booléens pour proposer dates/sessions
             'date_examen_vide': not date_examen,
@@ -816,10 +931,36 @@ class TemplateEngine:
             # Priorité: context_flags de la matrice > auto-mapping depuis detected_intent
             **self._auto_map_intention_flags(context),
 
+            # Context flags pour conditions bloquantes (Section 0 de response_master)
+            # Ces flags sont définis via context_flags dans la matrice STATE:INTENTION
+            'uber_cas_a': context.get('uber_cas_a', False),
+            'uber_cas_b': context.get('uber_cas_b', False),
+            'uber_cas_d': context.get('uber_cas_d', False),
+            'uber_cas_e': context.get('uber_cas_e', False),
+            'uber_doublon': context.get('uber_doublon', False),
+
+            # Résultats d'examen
+            'resultat_admis': context.get('resultat_admis', False),
+            'resultat_non_admis': context.get('resultat_non_admis', False),
+            'resultat_absent': context.get('resultat_absent', False),
+
+            # Report de date
+            'report_bloque': context.get('report_bloque', False),
+            'report_possible': context.get('report_possible', False),
+            'report_force_majeure': context.get('report_force_majeure', False),
+
+            # Problèmes d'identifiants
+            'credentials_invalid': context.get('credentials_invalid', False),
+            'credentials_inconnus': context.get('credentials_inconnus', False),
+
             # Données supplémentaires pour templates hybrides
             'has_next_dates': bool(context.get('next_dates', [])),
             'next_dates': self._format_next_dates_for_template(context.get('next_dates', [])),
             'preference_horaire_text': 'cours du soir' if self._get_session_preference(context) == 'soir' else 'cours du jour',
+
+            # Filtrage par mois demandé (REPORT_DATE)
+            'no_date_for_requested_month': context.get('no_date_for_requested_month', False),
+            'requested_month_name': context.get('requested_month_name', ''),
 
             # Flags pour le template master (architecture modulaire)
             # Sections à afficher
@@ -831,9 +972,56 @@ class TemplateEngine:
             **self._determine_required_actions(context, evalbox),
         }
 
+        # Debug logging pour templates hybrides
+        logger.debug(f"placeholder_data: has_next_dates={result.get('has_next_dates')}, "
+                     f"len(next_dates)={len(result.get('next_dates', []))}, "
+                     f"report_possible={result.get('report_possible')}")
+
+        return result
+
+    # Mapping state → flag pour les états WARNING
+    STATE_FLAG_MAP = {
+        'UBER_ACCOUNT_NOT_VERIFIED': 'uber_cas_d',
+        'UBER_NOT_ELIGIBLE': 'uber_cas_e',
+        'PERSONAL_ACCOUNT_WARNING': 'personal_account_warning',
+        'DATE_MODIFICATION_BLOCKED': 'report_bloque',
+        'TRAINING_MISSED_EXAM_IMMINENT': 'training_missed_alert',
+    }
+
+    # Mapping intention → flag
+    INTENTION_FLAG_MAP = {
+        'STATUT_DOSSIER': 'intention_statut_dossier',
+        'DEMANDE_DATE_EXAMEN': 'intention_demande_date',
+        'DEMANDE_AUTRES_DATES': 'intention_demande_date',
+        'DEMANDE_DATES_FUTURES': 'intention_demande_date',  # Nouvelle intention
+        'CONFIRMATION_DATE_EXAMEN': 'intention_demande_date',
+        'DEMANDE_IDENTIFIANTS': 'intention_demande_identifiants',
+        'ENVOIE_IDENTIFIANTS': 'intention_demande_identifiants',
+        'CONFIRMATION_SESSION': 'intention_confirmation_session',
+        'QUESTION_SESSION': 'intention_question_session',  # Nouvelle intention
+        'DEMANDE_CONVOCATION': 'intention_demande_convocation',
+        'DEMANDE_ELEARNING_ACCESS': 'intention_demande_elearning',
+        'REPORT_DATE': 'intention_report_date',
+        'FORCE_MAJEURE_REPORT': 'intention_report_date',
+        'DOCUMENT_QUESTION': 'intention_probleme_documents',
+        'SIGNALE_PROBLEME_DOCS': 'intention_probleme_documents',
+        'ENVOIE_DOCUMENTS': 'intention_probleme_documents',
+        'QUESTION_PROCESSUS': 'intention_question_processus',  # Nouvelle intention
+        'DEMANDE_AUTRES_DEPARTEMENTS': 'intention_autres_departements',  # Nouvelle intention
+        # Intentions fréquentes
+        'QUESTION_GENERALE': 'intention_question_generale',
+        'RESULTAT_EXAMEN': 'intention_resultat_examen',
+        'QUESTION_UBER': 'intention_question_uber',
+        # Synonymes courants
+        'DEMANDE_RESULTAT': 'intention_resultat_examen',
+        'NOTE_EXAMEN': 'intention_resultat_examen',
+        'UBER_ELIGIBILITE': 'intention_question_uber',
+        'UBER_OFFRE': 'intention_question_uber',
+    }
+
     def _auto_map_intention_flags(self, context: Dict[str, Any]) -> Dict[str, bool]:
         """
-        Auto-génère les flags intention_* depuis detected_intent.
+        Auto-génère les flags intention_* depuis detected_intent ET secondary_intents.
 
         Cela évite de créer ~200 entrées manuelles dans la matrice STATE×INTENTION.
         Le template master (response_master.html) utilise ces flags pour afficher
@@ -842,63 +1030,79 @@ class TemplateEngine:
         Priorité: context_flags de la matrice > auto-mapping
         Si un flag est déjà défini dans le contexte (via matrice), il est conservé.
         """
-        # Mapping intention → flag
-        INTENTION_FLAG_MAP = {
-            'STATUT_DOSSIER': 'intention_statut_dossier',
-            'DEMANDE_DATE_EXAMEN': 'intention_demande_date',
-            'DEMANDE_AUTRES_DATES': 'intention_demande_date',
-            'CONFIRMATION_DATE_EXAMEN': 'intention_demande_date',
-            'DEMANDE_IDENTIFIANTS': 'intention_demande_identifiants',
-            'ENVOIE_IDENTIFIANTS': 'intention_demande_identifiants',
-            'CONFIRMATION_SESSION': 'intention_confirmation_session',
-            'DEMANDE_CONVOCATION': 'intention_demande_convocation',
-            'DEMANDE_ELEARNING_ACCESS': 'intention_demande_elearning',
-            'REPORT_DATE': 'intention_report_date',
-            'FORCE_MAJEURE_REPORT': 'intention_report_date',
-            'DOCUMENT_QUESTION': 'intention_probleme_documents',
-            'SIGNALE_PROBLEME_DOCS': 'intention_probleme_documents',
-            'ENVOIE_DOCUMENTS': 'intention_probleme_documents',
-            # Nouvelles intentions (22.8% + 14.6% + 11.8% = 49.2% des tickets)
-            'QUESTION_GENERALE': 'intention_question_generale',
-            'RESULTAT_EXAMEN': 'intention_resultat_examen',
-            'QUESTION_UBER': 'intention_question_uber',
-            # Synonymes courants
-            'DEMANDE_RESULTAT': 'intention_resultat_examen',
-            'NOTE_EXAMEN': 'intention_resultat_examen',
-            'UBER_ELIGIBILITE': 'intention_question_uber',
-            'UBER_OFFRE': 'intention_question_uber',
-        }
-
         # Initialiser tous les flags à False
         flags = {
             'intention_statut_dossier': False,
             'intention_demande_date': False,
             'intention_confirmation_session': False,
+            'intention_question_session': False,  # Nouvelle
             'intention_demande_identifiants': False,
             'intention_demande_convocation': False,
             'intention_demande_elearning': False,
             'intention_report_date': False,
             'intention_probleme_documents': False,
-            # Nouvelles intentions fréquentes
+            'intention_question_processus': False,  # Nouvelle
+            'intention_autres_departements': False,  # Nouvelle
+            # Intentions fréquentes
             'intention_question_generale': False,
             'intention_resultat_examen': False,
             'intention_question_uber': False,
         }
 
-        # Récupérer l'intention détectée
-        detected_intent = context.get('detected_intent', '')
+        # Récupérer l'intention principale (rétrocompatibilité + nouveau format)
+        primary_intent = context.get('primary_intent') or context.get('detected_intent', '')
 
-        # Auto-mapper si l'intention est connue
-        if detected_intent in INTENTION_FLAG_MAP:
-            flag_name = INTENTION_FLAG_MAP[detected_intent]
-            flags[flag_name] = True
-            logger.debug(f"Auto-mapped intention {detected_intent} -> {flag_name}")
+        # Flags Section 0 qui couvrent déjà certaines intentions
+        # Si ces flags sont actifs, ne pas auto-mapper l'intention correspondante pour éviter la duplication
+        section0_overrides = {
+            'intention_report_date': ['report_possible', 'report_bloque', 'report_force_majeure'],
+            'intention_resultat_examen': ['resultat_admis', 'resultat_non_admis', 'resultat_absent'],
+            'intention_demande_identifiants': ['credentials_invalid', 'credentials_inconnus'],
+        }
+
+        # Auto-mapper l'intention principale
+        if primary_intent in self.INTENTION_FLAG_MAP:
+            flag_name = self.INTENTION_FLAG_MAP[primary_intent]
+            # Vérifier si un flag Section 0 couvre déjà cette intention
+            skip_mapping = False
+            if flag_name in section0_overrides:
+                for section0_flag in section0_overrides[flag_name]:
+                    if context.get(section0_flag):
+                        skip_mapping = True
+                        logger.debug(f"Skipping auto-map {flag_name} - covered by Section 0 flag {section0_flag}")
+                        break
+            if not skip_mapping:
+                flags[flag_name] = True
+                logger.debug(f"Auto-mapped primary_intent {primary_intent} -> {flag_name}")
+
+        # Auto-mapper les intentions secondaires (NOUVEAU)
+        secondary_intents = context.get('secondary_intents', [])
+        for intent in secondary_intents:
+            if intent in self.INTENTION_FLAG_MAP:
+                flag_name = self.INTENTION_FLAG_MAP[intent]
+                flags[flag_name] = True
+                logger.debug(f"Auto-mapped secondary_intent {intent} -> {flag_name}")
 
         # Priorité aux flags déjà définis dans le contexte (via matrice)
         for flag_name in flags:
             if context.get(flag_name) is True:
                 flags[flag_name] = True
 
+        return flags
+
+    def _map_warning_state_flags(self, warning_states: List[DetectedState]) -> Dict[str, bool]:
+        """
+        Génère les flags pour les états WARNING.
+
+        Ces flags sont utilisés par response_master.html pour afficher
+        les alertes appropriées dans la réponse.
+        """
+        flags = {}
+        for state in warning_states:
+            state_flag = self.STATE_FLAG_MAP.get(state.name)
+            if state_flag:
+                flags[state_flag] = True
+                logger.debug(f"Mapped WARNING state {state.name} -> {state_flag}")
         return flags
 
     def _determine_required_actions(self, context: Dict[str, Any], evalbox: str) -> Dict[str, bool]:
@@ -1005,22 +1209,23 @@ class TemplateEngine:
 
         return formatted
 
-    def _extract_prenom(self, deal_data: Dict[str, Any]) -> str:
-        """Extrait le prénom du candidat."""
-        first_name = deal_data.get('First_Name', '')
+    def _extract_prenom_from_contact(self, contact_data: Dict[str, Any], deal_data: Dict[str, Any]) -> str:
+        """Extrait le prénom du candidat depuis Contact (prioritaire) ou Deal_Name (fallback)."""
+        # Priorité 1: First_Name du Contact
+        first_name = contact_data.get('First_Name', '')
         if first_name and first_name.strip():
             return first_name.strip().capitalize()
 
+        # Priorité 2: Extraire le prénom du Deal_Name (ex: "Thomas DUPONT" -> "Thomas")
         deal_name = deal_data.get('Deal_Name', '')
-        if deal_name:
-            internal_codes = {'BFS', 'NP', 'CPF', 'UBER', 'VISIO', 'PRES', 'TEST', 'VIP'}
+        if deal_name and ' ' in deal_name:
+            # Prendre le premier mot qui n'est pas tout en majuscules
             parts = deal_name.split()
             for part in parts:
-                if part.upper() in internal_codes:
-                    continue
-                if len(part) <= 3 and part.isupper():
-                    continue
-                return part.capitalize()
+                if not part.isupper() and part.isalpha():
+                    return part.capitalize()
+            # Sinon prendre le premier mot
+            return parts[0].capitalize()
 
         return ''
 
@@ -1287,6 +1492,20 @@ class TemplateEngine:
 <p>Selon les informations d'Uber, votre profil n'est pas éligible à l'offre partenariat. Nous n'avons pas de visibilité sur les raisons de cette décision.</p>
 <p>Nous vous invitons à contacter le support Uber via l'application <b>Uber Driver</b> (Compte → Aide) pour comprendre votre situation.</p>
 <hr>"""
+
+        if alert_type == 'personal_account_warning':
+            # Charger le partial template et résoudre les variables
+            template_content = self._load_partial_path('partials/warnings/personal_account_warning.html')
+            if template_content:
+                alert_context = {
+                    'personal_account_email': alert.get('personal_account_email', ''),
+                    'cab_account_email': alert.get('cab_account_email', '')
+                }
+                # Résoudre les conditionnels {{#if}} puis les variables {{variable}}
+                rendered = self._resolve_if_blocks(template_content, alert_context)
+                rendered, _ = self._replace_placeholders(rendered, alert_context)
+                return f"<hr>\n{rendered}\n<hr>"
+            return None
 
         return None
 

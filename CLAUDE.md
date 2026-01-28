@@ -7,6 +7,68 @@ Le workflow traite les tickets DOC en utilisant plusieurs agents spécialisés e
 
 ---
 
+## PROCESS OBLIGATOIRE : Ajout d'un Nouveau Scénario
+
+Quand un nouveau cas métier est identifié (bug, comportement inattendu, nouveau workflow), **suivre ces étapes dans l'ordre** pour respecter l'architecture du State Engine :
+
+### Étape 1 : Analyser et nommer le scénario
+- Identifier clairement la **condition de déclenchement** (quelles données, quel contexte)
+- Vérifier que le scénario n'existe pas déjà dans `states/candidate_states.yaml`
+- Choisir un ID unique (ex: A4, U-D, R3) et un nom en UPPER_SNAKE_CASE
+
+### Étape 2 : Définir l'état dans `states/candidate_states.yaml`
+```yaml
+NOM_DU_SCENARIO:
+  id: "XX"
+  priority: NNN
+  description: "Description claire"
+  category: "analysis|credentials|uber|report|result"
+  detection:
+    method: "helper_source"
+    condition: "flag_name == true"
+  workflow:
+    action: "RESPOND_WITH_ALERT|RESPOND|BLOCK|ROUTE"
+    alert_internal: true|false
+  response:
+    generate: true
+    alert_template: "partials/category/template_name.html"  # si alerte client
+    alert_position: "before_signature"
+```
+
+### Étape 3 : Ajouter le flag dans la source de données
+- Le flag doit être posé **dans le helper qui détecte la condition** (ex: `examt3p_credentials_helper.py`, `uber_eligibility_helper.py`, `date_examen_vtc_helper.py`)
+- Le flag doit être un **booléen `True`** (pas une string)
+- Ajouter aussi les données de contexte nécessaires au template (emails, dates, etc.)
+
+### Étape 4 : Propager dans le State Detector (`src/state_engine/state_detector.py`)
+1. **Contexte** : Ajouter le flag + données dans `_build_context()` (section examt3p_data ou deal_data)
+2. **Détection** : Ajouter la condition dans `_check_condition()` avec `is True` (pas truthy)
+3. **Alertes** : Si alerte client → ajouter dans `_collect_alerts()` avec type, id, position, et données de contexte
+
+### Étape 5 : Créer le template partial (si réponse/alerte client)
+- Chemin : `states/templates/partials/<category>/<nom>.html`
+- Utiliser les variables Handlebars : `{{variable}}`, `{{#if condition}}...{{/if}}`
+- Suivre le format HTML des partials existants (pas de `<html>`, `<body>`, etc.)
+
+### Étape 6 : Ajouter le rendu dans le Template Engine (`src/state_engine/template_engine.py`)
+- Ajouter le cas dans `_generate_alert_content()` pour les alertes
+- Utiliser `_load_partial_path()` + `_resolve_if_blocks()` + `_replace_placeholders()` pour rendre le template
+
+### Étape 7 : Tester
+- Tester sur un ticket réel qui déclenche le scénario
+- Vérifier : détection correcte de l'état, alerte collectée, template rendu, réponse cohérente
+
+**Résumé des fichiers touchés (dans l'ordre) :**
+| # | Fichier | Action |
+|---|---------|--------|
+| 1 | `states/candidate_states.yaml` | Définir l'état |
+| 2 | `src/utils/<helper>.py` | Poser le flag booléen + données contexte |
+| 3 | `src/state_engine/state_detector.py` | Contexte + détection + collecte alerte |
+| 4 | `states/templates/partials/<cat>/<nom>.html` | Template partial |
+| 5 | `src/state_engine/template_engine.py` | Rendu de l'alerte |
+
+---
+
 ## RÈGLE D'OR : Ne Pas Réinventer la Roue
 
 Avant de coder une nouvelle fonctionnalité, **TOUJOURS vérifier** si elle existe déjà dans :
@@ -378,10 +440,43 @@ client.add_deal_note(deal_id, note_title, note_content)
 client.search_deals(criteria="(Email:equals:test@example.com)")
 ```
 
-**ATTENTION - Champs Lookup :**
+**ATTENTION - Champs Lookup (CRITIQUE) :**
+
+Les champs `Date_examen_VTC` et `Session` sont des **lookups** vers d'autres modules CRM.
+
+**En LECTURE (get_deal) :**
+```python
+deal = crm_client.get_deal(deal_id)
+deal['Date_examen_VTC']  # → {'name': '34_2026-03-31', 'id': '1456177001550147229'}
+deal['Session']          # → {'name': 'cds-mars-2026', 'id': '1456177001234567890'}
+```
+⚠️ **Ce n'est PAS la vraie date/session !** C'est juste une référence (name + id).
+
+**Pour obtenir les vraies données, TOUJOURS faire un appel API supplémentaire :**
+```python
+# Pour Date_examen_VTC → module "Dates_Examens_VTC_TAXI"
+exam_session_id = deal['Date_examen_VTC']['id']
+exam_session = crm_client.get_record('Dates_Examens_VTC_TAXI', exam_session_id)
+real_date = exam_session['Date_Examen']  # → '2026-03-31' (vraie date)
+departement = exam_session['Departement']  # → '34'
+
+# Pour Session → module "Sessions"
+session_id = deal['Session']['id']
+session = crm_client.get_record('Sessions', session_id)
+session_name = session['Name']  # → 'Cours du soir mars 2026'
+session_type = session['session_type']  # → 'soir'
+```
+
+**En ÉCRITURE (update_deal) :**
 - `Date_examen_VTC` → Attend un **ID** (bigint), pas une date string
-- `Session` → Attend un **ID** (bigint), pas un nom de session (⚠️ PAS `Session_choisie`)
-- Utiliser `find_exam_session_by_date_and_dept()` pour obtenir l'ID
+- `Session` → Attend un **ID** (bigint), pas un nom de session
+- Utiliser `find_exam_session_by_date_and_dept()` pour obtenir l'ID depuis une date
+
+**Modules de référence :**
+| Champ CRM | Module associé | Champs utiles |
+|-----------|----------------|---------------|
+| `Date_examen_VTC` | `Dates_Examens_VTC_TAXI` | `Date_Examen`, `Departement`, `Date_Cloture_Inscription` |
+| `Session` | `Sessions1` | `Name`, `session_type`, `Date_d_but`, `Date_de_fin` |
 
 ---
 
@@ -437,13 +532,58 @@ Next steps CAB:
 2. **INTENTION** = ce que le candidat demande (détecté par TriageAgent via IA)
 3. **TEMPLATE** = réponse adaptée à la combinaison ÉTAT × INTENTION
 
+### Multi-États (Architecture v2.1)
+
+Le State Engine détecte **plusieurs états simultanément** grâce à la classification par sévérité :
+
+| Severity | Comportement | Exemples |
+|----------|--------------|----------|
+| **BLOCKING** | Stoppe le workflow, réponse unique | SPAM, DUPLICATE_UBER, UBER_CAS_A |
+| **WARNING** | Continue + ajoute alerte | UBER_ACCOUNT_NOT_VERIFIED, UBER_NOT_ELIGIBLE |
+| **INFO** | Combinables entre eux | EXAM_DATE_EMPTY, CREDENTIALS_INVALID, GENERAL |
+
+```python
+# Dans state_detector.py
+detected_states = state_detector.detect_all_states(
+    deal_data, examt3p_data, triage_result, linking_result
+)
+
+# Structure DetectedStates:
+{
+    "blocking_state": None,                    # Si présent, stoppe tout
+    "warning_states": [DetectedState, ...],   # Alertes à inclure
+    "info_states": [DetectedState, ...],      # États combinables
+    "primary_state": DetectedState,            # État principal (rétrocompat)
+    "all_states": [DetectedState, ...]         # Tous les états détectés
+}
+```
+
+**Comportement :**
+- Si `blocking_state` présent → réponse unique, workflow stoppé
+- Sinon → combine tous les `warning_states` et `info_states` dans la réponse
+
+```yaml
+# Exemple dans candidate_states.yaml
+CREDENTIALS_INVALID:
+  id: "A1"
+  priority: 100
+  severity: "INFO"  # Pas BLOCKING car CAB crée le compte pour Uber
+
+UBER_ACCOUNT_NOT_VERIFIED:
+  id: "U-D"
+  priority: 203
+  severity: "WARNING"  # Ajoute alerte mais continue le workflow
+```
+
 ### Fichiers Source de Vérité
 
 | Fichier | Contenu |
 |---------|---------|
-| `states/candidate_states.yaml` | **~25 ÉTATS** (T1-T4, A0-A3, U01-U06, E01-E13, etc.) |
+| `states/candidate_states.yaml` | **38 ÉTATS** avec severity (BLOCKING/WARNING/INFO) |
 | `states/state_intention_matrix.yaml` | **37 INTENTIONS** (I01-I37) + MATRICE État×Intention |
-| `states/templates/base/*.html` | **62 Templates** HTML (tous en .html, pas .md) |
+| `states/templates/response_master.html` | **Template master modulaire** (architecture v2.0) |
+| `states/templates/partials/**/*.html` | **Partials modulaires** (intentions, statuts, actions, uber, resultats, report, credentials) |
+| `states/templates/base_legacy/*.html` | **62 Templates legacy** (archivés, utilisés en fallback) |
 | `states/blocks/*.md` | Blocs réutilisables (salutation, signature, etc.) |
 | `states/VARIABLES.md` | Documentation des variables Handlebars |
 
@@ -451,20 +591,44 @@ Next steps CAB:
 
 ```python
 triage_result = triage_agent.triage_ticket(ticket_id)
-# Retourne: action, detected_intent, intent_context
+# Retourne: action, primary_intent, secondary_intents, intent_context
 
-# Structure de intent_context:
+# Structure complète:
 {
-    "is_urgent": True | False,
-    "mentions_force_majeure": True | False,
-    "force_majeure_type": "medical" | "death" | "accident" | "childcare" | "other" | None,
-    "force_majeure_details": "description courte" | None,
-    "wants_earlier_date": True | False,
-    "session_preference": "jour" | "soir" | None  # NOUVEAU - extrait automatiquement
+    "action": "GO" | "ROUTE" | "SPAM",
+    "primary_intent": "DEMANDE_DATES_FUTURES",       # Intention principale
+    "secondary_intents": ["QUESTION_SESSION"],       # Intentions secondaires
+    "detected_intent": "DEMANDE_DATES_FUTURES",      # Alias rétrocompat
+    "intent_context": {
+        "is_urgent": True | False,
+        "mentions_force_majeure": True | False,
+        "force_majeure_type": "medical" | "death" | "accident" | "childcare" | "other" | None,
+        "force_majeure_details": "description courte" | None,
+        "wants_earlier_date": True | False,
+        "session_preference": "jour" | "soir" | None
+    }
 }
 ```
 
 **Le TriageAgent extrait automatiquement `session_preference`** quand le candidat mentionne "cours du jour", "cours du soir", etc.
+
+### Multi-Intentions (Architecture v2.1)
+
+Le TriageAgent détecte **plusieurs intentions simultanément** :
+
+```python
+# Exemple: "Je voudrais les dates de Montpellier et des infos sur les cours du soir"
+result = triage_agent.triage_ticket(...)
+# → primary_intent: "DEMANDE_DATES_FUTURES"
+# → secondary_intents: ["QUESTION_SESSION"]
+```
+
+**Intentions disponibles pour multi-détection :**
+- `DEMANDE_DATES_FUTURES` - Demande de dates d'examen futures
+- `QUESTION_SESSION` - Question sur les sessions jour/soir
+- `QUESTION_PROCESSUS` - Question sur le processus global
+- `DEMANDE_AUTRES_DEPARTEMENTS` - Veut voir d'autres départements
+- `STATUT_DOSSIER`, `REPORT_DATE`, `CONFIRMATION_SESSION`, etc.
 
 ### Intégration TriageAgent → session_helper
 
@@ -639,17 +803,17 @@ L'architecture modulaire garantit que TOUTE réponse :
 2. **Affiche le statut actuel** (où en est le dossier)
 3. **Pousse vers l'action suivante** (ce que le candidat doit faire maintenant)
 
-### Structure des Dossiers
+### Structure des Dossiers (Architecture v2.0)
 
 ```
 states/templates/
 ├── response_master.html          # Template master universel
-├── base/                         # Templates spécifiques par état
+├── base_legacy/                  # Templates legacy (archivés, utilisés en fallback)
 │   ├── uber_cas_a.html
 │   ├── dossier_synchronise.html
-│   └── ...
+│   └── ... (62 templates)
 └── partials/                     # Blocs modulaires réutilisables
-    ├── intentions/               # Réponses aux intentions (7 fichiers)
+    ├── intentions/               # Réponses aux intentions (14 fichiers)
     │   ├── statut_dossier.html
     │   ├── demande_date.html
     │   ├── demande_identifiants.html
@@ -657,7 +821,13 @@ states/templates/
     │   ├── demande_convocation.html
     │   ├── demande_elearning.html
     │   ├── report_date.html
-    │   └── probleme_documents.html
+    │   ├── probleme_documents.html
+    │   ├── question_generale.html
+    │   ├── resultat_examen.html
+    │   ├── question_uber.html
+    │   ├── question_session.html      # Multi-intentions v2.1
+    │   ├── question_processus.html    # Multi-intentions v2.1
+    │   └── autres_departements.html   # Multi-intentions v2.1
     ├── statuts/                  # Affichage du statut Evalbox (7 fichiers)
     │   ├── dossier_cree.html
     │   ├── dossier_synchronise.html
@@ -666,17 +836,36 @@ states/templates/
     │   ├── refus_cma.html
     │   ├── convoc_recue.html
     │   └── en_attente.html
-    └── actions/                  # Actions requises pour avancer (10 fichiers)
-        ├── passer_test.html
-        ├── envoyer_documents.html
-        ├── completer_dossier.html
-        ├── choisir_date.html
-        ├── choisir_session.html
-        ├── surveiller_paiement.html
-        ├── attendre_convocation.html
-        ├── preparer_examen.html
-        ├── corriger_documents.html
-        └── contacter_uber.html
+    ├── actions/                  # Actions requises pour avancer (10 fichiers)
+    │   ├── passer_test.html
+    │   ├── envoyer_documents.html
+    │   ├── completer_dossier.html
+    │   ├── choisir_date.html
+    │   ├── choisir_session.html
+    │   ├── surveiller_paiement.html
+    │   ├── attendre_convocation.html
+    │   ├── preparer_examen.html
+    │   ├── corriger_documents.html
+    │   └── contacter_uber.html
+    ├── uber/                     # Conditions bloquantes Uber (5 fichiers)
+    │   ├── cas_a_docs_manquants.html
+    │   ├── cas_b_test_manquant.html
+    │   ├── cas_d_compte_non_verifie.html
+    │   ├── cas_e_non_eligible.html
+    │   └── doublon_offre.html
+    ├── resultats/                # Résultats d'examen (3 fichiers)
+    │   ├── admis.html
+    │   ├── non_admis.html
+    │   └── absent.html
+    ├── report/                   # Report de date (3 fichiers)
+    │   ├── bloque.html
+    │   ├── possible.html
+    │   └── force_majeure.html
+    ├── credentials/              # Problèmes d'identifiants (2 fichiers)
+    │   ├── invalid.html
+    │   └── inconnus.html
+    └── dates/                    # Proposition de dates (1 fichier)
+        └── proposition.html
 ```
 
 ### Template Master (`response_master.html`)
@@ -751,6 +940,27 @@ Les context flags sont injectés par la matrice État×Intention et activent les
 - `intention_demande_elearning` - Accès e-learning
 - `intention_report_date` - Demande de report
 - `intention_probleme_documents` - Problème avec les documents
+- `intention_question_generale` - Question générale
+- `intention_resultat_examen` - Question sur résultat d'examen
+- `intention_question_uber` - Question sur l'offre Uber
+- `intention_question_session` - Question sur les sessions jour/soir (v2.1)
+- `intention_question_processus` - Question sur le processus global (v2.1)
+- `intention_autres_departements` - Demande d'autres départements (v2.1)
+
+**Flags de conditions bloquantes (Section 0 du response_master) :**
+- `uber_cas_a` - Documents non envoyés (CAS A)
+- `uber_cas_b` - Test de sélection non passé (CAS B)
+- `uber_cas_d` - Compte Uber non vérifié (CAS D)
+- `uber_cas_e` - Non éligible selon Uber (CAS E)
+- `uber_doublon` - Doublon offre Uber 20€
+- `resultat_admis` - Résultat d'examen admis
+- `resultat_non_admis` - Résultat d'examen non admis
+- `resultat_absent` - Candidat absent à l'examen
+- `report_bloque` - Report impossible (VALIDE CMA + clôture passée)
+- `report_possible` - Report encore possible
+- `report_force_majeure` - Demande de report avec force majeure
+- `credentials_invalid` - Identifiants invalides
+- `credentials_inconnus` - Identifiants inconnus
 
 ### Détermination Automatique des Actions
 
@@ -925,16 +1135,19 @@ L'architecture supporte deux types de templates :
 ### Vérification de la Couverture Templates
 
 ```bash
-# Vérifier qu'aucun template ne manque
+# Vérifier qu'aucun template ne manque (avec base_legacy)
 python -c "
 import re, os
 with open('states/state_intention_matrix.yaml') as f:
     templates = set(re.findall(r'template:\s*[\"']?([\\w_-]+\\.html)', f.read()))
-existing = set(os.listdir('states/templates/base'))
-missing = templates - existing
+existing = set(os.listdir('states/templates/base_legacy'))
+missing = templates - existing - {'response_master.html'}  # response_master est à la racine
 print(f'Manquants: {len(missing)}')
 for t in sorted(missing): print(f'  - {t}')
 "
+
+# Vérifier que tous les partials existent
+ls states/templates/partials/*/
 ```
 
 ---
@@ -1118,6 +1331,7 @@ Le TriageAgent détecte automatiquement cette intention et retourne `action: ROU
 2. **Vérifier les agents** : `ls src/agents/`
 3. **Vérifier les alertes** : `cat alerts/active_alerts.yaml`
 4. **Vérifier les intents existants** : `grep -E "^  [A-Z_]+:" states/state_intention_matrix.yaml`
-5. **Vérifier les templates existants** : `ls states/templates/base/`
-6. **Lire ce fichier** : Les fonctions sont documentées ici
-7. **Ne pas dupliquer** : Si une fonction existe, l'utiliser !
+5. **Vérifier les templates existants** : `ls states/templates/base_legacy/` et `ls states/templates/partials/*/`
+6. **Vérifier les partials** : `ls states/templates/partials/*/`
+7. **Lire ce fichier** : Les fonctions sont documentées ici
+8. **Ne pas dupliquer** : Si une fonction existe, l'utiliser !
