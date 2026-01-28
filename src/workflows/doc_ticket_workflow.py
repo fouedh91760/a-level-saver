@@ -1675,6 +1675,36 @@ L'équipe Cab Formations"""
                 detected_state.context_data['next_dates'] = next_dates
                 logger.info(f"  ✅ {len(next_dates)} date(s) chargées")
 
+        # FILTRER next_dates selon le mois demandé par le candidat
+        intent_context = triage_result.get('intent_context', {})
+        requested_month = intent_context.get('requested_month')
+        requested_location = intent_context.get('requested_location')
+
+        if requested_month and next_dates:
+            from datetime import datetime
+            filtered_dates = []
+            for date_info in next_dates:
+                date_str = date_info.get('Date_Examen') or date_info.get('date_examen')
+                if date_str:
+                    try:
+                        date_obj = datetime.strptime(date_str, '%Y-%m-%d')
+                        # Garder les dates du mois demandé ou après
+                        if date_obj.month >= requested_month:
+                            filtered_dates.append(date_info)
+                    except ValueError:
+                        filtered_dates.append(date_info)  # En cas d'erreur, garder la date
+
+            if filtered_dates:
+                logger.info(f"  📅 Filtrage par mois {requested_month}: {len(next_dates)} → {len(filtered_dates)} date(s)")
+                detected_state.context_data['next_dates'] = filtered_dates
+            else:
+                # Aucune date ne correspond - ajouter un message explicatif
+                logger.warning(f"  ⚠️ Aucune date en mois {requested_month} - on garde toutes les dates")
+                month_names = ['', 'janvier', 'février', 'mars', 'avril', 'mai', 'juin',
+                               'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre']
+                detected_state.context_data['no_date_for_requested_month'] = True
+                detected_state.context_data['requested_month_name'] = month_names[requested_month] if 1 <= requested_month <= 12 else str(requested_month)
+
         # Create AI generator for personalization sections
         # This uses Sonnet to generate contextual personalization based on threads/message
         def ai_personalization_generator(state, instructions="", max_length=150):

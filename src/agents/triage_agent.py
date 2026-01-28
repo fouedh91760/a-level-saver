@@ -156,6 +156,10 @@ CONTEXTE SUPPLÉMENTAIRE (pour toutes les intentions):
 - wants_earlier_date: true si le candidat demande une date plus tôt, plus proche, plus rapide,
   ou s'il mentionne vouloir un autre département, d'autres options, toutes les dates disponibles,
   ou une urgence particulière (pressé, au plus vite, rapidement, etc.)
+- requested_month: le mois spécifique demandé par le candidat (1-12 ou null si non mentionné)
+  Exemples: "juillet" → 7, "septembre" → 9, "fin d'année" → 12
+- requested_location: la ville ou le département demandé (string ou null si non mentionné)
+  Exemples: "Montpellier", "Lyon", "Paris", "34", "75"
 
 ---
 
@@ -173,7 +177,9 @@ Réponds UNIQUEMENT en JSON valide:
         "force_majeure_type": "medical" | "death" | "accident" | "childcare" | "other" | null,
         "force_majeure_details": "description courte si force majeure détectée" | null,
         "wants_earlier_date": true | false,
-        "session_preference": "jour" | "soir" | null
+        "session_preference": "jour" | "soir" | null,
+        "requested_month": 1-12 | null,
+        "requested_location": "ville ou département" | null
     }
 }
 

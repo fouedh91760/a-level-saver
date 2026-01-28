@@ -2018,10 +2018,14 @@ base_templates:
     blocks: [salutation_personnalisee, empathie_force_majeure, report_bloque_force_majeure, signature]
 
   report_possible:
-    file: "templates/base/report_possible.html"
+    file: "response_master.html"
     for_intention: "REPORT_DATE"
     for_condition: "can_modify_exam_date == true"
-    blocks: [salutation_personnalisee, report_possible, prochaines_dates_examen, signature]
+    context_flags:
+      report_possible: true
+      intention_report_date: true
+      show_dates_section: true
+      show_sessions_section: true
 
   credentials_refused:
     file: "templates/base/credentials_refused.html"
