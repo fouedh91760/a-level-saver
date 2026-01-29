@@ -1,8 +1,39 @@
 <!-- Partial: Reponse a l'intention ERREUR_PAIEMENT_CMA -->
 <!-- Candidat Uber 20€ qui a payé les frais CMA lui-même par erreur -->
+{{#if remboursement_cma_choice_remboursement}}
+<!-- CAS 1: Le candidat a confirmé son choix = REMBOURSEMENT -->
+<b>Suite à votre choix de remboursement</b><br>
+<br>
+Nous avons bien noté que vous souhaitez demander le remboursement des frais CMA auprès de la Chambre des Métiers.<br>
+<br>
+<b>Prochaines étapes :</b><br>
+<ul>
+<li>Contactez directement la CMA pour demander le remboursement sur votre carte bancaire</li>
+<li><b>Tenez-nous informés dès que le remboursement est effectué</b></li>
+<li>Une fois remboursé, votre dossier repassera en statut "Prêt à payer" et nous procéderons au paiement pour vous</li>
+</ul>
+<i>⚠️ Attention : les délais de remboursement de la CMA peuvent être longs (plusieurs semaines).</i><br>
+<br>
+<b>En attendant, merci de nous confirmer :</b><br>
+<ul>
+<li>Quelle <b>date d'examen</b> souhaitez-vous ? (nous vous proposerons les dates disponibles une fois le remboursement effectué)</li>
+<li>Préférez-vous les <b>cours du jour</b> ou les <b>cours du soir</b> pour votre formation ?</li>
+</ul>
+<br>
+{{else}}
+{{#if remboursement_cma_choice_conserver}}
+<!-- CAS 2: Le candidat a confirmé son choix = CONSERVER -->
+<b>Suite à votre choix de conserver le paiement</b><br>
+<br>
+Nous avons bien noté que vous préférez conserver votre paiement actuel. C'est un choix judicieux car votre inscription à l'examen est ainsi <b>sécurisée</b>.<br>
+<br>
+Vous bénéficiez toujours de tous les autres avantages de l'offre Uber : formation en visio, accès e-learning complet et accompagnement personnalisé.<br>
+<br>
+{{else}}
+<!-- CAS 3: Première détection - présenter les 2 options -->
 <b>Concernant le paiement des frais d'examen</b><br>
 <br>
-Nous avons bien noté que vous avez réglé vous-même les frais d'inscription à l'examen CMA. Dans le cadre de l'offre Uber à 20€, ces frais (241€) sont normalement <b>pris en charge par CAB Formations</b>.<br>
+Nous avons bien noté que vous avez réglé vous-même les frais d'inscription à l'examen CMA. Dans le cadre de l'offre Uber, ces frais (241€) sont normalement <b>pris en charge par CAB Formations</b>.<br>
 <br>
 Vous avez <b>deux options</b> :<br>
 <br>
@@ -23,3 +54,5 @@ Vous avez <b>deux options</b> :<br>
 <br>
 <b>Merci de nous indiquer quelle option vous préférez</b> afin que nous puissions adapter la suite de votre accompagnement.<br>
 <br>
+{{/if}}
+{{/if}}

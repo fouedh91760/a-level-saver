@@ -855,6 +855,7 @@ class TemplateEngine:
         contact_data = context.get('contact_data', {})  # Données du Contact lié (First_Name, Last_Name)
         examt3p_data = context.get('examt3p_data', {})
         enriched_lookups = context.get('enriched_lookups', {})
+        intent_context = context.get('intent_context', {})
 
         # Extraire le prénom et nom depuis Contact (pas Deal)
         prenom = self._extract_prenom_from_contact(contact_data, deal_data)
@@ -1062,6 +1063,10 @@ class TemplateEngine:
             # Dates deja communiquees (anti-repetition)
             'dates_already_communicated': context.get('dates_already_communicated', False),
             'dates_proposed_recently': context.get('dates_proposed_recently', False),
+
+            # Choix remboursement CMA (pour ERREUR_PAIEMENT_CMA)
+            'remboursement_cma_choice_remboursement': intent_context.get('remboursement_cma_choice') == 'remboursement',
+            'remboursement_cma_choice_conserver': intent_context.get('remboursement_cma_choice') == 'conserver',
 
             # Flags pour le template master (architecture modulaire)
             # Sections à afficher (peuvent être désactivées via context_flags de la matrice)

@@ -188,6 +188,10 @@ INTENTIONS POSSIBLES (par ordre de spécificité - préfère les intentions spé
   ⚠️ UNIQUEMENT pour les candidats Uber 20€ qui mentionnent avoir payé les frais CMA
   ⚠️ NE PAS ROUTER vers Comptabilité - reste dans DOC avec réponse explicative
   ⚠️ DIFFÉRENT de DEMANDE_REMBOURSEMENT générale
+  Pour ERREUR_PAIEMENT_CMA, détecter si le candidat CONFIRME son choix:
+  - remboursement_cma_choice: "remboursement" si le candidat dit "je choisis le remboursement", "option 1", "je préfère demander le remboursement"
+  - remboursement_cma_choice: "conserver" si le candidat dit "je garde mon paiement", "option 2", "je préfère conserver"
+  - remboursement_cma_choice: null si c'est la première détection (pas encore de choix)
 - DEMANDE_REMBOURSEMENT: Demande de remboursement (hors cas Uber paiement CMA)
   Exemples: "remboursement formation", "annuler et rembourser", "je veux arrêter"
   ⚠️ Ne pas utiliser si c'est un candidat Uber qui a payé les frais CMA → utiliser ERREUR_PAIEMENT_CMA
@@ -260,7 +264,8 @@ Réponds UNIQUEMENT en JSON valide:
         "session_preference": "jour" | "soir" | null,
         "requested_month": 1-12 | null,
         "requested_location": "ville ou département tel que mentionné" | null,
-        "requested_dept_code": "75" | "34" | ... | null
+        "requested_dept_code": "75" | "34" | ... | null,
+        "remboursement_cma_choice": "remboursement" | "conserver" | null
     }
 }
 
