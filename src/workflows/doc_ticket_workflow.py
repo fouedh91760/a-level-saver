@@ -2036,7 +2036,12 @@ L'équipe CAB Formations"""
             'threads': analysis_result.get('threads', []),
 
             # Données extraites pour les placeholders (niveau racine)
-            'next_dates': date_examen_vtc_result.get('next_dates', []),
+            # Filtrer next_dates: exclure la date actuelle et limiter à 1 alternative
+            'next_dates': self._filter_next_dates(
+                date_examen_vtc_result.get('next_dates', []),
+                date_examen_vtc_result.get('date_examen_info', {}).get('Date_Examen', '') if date_examen_vtc_result.get('date_examen_info') else '',
+                limit=1
+            ),
             'date_case': date_examen_vtc_result.get('case'),
             'date_cloture': date_examen_vtc_result.get('date_cloture'),
             'can_choose_other_department': date_examen_vtc_result.get('can_choose_other_department', False),
@@ -2182,6 +2187,22 @@ L'équipe CAB Formations"""
         # MULTI-ÉTATS: Generate response using generate_response_multi
         # Enrichir le primary_state avec le contexte combiné (y compris warnings)
         detected_states.primary_state = detected_state  # Avec le context_data enrichi
+
+        # FILTRE FINAL: Exclure la date actuelle et limiter à 1 date alternative
+        current_exam_date = detected_state.context_data.get('date_examen_vtc_data', {}).get('date_examen_info', {})
+        if current_exam_date:
+            current_date_str = current_exam_date.get('Date_Examen', '')[:10] if current_exam_date.get('Date_Examen') else ''
+        else:
+            current_date_str = ''
+
+        raw_next_dates = detected_state.context_data.get('next_dates', [])
+        if raw_next_dates and current_date_str:
+            filtered_next_dates = [
+                d for d in raw_next_dates
+                if str(d.get('Date_Examen', ''))[:10] != current_date_str
+            ][:1]  # Limiter à 1 date
+            detected_state.context_data['next_dates'] = filtered_next_dates
+            logger.info(f"  📅 Filtre final next_dates: {len(raw_next_dates)} → {len(filtered_next_dates)} (exclu {current_date_str})")
 
         template_result = self.template_engine.generate_response_multi(
             detected_states=detected_states,
@@ -2379,6 +2400,47 @@ L'équipe CAB Formations"""
 
         except Exception as e:
             logger.warning(f"  ⚠️ Erreur recherche cross-département: {e}")
+
+    def _filter_next_dates(
+        self,
+        next_dates: list,
+        current_date,
+        limit: int = 1
+    ) -> list:
+        """
+        Filtre next_dates: exclut la date actuelle et limite le nombre de résultats.
+
+        Args:
+            next_dates: Liste des dates d'examen disponibles
+            current_date: Date actuelle à exclure (string, dict avec 'name', ou None)
+            limit: Nombre max de dates à retourner
+
+        Returns:
+            Liste filtrée des dates alternatives
+        """
+        if not next_dates:
+            return []
+
+        # Normaliser current_date (peut être string, dict avec lookup, ou None)
+        if isinstance(current_date, dict):
+            # Format lookup CRM: {'name': '34_2026-03-31', 'id': '...'}
+            current_date_str = str(current_date.get('name', ''))
+            # Extraire la date du format "dept_YYYY-MM-DD"
+            if '_' in current_date_str:
+                current_date_str = current_date_str.split('_')[-1][:10]
+            else:
+                current_date_str = current_date_str[:10]
+        else:
+            current_date_str = str(current_date)[:10] if current_date else ''
+
+        # Exclure la date actuelle
+        filtered = [
+            d for d in next_dates
+            if str(d.get('Date_Examen', ''))[:10] != current_date_str
+        ]
+
+        # Limiter le nombre de résultats
+        return filtered[:limit] if limit else filtered
 
     def _generate_personalization(
         self,

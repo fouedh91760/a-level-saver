@@ -69,7 +69,7 @@ def get_cross_department_alternatives(
     closest_closure_days = 999
 
     for date_info in all_earlier:
-        dept = date_info.get('Departement', '')
+        dept = str(date_info.get('Departement', ''))
 
         # Calculer jours jusqu'a cloture
         cloture_str = date_info.get('Date_Cloture_Inscription', '')
@@ -249,7 +249,7 @@ def get_dates_for_month_other_departments(
     other_region = []
 
     for date_info in all_dates:
-        dept = date_info.get('Departement', '')
+        dept = str(date_info.get('Departement', ''))
 
         # Exclure le departement actuel
         if dept == current_dept:

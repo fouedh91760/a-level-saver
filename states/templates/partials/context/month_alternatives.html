@@ -7,11 +7,12 @@
 <i>Dans votre region ({{month_cross_department.current_region}}) :</i><br>
 {{#each month_cross_department.same_region_options}}&nbsp;&nbsp;&rarr; <b>{{this.date_examen_formatted}}</b> &mdash; CMA {{this.Departement}} (cloture : {{this.date_cloture_formatted}}){{#if this.is_urgent}} <span style="color:#c0392b;">⚠️ cloture proche</span>{{/if}}<br>
 {{/each}}<br>
-{{/if}}
+{{else}}
 {{#if month_cross_department.has_other_region_options}}
 <i>Dans d'autres regions :</i><br>
 {{#each month_cross_department.other_region_options}}&nbsp;&nbsp;&rarr; <b>{{this.date_examen_formatted}}</b> &mdash; CMA {{this.Departement}} ({{this.region}})<br>
 {{/each}}<br>
+{{/if}}
 {{/if}}
 {{#if month_cross_department.requires_department_change_process}}
 <i>Note : Votre compte ExamT3P etant cree sur la CMA {{departement}}, un changement de departement necessite une demande via l'onglet Messagerie de <a href="https://www.exament3p.fr">exament3p.fr</a>.</i><br>

@@ -539,6 +539,10 @@ class TemplateEngine:
         # 1. Résoudre les partials ({{> bloc_name}})
         result = self._resolve_partials(result, context, blocks_included)
 
+        # 1.5 Supprimer les commentaires Handlebars AVANT parsing des blocs
+        # (sinon {{!-- interfère avec les regex de {{#if}}, {{#unless}}, etc.)
+        result = re.sub(r'\{\{!--.*?--\}\}', '', result, flags=re.DOTALL)
+
         # 2. Résoudre les conditionnels {{#if}}
         result = self._resolve_if_blocks(result, context)
 
@@ -579,6 +583,8 @@ class TemplateEngine:
             if block_content:
                 # Résoudre récursivement les partials dans le bloc
                 block_content = self._resolve_partials(block_content, context, blocks_included)
+                # Supprimer les commentaires Handlebars AVANT parsing des blocs if/unless
+                block_content = re.sub(r'\{\{!--.*?--\}\}', '', block_content, flags=re.DOTALL)
                 # Résoudre les conditionnels dans le bloc
                 block_content = self._resolve_if_blocks(block_content, context)
                 block_content = self._resolve_unless_blocks(block_content, context)
@@ -690,7 +696,8 @@ class TemplateEngine:
         """Résout les {{#unless condition}}...{{else}}...{{/unless}}."""
         result = template
 
-        pattern = r'\{\{#unless\s+(\w+)\s*\}\}(.*?)(?:\{\{else\}\}(.*?))?\{\{/unless\}\}'
+        # Support des chemins pointés comme month_cross_department.has_same_region_options
+        pattern = r'\{\{#unless\s+([\w.]+)\s*\}\}(.*?)(?:\{\{else\}\}(.*?))?\{\{/unless\}\}'
 
         while True:
             match = re.search(pattern, result, re.DOTALL)
@@ -2069,9 +2076,11 @@ class TemplateEngine:
         return cleaned
 
     def _strip_comments(self, response: str) -> str:
-        """Supprime les commentaires HTML du texte final."""
-        # Supprimer les commentaires <!-- ... -->
-        cleaned = re.sub(r'<!--.*?-->', '', response, flags=re.DOTALL)
+        """Supprime les commentaires HTML et Handlebars du texte final."""
+        # Supprimer les commentaires Handlebars {{!-- ... --}}
+        cleaned = re.sub(r'\{\{!--.*?--\}\}', '', response, flags=re.DOTALL)
+        # Supprimer les commentaires HTML <!-- ... -->
+        cleaned = re.sub(r'<!--.*?-->', '', cleaned, flags=re.DOTALL)
         # Nettoyer les lignes vides multiples
         cleaned = re.sub(r'\n{3,}', '\n\n', cleaned)
         return cleaned.strip()
