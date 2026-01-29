@@ -834,12 +834,50 @@ Le candidat demande sa convocation mais la date d'examen dans Zoho CRM est dans 
                 except Exception as e:
                     logger.warning(f"  ⚠️ Impossible d'enrichir Date_examen_VTC: {e}")
 
+        # Générer un résumé de l'historique si plusieurs threads
+        conversation_summary = None
+        if len(threads) > 2:
+            logger.info("📝 Génération du résumé de conversation...")
+            try:
+                import anthropic
+                from config import settings
+
+                # Extraire le contenu des threads pour le résumé
+                threads_text = []
+                for t in threads[:10]:  # Max 10 derniers threads
+                    direction = "CANDIDAT" if t.get('direction') == 'in' else "CAB"
+                    content = get_clean_thread_content(t)[:400]
+                    if content:
+                        threads_text.append(f"[{direction}]: {content}")
+
+                if threads_text:
+                    client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
+                    summary_response = client.messages.create(
+                        model="claude-3-5-haiku-20241022",
+                        max_tokens=200,
+                        messages=[{
+                            "role": "user",
+                            "content": f"""Résume en 2-3 phrases l'historique de cette conversation entre un candidat VTC et CAB Formations.
+Focus sur: le problème principal, ce qui a été fait, ce qui reste à résoudre.
+
+CONVERSATION:
+{chr(10).join(threads_text)}
+
+RÉSUMÉ (2-3 phrases):"""
+                        }]
+                    )
+                    conversation_summary = summary_response.content[0].text.strip()
+                    logger.info(f"  ✅ Résumé généré ({len(conversation_summary)} chars)")
+            except Exception as e:
+                logger.warning(f"  ⚠️ Impossible de générer le résumé: {e}")
+
         logger.info("🤖 Triage IA en cours...")
         ai_triage = self.triage_agent.triage_ticket(
             ticket_subject=subject,
             thread_content=last_thread_content,
             deal_data=selected_deal,
-            current_department='DOC'
+            current_department='DOC',
+            conversation_summary=conversation_summary  # Nouveau: contexte historique
         )
 
         logger.info(f"  🤖 Résultat IA: {ai_triage['action']} → {ai_triage['target_department']} ({ai_triage['reason']})")

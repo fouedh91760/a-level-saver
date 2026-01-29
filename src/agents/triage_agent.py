@@ -295,7 +295,8 @@ Pour CONFIRMATION_SESSION, extraire la préférence:
         ticket_subject: str,
         thread_content: str,
         deal_data: Optional[Dict[str, Any]] = None,
-        current_department: str = "DOC"
+        current_department: str = "DOC",
+        conversation_summary: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Analyse un ticket et détermine l'action de triage + intention du candidat.
@@ -305,6 +306,7 @@ Pour CONFIRMATION_SESSION, extraire la préférence:
             thread_content: Contenu du dernier message du client
             deal_data: Données du deal CRM (optionnel)
             current_department: Département actuel du ticket
+            conversation_summary: Résumé de l'historique de conversation (optionnel)
 
         Returns:
             {
@@ -325,9 +327,16 @@ Pour CONFIRMATION_SESSION, extraire la préférence:
         # Construire le contexte pour l'IA
         context_parts = [
             f"**Sujet du ticket:** {ticket_subject}",
-            f"**Message du client:**\n{thread_content[:2000]}",  # Limiter la taille
-            f"**Département actuel:** {current_department}"
         ]
+
+        # Ajouter le résumé de conversation si disponible (pour le contexte historique)
+        if conversation_summary:
+            context_parts.append(f"**Historique de la conversation (résumé):**\n{conversation_summary}")
+
+        context_parts.extend([
+            f"**Dernier message du client:**\n{thread_content[:2000]}",  # Limiter la taille
+            f"**Département actuel:** {current_department}"
+        ])
 
         # Ajouter les infos du deal si disponibles
         if deal_data:
