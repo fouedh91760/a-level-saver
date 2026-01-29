@@ -42,7 +42,7 @@ CONTEXTE MÉTIER:
 DÉPARTEMENTS DISPONIBLES:
 - DOC: Questions sur formation, examen, dates, sessions, identifiants ExamT3P (département par défaut pour candidats Uber 20€)
 - Refus CMA: UNIQUEMENT si la CMA a REFUSÉ un document (statut Evalbox = "Refusé CMA" ou "Documents manquants")
-- Contact: Demandes commerciales, autres formations, questions générales non liées à un dossier en cours
+- Contact: Demandes commerciales, autres formations (NON Uber 20€), RGPD
 - Comptabilité: Factures, remboursements, paiements
 
 RÈGLES DE TRIAGE:
@@ -55,6 +55,9 @@ RÈGLES DE TRIAGE:
    - Questions sur dates d'examen, sessions de formation
    - Demandes de changement de date / report
    - Questions sur le dossier en cours
+   - ⚠️ **PROSPECTS UBER 20€ (Stage = EN ATTENTE)**: TOUJOURS GO !
+     Ces prospects doivent être poussés à finaliser leur paiement des 20€
+     On répond à leurs questions et on les encourage à convertir
 
 3. **ROUTE vers Refus CMA** SEULEMENT si:
    - Le candidat signale que la CMA a REFUSÉ son dossier
@@ -62,9 +65,8 @@ RÈGLES DE TRIAGE:
    - NE PAS router si le candidat dit juste "j'ai envoyé mes documents"
 
 4. **ROUTE vers Contact** si:
-   - Demande d'information sur une NOUVELLE formation
-   - Questions sur le prix, les modalités d'inscription
-   - Pas de dossier en cours (pas de deal)
+   - Demande d'information sur une formation NON Uber (formation classique, TAXI, etc.)
+   - ⚠️ JAMAIS pour les prospects Uber 20€ même en EN ATTENTE - ils restent dans DOC !
    - Demande de suppression de données (RGPD, droit à l'oubli, destruction données)
 
 IMPORTANT:
@@ -72,6 +74,7 @@ IMPORTANT:
 - "J'ai téléchargé mes documents" = GO (confirmation d'envoi)
 - "Mon document a été refusé" = ROUTE vers Refus CMA
 - Comprends le CONTEXTE, pas juste les mots-clés
+- **PROSPECT UBER 20€ = TOUJOURS DOC** pour les pousser à payer et avancer
 
 ---
 

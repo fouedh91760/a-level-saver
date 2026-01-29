@@ -118,16 +118,21 @@
 {{#if intention_date_lointaine}}
 {{> partials/intentions/date_lointaine}}
 {{/if}}
+{{#if intention_question_examen_pratique}}
+{{> partials/intentions/question_examen_pratique}}
+{{/if}}
 
-<!-- SECTION PROSPECT : Rappel inscription -->
-{{#if is_prospect}}
+<!-- SECTION PROSPECT : Rappel inscription (seulement si prospect NON uber) -->
+{{#if show_prospect_rappel}}
 {{> partials/prospect/rappel_inscription}}
 {{/if}}
 
 <!-- =====================================================================
      SECTION 2: STATUT ACTUEL DU DOSSIER
      (Toujours affiché pour que le candidat sache où il en est)
+     (Masqué pour les prospects Uber - tout est dans prospect_paiement)
      ===================================================================== -->
+{{#unless uber_prospect}}
 {{#if show_statut_section}}
 <b>Statut de votre dossier</b><br>
 {{#if evalbox_dossier_cree}}
@@ -153,11 +158,14 @@
 {{/if}}
 <br>
 {{/if}}
+{{/unless}}
 
 <!-- =====================================================================
      SECTION 3: ACTION REQUISE POUR AVANCER
      (Ce que le candidat doit faire pour progresser)
+     (Masqué pour les prospects Uber - tout est dans prospect_paiement)
      ===================================================================== -->
+{{#unless uber_prospect}}
 {{#if has_required_action}}
 <b style="color: #d35400;">Prochaine étape pour avancer</b><br>
 {{#if action_passer_test}}
@@ -192,6 +200,7 @@
 {{/if}}
 <br>
 {{/if}}
+{{/unless}}
 
 <!-- =====================================================================
      SECTION 4: INFORMATIONS COMPLÉMENTAIRES
@@ -231,6 +240,8 @@ Pour l'examen du {{this.date_examen_formatted}} :<br>
 <!-- =====================================================================
      SECTION 5: RESSOURCES
      ===================================================================== -->
+{{#unless uber_prospect}}
 {{> acces_elearning_rappel}}
+{{/unless}}
 {{> verifier_spams}}
 {{> signature}}

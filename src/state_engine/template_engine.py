@@ -976,6 +976,8 @@ class TemplateEngine:
 
             # Prospect (alias pour templates)
             'is_prospect': context.get('is_prospect', False) or context.get('is_uber_prospect', False),
+            # Afficher rappel prospect seulement si PAS uber_prospect (évite doublon)
+            'show_prospect_rappel': (context.get('is_prospect', False) or context.get('is_uber_prospect', False)) and not context.get('uber_prospect', False),
 
             # Booléens pour proposer dates/sessions
             'date_examen_vide': not date_examen,
@@ -999,11 +1001,13 @@ class TemplateEngine:
 
             # Context flags pour conditions bloquantes (Section 0 de response_master)
             # Ces flags sont définis via context_flags dans la matrice STATE:INTENTION
+            # ou via _map_warning_state_flags pour les états WARNING
             'uber_cas_a': context.get('uber_cas_a', False),
             'uber_cas_b': context.get('uber_cas_b', False),
             'uber_cas_d': context.get('uber_cas_d', False),
             'uber_cas_e': context.get('uber_cas_e', False),
             'uber_doublon': context.get('uber_doublon', False),
+            'uber_prospect': context.get('uber_prospect', False),
 
             # Résultats d'examen
             'resultat_admis': context.get('resultat_admis', False),
@@ -1126,6 +1130,7 @@ class TemplateEngine:
         # Nouvelles intentions alignées (v2.2)
         'CONFIRMATION_PAIEMENT': 'intention_confirmation_paiement',
         'REFUS_PARTAGE_CREDENTIALS': 'intention_refus_credentials',
+        'QUESTION_EXAMEN_PRATIQUE': 'intention_question_examen_pratique',
     }
 
     def _auto_map_intention_flags(self, context: Dict[str, Any]) -> Dict[str, bool]:
@@ -1161,6 +1166,7 @@ class TemplateEngine:
             # Nouvelles intentions alignées (v2.2)
             'intention_confirmation_paiement': False,
             'intention_refus_credentials': False,
+            'intention_question_examen_pratique': False,
         }
 
         # Récupérer l'intention principale (rétrocompatibilité + nouveau format)
