@@ -323,13 +323,18 @@ Réponds toujours en JSON avec la structure:
         2. Recherche directe dans le CRM si non trouvé
 
         Args:
-            session_value: Nom ou description de la session
+            session_value: Nom ou description de la session (ou déjà un ID)
             session_data: Données de session_helper
             deal_data: Données du deal
 
         Returns:
             ID de la session ou None
         """
+        # 0. Si la valeur est déjà un ID Zoho (numérique 19 chiffres), retourner directement
+        if session_value and session_value.isdigit() and len(session_value) >= 15:
+            logger.info(f"  📊 Session: valeur déjà un ID → {session_value}")
+            return session_value
+
         # 1. Chercher dans les sessions proposées
         proposed_options = session_data.get('proposed_options', [])
 

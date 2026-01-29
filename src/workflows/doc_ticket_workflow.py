@@ -1731,21 +1731,38 @@ Deux comptes ExamenT3P fonctionnels ont été détectés pour ce candidat, et le
         if detected_intent == 'CONFIRMATION_SESSION':
             intent_context = triage_result.get('intent_context', {}) if triage_result else {}
             confirmed_dates = intent_context.get('confirmed_session_dates')
+            session_preference = intent_context.get('session_preference')  # 'jour' ou 'soir'
 
+            matched = None
+
+            # 1. Essayer matching par dates si fournies
             if confirmed_dates and session_data and session_data.get('proposed_options'):
-                logger.info(f"  🔍 Matching session confirmée: {confirmed_dates}")
+                logger.info(f"  🔍 Matching session par dates: {confirmed_dates}")
                 matched = self._match_session_by_confirmed_dates(
                     confirmed_dates,
                     session_data['proposed_options']
                 )
-                if matched:
-                    session_confirmed = True
-                    matched_session_id = matched.get('id')
-                    matched_session_name = matched.get('name')
-                    matched_session_type = matched.get('session_type')
-                    logger.info(f"  ✅ Session matchée: {matched_session_name} (ID: {matched_session_id})")
-                else:
-                    logger.warning(f"  ⚠️ Aucune session ne matche les dates confirmées: {confirmed_dates}")
+                if not matched:
+                    logger.warning(f"  ⚠️ Aucune session ne matche les dates: {confirmed_dates}")
+
+            # 2. Sinon, essayer matching par préférence (jour/soir)
+            if not matched and session_preference and session_data and session_data.get('proposed_options'):
+                logger.info(f"  🔍 Matching session par préférence: {session_preference}")
+                matched = self._match_session_by_preference(
+                    session_preference,
+                    session_data['proposed_options']
+                )
+
+            # 3. Résultat du matching
+            if matched:
+                session_confirmed = True
+                matched_session_id = matched.get('id')
+                matched_session_name = matched.get('name')
+                matched_session_type = matched.get('session_type')
+                logger.info(f"  ✅ Session matchée: {matched_session_name} (ID: {matched_session_id})")
+            elif session_preference:
+                # Le candidat a exprimé une préférence mais on n'a pas pu matcher
+                logger.warning(f"  ⚠️ Préférence '{session_preference}' exprimée mais aucune session disponible")
 
         return {
             'contact_data': contact_data,  # Données du contact lié (First_Name, Last_Name)
@@ -1857,6 +1874,51 @@ Deux comptes ExamenT3P fonctionnels ont été détectés pour ce candidat, et le
 
         except Exception as e:
             logger.error(f"Erreur lors du matching de session: {e}")
+            return None
+
+    def _match_session_by_preference(
+        self,
+        preference: str,
+        proposed_options: List[Dict]
+    ) -> Optional[Dict]:
+        """
+        Matche une session par préférence jour/soir.
+
+        Quand le candidat confirme juste "cours du soir" sans dates précises,
+        on sélectionne la première session disponible correspondant à cette préférence.
+
+        Args:
+            preference: 'jour' ou 'soir'
+            proposed_options: Liste des options de session proposées
+
+        Returns:
+            Dict avec id, name, session_type si trouvé, None sinon
+        """
+        try:
+            for option in proposed_options:
+                sessions = option.get('sessions', [])
+                for session in sessions:
+                    session_type = session.get('session_type', '')
+
+                    if session_type == preference:
+                        session_name = 'Cours du jour' if preference == 'jour' else 'Cours du soir'
+
+                        logger.info(f"  ✅ Session matchée par préférence: {session_name}")
+                        logger.info(f"     Du {session.get('Date_d_but', '')} au {session.get('Date_fin', '')}")
+
+                        return {
+                            'id': session.get('id'),
+                            'name': session_name,
+                            'session_type': preference,
+                            'Date_d_but': session.get('Date_d_but'),
+                            'Date_fin': session.get('Date_fin'),
+                        }
+
+            logger.warning(f"  ⚠️ Aucune session de type '{preference}' trouvée")
+            return None
+
+        except Exception as e:
+            logger.error(f"Erreur lors du matching par préférence: {e}")
             return None
 
     def _generate_duplicate_uber_response(

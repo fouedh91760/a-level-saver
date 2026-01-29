@@ -938,9 +938,14 @@ class TemplateEngine:
         # - Session pas encore choisie
         # - On a des sessions à proposer
         # - Pas dans un cas de report (géré par Section 0)
-        # - Le candidat n'a PAS déjà confirmé sa session (CONFIRMATION_SESSION avec dates)
-        if context.get('session_confirmed'):
-            # Le candidat vient de confirmer sa session → pas besoin de redemander
+        # - Le candidat n'a PAS déjà confirmé sa session (CONFIRMATION_SESSION)
+        if context.get('intention_confirmation_session'):
+            # BUG FIX: Le candidat confirme sa session → NE PAS redemander
+            # Que ce soit avec des dates précises ou juste une préférence (jour/soir)
+            result['show_sessions_section'] = False
+            logger.info("📚 show_sessions_section=False (intention CONFIRMATION_SESSION)")
+        elif context.get('session_confirmed'):
+            # Cas redondant mais gardé pour compatibilité
             result['show_sessions_section'] = False
             logger.info("📚 show_sessions_section=False (session déjà confirmée par le candidat)")
         elif not is_report_intention:
