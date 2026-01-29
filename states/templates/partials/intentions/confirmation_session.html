@@ -1,9 +1,11 @@
 <!-- Partial: Réponse à l'intention CONFIRMATION_SESSION -->
+<!-- Note: Les dates et sessions sont affichées dans Section 4 centralisée -->
 <b>Concernant votre session de formation</b><br>
-<br>
 {{#if session_choisie}}
-Votre session est confirmée : <b>{{session_choisie}}</b><br>
+Votre session est confirmée : <b>{{session_choisie}}</b>.<br>
 {{else}}
 Nous avons bien noté votre préférence pour les <b>{{preference_horaire_text}}</b>.<br>
+{{#if date_examen}}
+Votre examen est prévu le <b>{{date_examen}}</b>.<br>
 {{/if}}
-<br>
+{{/if}}

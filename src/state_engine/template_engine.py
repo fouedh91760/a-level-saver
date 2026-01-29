@@ -1024,7 +1024,11 @@ class TemplateEngine:
 
             # Données supplémentaires pour templates hybrides
             'has_next_dates': bool(context.get('next_dates', [])),
-            'next_dates': self._format_next_dates_for_template(context.get('next_dates', [])),
+            'next_dates': self._format_next_dates_for_template(
+                context.get('next_dates', []),
+                context.get('session_data'),
+                self._get_session_preference(context)
+            ),
             'preference_horaire_text': 'cours du soir' if self._get_session_preference(context) == 'soir' else 'cours du jour',
 
             # Préférence de session (depuis intent_context ou deal)
@@ -1036,28 +1040,54 @@ class TemplateEngine:
             'no_date_for_requested_month': context.get('no_date_for_requested_month', False),
             'requested_month_name': context.get('requested_month_name', ''),
             'requested_location': context.get('requested_location', ''),
-            'same_month_other_depts': self._format_next_dates_for_template(context.get('same_month_other_depts', [])),
-            'same_dept_other_months': self._format_next_dates_for_template(context.get('same_dept_other_months', [])),
+            'same_month_other_depts': self._format_next_dates_for_template(
+                context.get('same_month_other_depts', []),
+                context.get('session_data'),
+                self._get_session_preference(context)
+            ),
+            'same_dept_other_months': self._format_next_dates_for_template(
+                context.get('same_dept_other_months', []),
+                context.get('session_data'),
+                self._get_session_preference(context)
+            ),
 
             # Flags pour le template master (architecture modulaire)
             # Sections à afficher (peuvent être désactivées via context_flags de la matrice)
             'show_statut_section': context.get('show_statut_section', True),  # Par défaut True, sauf si désactivé
-            'show_dates_section': not date_examen and bool(context.get('next_dates', [])),
-            # NOTE: show_sessions_section est calculé après car il dépend de report_possible
+            # NOTE: show_dates_section et show_sessions_section sont calculés après
+            # car ils dépendent de l'intention (CONFIRMATION_SESSION gère ses propres dates/sessions)
+            'show_dates_section': False,  # Sera mis à jour ci-dessous
             'show_sessions_section': False,  # Sera mis à jour ci-dessous
 
             # Actions requises (déterminées par l'état)
             **self._determine_required_actions(context, evalbox),
         }
 
-        # Calculer show_sessions_section APRÈS report_flags (pour éviter duplication)
-        # Si report_possible est TRUE, les sessions sont déjà affichées dans report/possible.html
+        # Récupérer l'intention principale
+        primary_intent = context.get('primary_intent') or context.get('detected_intent', '')
+
+        # report_possible/bloque sont gérés par Section 0 (partials/report/*.html)
+        # Ces partials affichent déjà les dates+sessions, donc on désactive Section 4
         report_possible = result.get('report_possible', False)
-        if not report_possible:
-            # Afficher les sessions seulement si:
-            # - date d'examen existe
-            # - session pas encore choisie
-            # - on a des sessions à proposer
+        report_bloque = result.get('report_bloque', False)
+        report_force_majeure = result.get('report_force_majeure', False)
+        is_report_intention = report_possible or report_bloque or report_force_majeure
+
+        # Calculer show_dates_section (CENTRALISÉ - Section 4)
+        # Afficher les dates si:
+        # - Pas de date d'examen assignée
+        # - ET il y a des dates disponibles
+        # - ET on n'est pas dans un cas de report (géré par Section 0)
+        if not is_report_intention:
+            result['show_dates_section'] = not date_examen and bool(context.get('next_dates', []))
+
+        # Calculer show_sessions_section (CENTRALISÉ - Section 4)
+        # Afficher les sessions si:
+        # - Date d'examen existe
+        # - Session pas encore choisie
+        # - On a des sessions à proposer
+        # - Pas dans un cas de report (géré par Section 0)
+        if not is_report_intention:
             result['show_sessions_section'] = (
                 bool(date_examen) and
                 not deal_data.get('Session') and
@@ -1250,32 +1280,55 @@ class TemplateEngine:
             'action_contacter_uber': False,
         }
 
-        # Déterminer l'état Uber
+        # Déterminer l'état Uber - UTILISER uber_case (source de vérité) si disponible
         is_uber_20 = context.get('is_uber_20_deal', False)
-        date_dossier_recu = context.get('date_dossier_recu')
-        date_test_selection = context.get('date_test_selection')
-        compte_uber = context.get('compte_uber', True)
-        eligible_uber = context.get('eligible_uber', True)
+        uber_case = context.get('uber_case', '')
 
-        # États bloquants Uber
-        if is_uber_20:
-            if not date_dossier_recu:
+        # États bloquants Uber - Utiliser uber_case pour éviter les incohérences
+        # uber_case est déterminé par StateDetector qui gère la logique J+1 et verification pending
+        if is_uber_20 and uber_case:
+            if uber_case == 'A':
                 # CAS A: Documents non envoyés
                 actions['action_envoyer_documents'] = True
                 actions['has_required_action'] = True
                 return actions
-            if not date_test_selection:
+            if uber_case == 'B':
                 # CAS B: Test non passé
                 actions['action_passer_test'] = True
                 actions['has_required_action'] = True
                 return actions
-            if not compte_uber:
+            if uber_case == 'D':
                 # CAS D: Compte Uber non vérifié
                 actions['action_contacter_uber'] = True
                 actions['has_required_action'] = True
                 return actions
-            if not eligible_uber:
+            if uber_case == 'E':
                 # CAS E: Non éligible
+                actions['action_contacter_uber'] = True
+                actions['has_required_action'] = True
+                return actions
+            # ELIGIBLE, PROSPECT, NOT_UBER: pas d'action bloquante Uber
+            # Continuer vers la logique Evalbox ci-dessous
+        elif is_uber_20:
+            # Fallback si uber_case pas défini (rétrocompatibilité)
+            date_dossier_recu = context.get('date_dossier_recu')
+            date_test_selection = context.get('date_test_selection')
+            compte_uber = context.get('compte_uber', True)
+            eligible_uber = context.get('eligible_uber', True)
+
+            if not date_dossier_recu:
+                actions['action_envoyer_documents'] = True
+                actions['has_required_action'] = True
+                return actions
+            if not date_test_selection:
+                actions['action_passer_test'] = True
+                actions['has_required_action'] = True
+                return actions
+            if not compte_uber:
+                actions['action_contacter_uber'] = True
+                actions['has_required_action'] = True
+                return actions
+            if not eligible_uber:
                 actions['action_contacter_uber'] = True
                 actions['has_required_action'] = True
                 return actions
@@ -1305,39 +1358,92 @@ class TemplateEngine:
             session = context.get('deal_data', {}).get('Session')
             primary_intent = context.get('primary_intent') or context.get('detected_intent', '')
             session_preference = context.get('session_preference')
+            has_next_dates = bool(context.get('next_dates', []))
 
             if not date_examen:
-                actions['action_choisir_date'] = True
-                actions['has_required_action'] = True
+                # NOTE: Ne pas afficher action_choisir_date si Section 4 affiche les dates avec CTA
+                # Section 4 affiche les dates quand: has_next_dates ET pas de report
+                # On désactive action_choisir_date car le CTA est maintenant centralisé dans Section 4
+                if not has_next_dates:
+                    # Pas de dates disponibles - afficher l'action sans dates
+                    actions['action_choisir_date'] = True
+                    actions['has_required_action'] = True
+                # Sinon: Section 4 gère l'affichage des dates + CTA
             elif not session:
                 # Ne pas demander de choisir une session si:
                 # 1. On connaît déjà la préférence (session_preference)
                 # 2. C'est un REPORT_DATE (on attend d'abord la confirmation de la nouvelle date)
+                # 3. Section 4 affiche les sessions avec CTA (éviter duplication)
+                has_sessions = bool(context.get('session_data', {}).get('proposed_options', []))
                 if primary_intent == 'REPORT_DATE':
                     # REPORT_DATE: on propose les sessions APRÈS confirmation de la nouvelle date
                     pass  # Pas d'action requise ici
                 elif session_preference:
                     # On connaît la préférence, pas besoin de demander
-                    pass  # La session sera proposée automatiquement
+                    pass  # La session sera proposée automatiquement dans Section 4
+                elif has_sessions:
+                    # Section 4 gère l'affichage des sessions + CTA
+                    pass  # Pas d'action requise, Section 4 s'en charge
                 else:
-                    # Préférence inconnue, demander au candidat
+                    # Pas de sessions disponibles - afficher l'action
                     actions['action_choisir_session'] = True
                     actions['has_required_action'] = True
 
         return actions
 
-    def _format_next_dates_for_template(self, dates: List[Dict]) -> List[Dict]:
-        """Formate les next_dates pour utilisation dans les templates {{#each}}."""
+    def _format_next_dates_for_template(
+        self,
+        dates: List[Dict],
+        session_data: Optional[Dict[str, Any]] = None,
+        session_preference: Optional[str] = None
+    ) -> List[Dict]:
+        """
+        Formate les next_dates pour utilisation dans les templates {{#each}}.
+
+        Args:
+            dates: Liste des dates d'examen
+            session_data: Données de sessions (optionnel) pour enrichir avec les sessions
+            session_preference: Préférence jour/soir pour filtrer (optionnel)
+        """
         if not dates:
             return []
 
         formatted = []
         seen_depts = set()
 
+        # Construire un mapping date_examen → session depuis session_data
+        session_by_exam_date = {}
+        if session_data and 'proposed_options' in session_data:
+            for option in session_data.get('proposed_options', []):
+                exam_info = option.get('exam_info', {})
+                exam_date = exam_info.get('Date_Examen', '')
+                sessions = option.get('sessions', [])
+
+                # Filtrer par préférence si spécifiée
+                if session_preference and sessions:
+                    filtered = [s for s in sessions if s.get('session_type') == session_preference]
+                    if filtered:
+                        sessions = filtered
+
+                if sessions and exam_date:
+                    # Prendre la première session correspondante
+                    session = sessions[0]
+                    session_type = session.get('session_type', '')
+                    session_type_label = 'Cours du jour' if session_type == 'jour' else 'Cours du soir' if session_type == 'soir' else ''
+                    session_by_exam_date[exam_date] = {
+                        'session_name': session_type_label,
+                        'session_debut': self._format_date(session.get('Date_d_but', '')),
+                        'session_fin': self._format_date(session.get('Date_fin', '')),
+                        'session_type': session_type,
+                    }
+
         for d in dates[:5]:  # Limiter à 5 dates
             date_str = d.get('Date_Examen', '')
             cloture_str = d.get('Date_Cloture_Inscription', '')
             dept = d.get('Departement', '')
+
+            # Récupérer les infos session si disponibles
+            session_info = session_by_exam_date.get(date_str, {})
 
             formatted.append({
                 'date_examen_formatted': self._format_date(date_str) if date_str else '',
@@ -1347,6 +1453,11 @@ class TemplateEngine:
                 # Conserver les champs originaux aussi
                 'Date_Examen': date_str,
                 'Date_Cloture_Inscription': cloture_str,
+                # Session info (si disponible)
+                'session_name': session_info.get('session_name', ''),
+                'session_debut': session_info.get('session_debut', ''),
+                'session_fin': session_info.get('session_fin', ''),
+                'session_type': session_info.get('session_type', ''),
             })
             seen_depts.add(dept)
 

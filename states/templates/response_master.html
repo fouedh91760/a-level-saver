@@ -203,36 +203,44 @@
 {{/unless}}
 
 <!-- =====================================================================
-     SECTION 4: INFORMATIONS COMPLÉMENTAIRES
-     (Dates, sessions si pertinent)
+     SECTION 4: DATES ET SESSIONS (CENTRALISÉ)
+     Toutes les dates/sessions sont affichées ici pour éviter la duplication
      ===================================================================== -->
 {{#if show_dates_section}}
+{{#if no_date_for_requested_month}}
+<i>Note : Pas de date disponible en <b>{{requested_month_name}}</b>{{#if requested_location}} sur {{requested_location}}{{/if}}.</i><br>
+<br>
+{{/if}}
 {{#if has_next_dates}}
-<b>Prochaines dates d'examen disponibles</b><br>
+<b>Prochaines dates d'examen disponibles{{#if session_preference}} ({{preference_horaire_text}}){{/if}}</b><br>
 {{#each next_dates}}
 {{#if this.is_first_of_dept}}
 <b>CMA {{this.Departement}}</b><br>
 {{/if}}
-&nbsp;&nbsp;→ <b>{{this.date_examen_formatted}}</b> (clôture : {{this.date_cloture_formatted}})<br>
+&nbsp;&nbsp;→ <b>{{this.date_examen_formatted}}</b> (clôture : {{this.date_cloture_formatted}}){{#if this.session_name}} — {{this.session_name}} du {{this.session_debut}} au {{this.session_fin}}{{/if}}<br>
 {{/each}}
+<br>
+<b>Merci de nous confirmer la date souhaitée</b> pour finaliser votre inscription.<br>
 <br>
 {{/if}}
 {{/if}}
 
 {{#if show_sessions_section}}
 {{#if has_sessions_proposees}}
-<b>Sessions de formation disponibles</b><br>
+<b>Sessions de formation disponibles{{#if session_preference}} ({{preference_horaire_text}}){{/if}}</b><br>
 {{#each sessions_proposees}}
 {{#if this.is_first_of_exam}}
 Pour l'examen du {{this.date_examen_formatted}} :<br>
 {{/if}}
 {{#if this.is_jour}}
-&nbsp;&nbsp;→ <b>Cours du jour</b> : du {{this.date_debut}} au {{this.date_fin}} ({{this.horaires}})<br>
+&nbsp;&nbsp;→ <b>Cours du jour</b> : du {{this.date_debut}} au {{this.date_fin}}<br>
 {{/if}}
 {{#if this.is_soir}}
-&nbsp;&nbsp;→ <b>Cours du soir</b> : du {{this.date_debut}} au {{this.date_fin}} ({{this.horaires}})<br>
+&nbsp;&nbsp;→ <b>Cours du soir</b> : du {{this.date_debut}} au {{this.date_fin}}<br>
 {{/if}}
 {{/each}}
+<br>
+<b>Merci de nous confirmer votre choix de session.</b><br>
 <br>
 {{/if}}
 {{/if}}

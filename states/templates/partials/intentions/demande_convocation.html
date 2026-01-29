@@ -58,28 +58,11 @@ La date de cloture des inscriptions pour votre examen du {{date_examen}} est pas
 <br>
 <b>Votre inscription a ete automatiquement reportee</b> sur la prochaine session d'examen.<br>
 <br>
-{{#if has_next_dates}}
-{{#each next_dates}}
-{{#if this.is_first_of_dept}}
-<b>Prochaine date :</b> {{this.date_examen_formatted}} (cloture : {{this.date_cloture_formatted}})<br>
-{{/if}}
-{{/each}}
-{{/if}}
-<br>
 Surveillez vos emails pour la validation de votre dossier et l'envoi de votre convocation.<br>
 {{/if}}
 
 {{#if date_examen_vide}}
-Vous n'avez pas encore de date d'examen assignee. Pour recevoir une convocation, vous devez d'abord choisir une date d'examen.<br>
-<br>
-{{#if has_next_dates}}
-<b>Prochaines dates disponibles :</b><br>
-{{#each next_dates}}
-&rarr; {{this.date_examen_formatted}} - Departement {{this.Departement}} (cloture : {{this.date_cloture_formatted}})<br>
-{{/each}}
-<br>
-{{/if}}
-Merci de nous indiquer la date qui vous convient pour que nous puissions finaliser votre inscription.<br>
+Vous n'avez pas encore de date d'examen assignee. Pour recevoir une convocation, vous devez d'abord choisir une date d'examen parmi celles proposees ci-dessous.<br>
 {{/if}}
 
 {{#if evalbox_valide_cma}}

@@ -1,5 +1,5 @@
 <!-- Partial: Réponse à l'intention QUESTION_SESSION -->
-<!-- Note: Pour REPORT_DATE, les sessions sont affichées avec les dates dans report/possible.html -->
+<!-- Note: Les sessions sont affichées dans Section 4 centralisée -->
 {{#if show_session_info}}
 <b>Concernant les sessions de formation</b><br>
 {{#if session_preference_soir}}
@@ -17,13 +17,5 @@ Nous proposons deux types de sessions :<br>
 <li><b>Cours du soir</b> : formation sur 2 semaines pour les personnes en activité (18h-22h)</li>
 </ul>
 {{/if}}
-{{/if}}
-{{#if has_sessions_proposees}}
-Voici les sessions disponibles :<br>
-<ul>
-{{#each sessions_proposees}}
-<li>{{this.nom}} ({{this.type}}) : du {{this.debut}} au {{this.fin}}</li>
-{{/each}}
-</ul>
 {{/if}}
 {{/if}}
