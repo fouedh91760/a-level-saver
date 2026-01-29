@@ -1,7 +1,7 @@
 <!-- Partial: Reponse a l'intention DEMANDE_CONVOCATION -->
-<b>Concernant votre convocation</b><br>
-<br>
+<!-- Note: Le titre n'est affiché que si le contenu correspondant existe -->
 {{#if evalbox_convoc_recue}}
+<b>Concernant votre convocation</b><br>
 Votre convocation est disponible ! Vous pouvez la telecharger sur <a href="https://www.exament3p.fr">exament3p.fr</a> avec vos identifiants.<br>
 {{#if identifiant_examt3p}}
 &rarr; Identifiant : <b>{{identifiant_examt3p}}</b><br>
@@ -9,9 +9,10 @@ Votre convocation est disponible ! Vous pouvez la telecharger sur <a href="https
 {{/if}}
 <br>
 <i>Pensez a l'imprimer pour le jour de l'examen.</i><br>
+<br>
 {{/if}}
-
 {{#if evalbox_refus_cma}}
+<b>Concernant votre convocation</b><br>
 Votre dossier a ete <b>refuse par la CMA</b>. Vous ne pouvez pas recevoir de convocation tant que les documents suivants n'auront pas ete corriges :<br>
 <br>
 {{#if has_pieces_refusees}}
@@ -36,9 +37,10 @@ Corrigez vos documents AVANT le {{date_cloture}} pour conserver votre date d'exa
 &rarr; Identifiant : <b>{{identifiant_examt3p}}</b><br>
 &rarr; Mot de passe : <b>{{mot_de_passe_examt3p}}</b><br>
 {{/if}}
+<br>
 {{/if}}
-
 {{#if evalbox_dossier_synchronise}}
+<b>Concernant votre convocation</b><br>
 Votre dossier est actuellement <b>en cours d'instruction</b> par la CMA. La convocation sera disponible une fois votre dossier valide, environ 7 jours avant l'examen.<br>
 <br>
 {{#if exam_within_7_days}}
@@ -51,22 +53,25 @@ Envoyez un message via l'onglet <b>Messagerie</b> de <a href="https://www.examen
 &rarr; Surveillez vos emails (et spams) quotidiennement<br>
 &rarr; Si la CMA refuse des documents, corrigez-les rapidement avant la date de cloture<br>
 {{/if}}
+<br>
 {{/if}}
-
 {{#if deadline_missed}}
+<b>Concernant votre convocation</b><br>
 La date de cloture des inscriptions pour votre examen du {{date_examen}} est passee, et votre dossier n'etait pas valide a temps.<br>
 <br>
 <b>Votre inscription a ete automatiquement reportee</b> sur la prochaine session d'examen.<br>
 <br>
 Surveillez vos emails pour la validation de votre dossier et l'envoi de votre convocation.<br>
+<br>
 {{/if}}
-
 {{#if date_examen_vide}}
+<b>Concernant votre convocation</b><br>
 Vous n'avez pas encore de date d'examen assignee. Pour recevoir une convocation, vous devez d'abord choisir une date d'examen parmi celles proposees ci-dessous.<br>
+<br>
 {{/if}}
-
 {{#if evalbox_valide_cma}}
 {{#unless evalbox_convoc_recue}}
+<b>Concernant votre convocation</b><br>
 {{#if convocation_anormale}}
 <b style="color: #c0392b;">Situation anormale</b><br>
 Votre dossier est valide et votre examen approche, mais vous n'avez pas encore recu votre convocation. Ce n'est pas normal.<br>
@@ -91,10 +96,11 @@ Votre dossier est valide par la CMA. Votre convocation vous sera envoyee par ema
 <br>
 Pensez a verifier vos spams. La convocation sera egalement disponible sur votre espace <a href="https://www.exament3p.fr">exament3p.fr</a>.<br>
 {{/if}}
+<br>
 {{/unless}}
 {{/if}}
-
 {{#if examen_probablement_passe}}
+<b>Concernant votre convocation</b><br>
 Votre examen du {{date_examen}} est passe. Avez-vous pu vous presenter a l'examen ?<br>
 <br>
 <b>Si vous avez passe l'examen :</b><br>
@@ -103,5 +109,5 @@ Les resultats seront disponibles dans les jours suivants sur votre espace <a hre
 <b>Si vous n'avez pas pu vous presenter :</b><br>
 &rarr; Avec un justificatif de force majeure (certificat medical, etc.) : un report est possible<br>
 &rarr; Sans justificatif : une nouvelle inscription avec paiement des frais d'examen (241EUR) sera necessaire<br>
-{{/if}}
 <br>
+{{/if}}
