@@ -397,8 +397,8 @@ class ResponseValidator:
                     for email in emails_found:
                         if email.lower() != real_identifiant.lower():
                             # Vérifier si c'est l'email du candidat (peut être différent)
-                            candidate_email = state.context_data.get('deal_data', {}).get('Email', '')
-                            if email.lower() != candidate_email.lower():
+                            candidate_email = state.context_data.get('deal_data', {}).get('Email') or ''
+                            if candidate_email and email.lower() != candidate_email.lower():
                                 result.add_error(ValidationError(
                                     'wrong_identifiant',
                                     f"Identifiant possiblement incorrect: '{email}'",
