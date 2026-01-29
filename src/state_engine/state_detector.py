@@ -449,28 +449,16 @@ class StateDetector:
         return True
 
     def _collect_alerts(self, context: Dict[str, Any]) -> List[Dict[str, Any]]:
-        """Collecte les alertes à inclure dans la réponse (Uber D/E, etc.)."""
+        """Collecte les alertes à inclure dans la réponse.
+
+        NOTE: Les cas Uber D/E sont désormais gérés via les templates (Section 0 de response_master.html)
+        et non plus via l'injection d'alertes pour éviter la duplication.
+        """
         alerts = []
 
-        # Alerte Uber D: Compte non vérifié
-        if self._is_uber_case_d(context):
-            alerts.append({
-                'type': 'uber_case_d',
-                'id': 'U-D',
-                'title': 'Compte Uber non vérifié',
-                'template': 'uber_case_d_alert.md',
-                'priority': 'warning'
-            })
-
-        # Alerte Uber E: Non éligible
-        if self._is_uber_case_e(context):
-            alerts.append({
-                'type': 'uber_case_e',
-                'id': 'U-E',
-                'title': 'Non éligible selon Uber',
-                'template': 'uber_case_e_alert.md',
-                'priority': 'warning'
-            })
+        # NOTE: uber_case_d et uber_case_e SUPPRIMÉS - gérés par templates Section 0
+        # {{#if uber_cas_d}}{{> partials/uber/cas_d_compte_non_verifie}}{{/if}}
+        # {{#if uber_cas_e}}{{> partials/uber/cas_e_non_eligible}}{{/if}}
 
         # Alerte compte personnel potentiel
         if context['examt3p_data'].get('potential_personal_account'):

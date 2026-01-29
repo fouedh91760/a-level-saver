@@ -996,6 +996,7 @@ class TemplateEngine:
             'resultat_absent': context.get('resultat_absent', False),
 
             # Report de date - Générer les flags depuis can_modify_exam_date et intention
+            # NOTE: Ces flags sont générés en premier car ils affectent show_sessions_section
             **self._generate_report_flags(context),
 
             # Problèmes d'identifiants
@@ -1023,11 +1024,26 @@ class TemplateEngine:
             # Sections à afficher
             'show_statut_section': True,  # Toujours afficher le statut
             'show_dates_section': not date_examen and bool(context.get('next_dates', [])),
-            'show_sessions_section': date_examen and not deal_data.get('Session') and bool(self._flatten_session_options_filtered(context)),
+            # NOTE: show_sessions_section est calculé après car il dépend de report_possible
+            'show_sessions_section': False,  # Sera mis à jour ci-dessous
 
             # Actions requises (déterminées par l'état)
             **self._determine_required_actions(context, evalbox),
         }
+
+        # Calculer show_sessions_section APRÈS report_flags (pour éviter duplication)
+        # Si report_possible est TRUE, les sessions sont déjà affichées dans report/possible.html
+        report_possible = result.get('report_possible', False)
+        if not report_possible:
+            # Afficher les sessions seulement si:
+            # - date d'examen existe
+            # - session pas encore choisie
+            # - on a des sessions à proposer
+            result['show_sessions_section'] = (
+                bool(date_examen) and
+                not deal_data.get('Session') and
+                bool(self._flatten_session_options_filtered(context))
+            )
 
         return result
 
