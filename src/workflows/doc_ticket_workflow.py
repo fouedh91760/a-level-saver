@@ -48,6 +48,7 @@ from knowledge_base.scenarios_mapping import (
 # State Engine - Architecture State-Driven
 from src.state_engine import StateDetector, TemplateEngine, ResponseValidator, CRMUpdater
 from src.utils.crm_lookup_helper import enrich_deal_lookups
+from src.utils.response_humanizer import humanize_response
 import anthropic
 
 logger = logging.getLogger(__name__)
@@ -2066,7 +2067,38 @@ L'équipe CAB Formations"""
             logger.info(f"     Intentions traitées: {template_result['intents_handled']}")
 
         # ================================================================
-        # STEP 3: Validate Response
+        # STEP 3a: Humanize Response (Optional AI polish)
+        # ================================================================
+        logger.info("  🤖 STATE ENGINE: Humanisation de la réponse...")
+
+        # Get candidate name for personalization
+        contact_data = analysis_result.get('contact_data', {})
+        candidate_name = contact_data.get('First_Name', '')
+
+        humanize_result = humanize_response(
+            template_response=response_text,
+            candidate_message=customer_message,
+            candidate_name=candidate_name,
+            use_ai=True  # Activer l'humanisation IA
+        )
+
+        if humanize_result.get('was_humanized'):
+            response_text = humanize_result['humanized_response']
+            logger.info(f"  ✅ Réponse humanisée ({len(response_text)} caractères)")
+        else:
+            if humanize_result.get('validation_failed'):
+                logger.warning(f"  ⚠️ Humanisation annulée (validation échouée): {humanize_result.get('validation_issues')}")
+            elif humanize_result.get('error'):
+                logger.warning(f"  ⚠️ Humanisation échouée: {humanize_result.get('error')}")
+            else:
+                logger.info("  ℹ️ Humanisation désactivée")
+
+        # Update template_result with humanized response
+        template_result['response_text'] = response_text
+        template_result['was_humanized'] = humanize_result.get('was_humanized', False)
+
+        # ================================================================
+        # STEP 3b: Validate Response
         # ================================================================
         logger.info("  🔍 STATE ENGINE: Validation de la réponse...")
 
