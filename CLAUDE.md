@@ -198,6 +198,64 @@ if not can_modify_exam_date(deal_data, exam_session):
     # Nécessite force majeure
 ```
 
+### 6. Template Engine Handlebars Custom - PIÈGES CRITIQUES
+
+**IMPORTANT : L'implémentation Handlebars est faite maison avec des regex, pas une vraie lib.**
+
+#### 6.1 Comparaison int vs string (départements)
+```python
+# FAUX - CRM retourne int, mapping utilise string
+dept = date_info.get('Departement', '')  # Retourne 11 (int)
+DEPT_TO_REGION['11']  # KeyError ou comparaison False
+
+# CORRECT - toujours convertir en string
+dept = str(date_info.get('Departement', ''))
+```
+**Fichiers concernés :** `cross_department_helper.py`
+
+#### 6.2 `{{#unless}}` ne supporte PAS les chemins avec points
+```html
+<!-- FAUX - la regex (\w+) ne capture pas les points -->
+{{#unless month_cross_department.has_same_region_options}}
+
+<!-- CORRECT - utiliser {{#if}} avec {{else}} -->
+{{#if month_cross_department.has_same_region_options}}
+  <!-- contenu si vrai -->
+{{else}}
+  <!-- contenu si faux -->
+{{/if}}
+```
+**Règle : Préférer `{{#if}}/{{else}}` à `{{#unless}}` pour les chemins dotés.**
+
+#### 6.3 Commentaires Handlebars interfèrent avec le parsing
+```html
+<!-- PROBLÈME : commentaires non strippés avant _resolve_unless_blocks -->
+{{!-- Mon commentaire --}}
+{{#unless condition}}...{{/unless}}  <!-- ÉCHOUE ! -->
+```
+**Le stripping se fait dans `_resolve_partials()` ligne ~586, AVANT if/unless.**
+
+#### 6.4 `next_dates` écrasé à plusieurs endroits
+```python
+# Le workflow écrit next_dates à 4+ endroits différents !
+# Lignes ~2040, ~2121, ~2153 dans doc_ticket_workflow.py
+
+# SOLUTION : Ajouter filtre FINAL juste avant generate_response_multi()
+# Voir ligne ~2191 "FILTRE FINAL"
+```
+
+#### 6.5 Blocs imbriqués cassent les regex
+```html
+<!-- PROBLÈME : regex gourmande matche mal -->
+{{#unless outer}}
+  {{#if inner}}...{{/if}}  <!-- Confond les délimiteurs -->
+{{/unless}}
+
+<!-- SOLUTION : Éviter unless avec blocs imbriqués, utiliser if/else -->
+```
+
+**Leçon générale :** L'implémentation regex est fragile. Pour les cas complexes, préférer `{{#if}}/{{else}}` qui est plus robuste.
+
 ---
 
 ## Fichiers de Référence
