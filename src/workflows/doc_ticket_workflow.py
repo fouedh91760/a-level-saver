@@ -1162,7 +1162,7 @@ Deux comptes ExamenT3P fonctionnels ont été détectés pour ce candidat, et le
         # Si ces étapes ne sont pas complétées, on ne peut pas les inscrire à l'examen
         from src.utils.uber_eligibility_helper import analyze_uber_eligibility
         from src.utils.examt3p_crm_sync import sync_examt3p_to_crm, sync_exam_date_from_examt3p
-        from src.utils.ticket_info_extractor import extract_confirmations_from_threads, extract_cab_proposals_from_threads
+        from src.utils.ticket_info_extractor import extract_confirmations_from_threads, extract_cab_proposals_from_threads, detect_candidate_references
 
         # ================================================================
         # SYNC EXAMT3P → CRM (AVANT toute analyse)
@@ -1243,6 +1243,31 @@ Deux comptes ExamenT3P fonctionnels ont été détectés pour ce candidat, et le
             logger.info(f"  📋 Dates deja proposees: {len(cab_proposals.get('dates_already_proposed', []))} date(s)")
             if dates_proposed_recently:
                 logger.info("  ⏰ Proposees recemment (< 48h)")
+
+        # ================================================================
+        # DETECTION MODE COMMUNICATION CANDIDAT
+        # ================================================================
+        # Detecte si le candidat fait reference a une communication precedente
+        # et s'il questionne une incoherence (clarification vs request)
+        from src.utils.text_utils import get_clean_thread_content
+        # Trouver le dernier message ENTRANT du candidat (direction: 'in')
+        # threads_data[0] peut être une réponse sortante 'out'
+        latest_candidate_thread = None
+        for thread in threads_data:
+            if thread.get('direction') == 'in':
+                latest_candidate_thread = thread
+                break
+
+        latest_thread_content = get_clean_thread_content(latest_candidate_thread) if latest_candidate_thread else ""
+        logger.debug(f"  📋 Latest candidate thread direction: {latest_candidate_thread.get('direction', 'none') if latest_candidate_thread else 'no incoming thread'}")
+        candidate_refs = detect_candidate_references(latest_thread_content)
+
+        communication_mode = candidate_refs.get('communication_mode', 'request')
+        references_previous = candidate_refs.get('references_previous_communication', False)
+        mentions_discrepancy = candidate_refs.get('mentions_discrepancy', False)
+
+        # DEBUG: Toujours logger le mode communication
+        logger.info(f"  📝 Mode communication: {communication_mode} (discrepancy={mentions_discrepancy}, refs_previous={references_previous})")
 
         logger.info("  🚗 Vérification éligibilité Uber 20€...")
         uber_eligibility_result = analyze_uber_eligibility(deal_data)
@@ -1410,9 +1435,11 @@ Deux comptes ExamenT3P fonctionnels ont été détectés pour ce candidat, et le
                 logger.info(f"  ✅ Date examen VTC OK (CAS {date_examen_vtc_result['case']})")
 
             # ================================================================
-            # ENRICHISSEMENT: Si intention REPORT_DATE avec mois/lieu spécifiques
+            # ENRICHISSEMENT: Si intention date-related avec mois/lieu spécifiques
             # ================================================================
-            if triage_result.get('primary_intent') == 'REPORT_DATE':
+            # Inclut REPORT_DATE, DEMANDE_DATES_FUTURES, DEMANDE_AUTRES_DATES
+            DATE_RELATED_INTENTS = ['REPORT_DATE', 'DEMANDE_DATES_FUTURES', 'DEMANDE_AUTRES_DATES', 'DEMANDE_AUTRES_DEPARTEMENTS']
+            if triage_result.get('primary_intent') in DATE_RELATED_INTENTS:
                 intent_context = triage_result.get('intent_context', {})
                 requested_month = intent_context.get('requested_month')
                 requested_location = intent_context.get('requested_location')  # Nom original (ex: "Montpellier")
@@ -1471,16 +1498,71 @@ Deux comptes ExamenT3P fonctionnels ont été détectés pour ce candidat, et le
                     reference_date = current_dates[0].get('Date_Examen')
 
                 if reference_date:
-                    alt_dates = get_earlier_dates_other_departments(
+                    # Utiliser le helper enrichi avec priorite regionale et urgence
+                    from src.utils.cross_department_helper import get_cross_department_alternatives
+                    compte_existe = examt3p_data.get('compte_existe', False)
+
+                    cross_dept_data = get_cross_department_alternatives(
                         self.crm_client,
-                        current_departement=current_dept,
+                        current_dept=current_dept,
                         reference_date=reference_date,
+                        compte_existe=compte_existe,
                         limit=5
                     )
-                    if alt_dates:
-                        date_examen_vtc_result['alternative_department_dates'] = alt_dates
+
+                    # Stocker les donnees enrichies
+                    date_examen_vtc_result['cross_department_data'] = cross_dept_data
+
+                    # Retrocompatibilite: populer alternative_department_dates avec toutes les options
+                    all_options = cross_dept_data.get('same_region_options', []) + cross_dept_data.get('other_region_options', [])
+                    if all_options:
+                        date_examen_vtc_result['alternative_department_dates'] = all_options
                         date_examen_vtc_result['should_include_in_response'] = True
-                        logger.info(f"  📅 {len(alt_dates)} date(s) plus tôt dans d'autres départements")
+                        logger.info(f"  📅 {len(all_options)} date(s) plus tôt (region: {len(cross_dept_data.get('same_region_options', []))}, autres: {len(cross_dept_data.get('other_region_options', []))})")
+
+            # ================================================================
+            # ENRICHISSEMENT: Cross-département pour clarification/discordance
+            # ================================================================
+            # Si le candidat mentionne un mois en mode clarification OU avec discordance
+            # ET est dans un état pré-convocation → proposer alternatives de ce mois
+            if not date_examen_vtc_result.get('month_cross_department'):
+                intent_context = triage_result.get('intent_context', {}) if triage_result else {}
+
+                mentioned_month = intent_context.get('mentioned_month')
+                mentions_discrepancy = intent_context.get('mentions_discrepancy', False)
+                communication_mode = intent_context.get('communication_mode', 'request')
+                can_choose_other_dept = date_examen_vtc_result.get('can_choose_other_department', False)
+                current_dept = date_examen_vtc_result.get('departement')
+
+                # Condition: mois mentionné + (clarification OU discordance) + pré-convocation
+                should_search_month = (
+                    mentioned_month and
+                    can_choose_other_dept and
+                    current_dept and
+                    (communication_mode == 'clarification' or mentions_discrepancy)
+                )
+
+                if should_search_month:
+                    logger.info(f"  🔍 Mode {communication_mode} avec mois {mentioned_month} mentionné - recherche cross-département")
+                    from src.utils.cross_department_helper import get_dates_for_month_other_departments
+
+                    compte_existe = examt3p_data.get('compte_existe', False)
+                    month_options = get_dates_for_month_other_departments(
+                        crm_client=self.crm_client,
+                        current_dept=current_dept,
+                        requested_month=mentioned_month,
+                        compte_existe=compte_existe,
+                        limit=5
+                    )
+
+                    date_examen_vtc_result['month_cross_department'] = month_options
+                    date_examen_vtc_result['has_month_in_other_depts'] = month_options.get('has_month_options', False)
+                    date_examen_vtc_result['mentioned_month'] = mentioned_month
+
+                    if month_options.get('has_month_options'):
+                        logger.info(f"  ✅ Alternatives trouvées pour mois {mentioned_month}")
+                        # Propager le nom du mois pour l'affichage
+                        date_examen_vtc_result['requested_month_name'] = month_options.get('requested_month_name')
         else:
             # Construire le message de raison du skip
             skip_reason_msg = {
@@ -1656,6 +1738,13 @@ Deux comptes ExamenT3P fonctionnels ont été détectés pour ce candidat, et le
             'dates_already_communicated': dates_already_communicated,
             'dates_proposed_recently': dates_proposed_recently,
             'cab_proposals': cab_proposals,
+            # Mode de communication du candidat (request/clarification/verification/follow_up)
+            'communication_mode': communication_mode,
+            'references_previous_communication': references_previous,
+            'mentions_discrepancy': mentions_discrepancy,
+            'is_clarification_mode': communication_mode == 'clarification',
+            'is_verification_mode': communication_mode == 'verification',
+            'is_follow_up_mode': communication_mode == 'follow_up',
             # Lookups CRM enrichis (v2.2) - données complètes depuis les modules Zoho
             'enriched_lookups': enriched_lookups,
             'lookup_cache': lookup_cache,
@@ -1952,6 +2041,7 @@ L'équipe CAB Formations"""
             'date_cloture': date_examen_vtc_result.get('date_cloture'),
             'can_choose_other_department': date_examen_vtc_result.get('can_choose_other_department', False),
             'alternative_department_dates': date_examen_vtc_result.get('alternative_department_dates', []),
+            'cross_department_data': date_examen_vtc_result.get('cross_department_data', {}),
             'deadline_passed_reschedule': date_examen_vtc_result.get('deadline_passed_reschedule', False),
             'new_exam_date': date_examen_vtc_result.get('new_exam_date'),
             'new_exam_date_cloture': date_examen_vtc_result.get('new_exam_date_cloture'),
@@ -1962,6 +2052,11 @@ L'équipe CAB Formations"""
             'requested_location': date_examen_vtc_result.get('requested_location', ''),
             'same_month_other_depts': date_examen_vtc_result.get('same_month_other_depts', []),
             'same_dept_other_months': date_examen_vtc_result.get('same_dept_other_months', []),
+
+            # Cross-département par mois (mode clarification/discordance)
+            'month_cross_department': date_examen_vtc_result.get('month_cross_department', {}),
+            'has_month_in_other_depts': date_examen_vtc_result.get('has_month_in_other_depts', False),
+            'mentioned_month': date_examen_vtc_result.get('mentioned_month'),
 
             # Session
             'proposed_sessions': session_data.get('proposed_options', []),
@@ -1974,6 +2069,13 @@ L'équipe CAB Formations"""
             # Dates deja communiquees (anti-repetition)
             'dates_already_communicated': analysis_result.get('dates_already_communicated', False),
             'dates_proposed_recently': analysis_result.get('dates_proposed_recently', False),
+            # Mode de communication du candidat
+            'communication_mode': analysis_result.get('communication_mode', 'request'),
+            'references_previous_communication': analysis_result.get('references_previous_communication', False),
+            'mentions_discrepancy': analysis_result.get('mentions_discrepancy', False),
+            'is_clarification_mode': analysis_result.get('is_clarification_mode', False),
+            'is_verification_mode': analysis_result.get('is_verification_mode', False),
+            'is_follow_up_mode': analysis_result.get('is_follow_up_mode', False),
         })
 
         # RECALCULATE cloture_passed et can_modify_exam_date avec date_cloture enrichi
@@ -2050,11 +2152,21 @@ L'équipe CAB Formations"""
                     logger.info(f"  ℹ️ Pas de date exactement en {month_names[requested_month]} - dates ultérieures proposées")
                     detected_state.context_data['no_date_for_requested_month'] = True
                     detected_state.context_data['requested_month_name'] = month_names[requested_month] if 1 <= requested_month <= 12 else str(requested_month)
+
+                    # CROSS-DEPARTMENT: Chercher des dates du mois demandé dans autres départements
+                    self._search_month_in_other_departments(
+                        detected_state, requested_month, month_names
+                    )
             else:
                 # Aucune date ne correspond - garder toutes les dates et ajouter message
                 logger.warning(f"  ⚠️ Aucune date en mois {requested_month} ou après - on garde toutes les dates")
                 detected_state.context_data['no_date_for_requested_month'] = True
                 detected_state.context_data['requested_month_name'] = month_names[requested_month] if 1 <= requested_month <= 12 else str(requested_month)
+
+                # CROSS-DEPARTMENT: Chercher des dates du mois demandé dans autres départements
+                self._search_month_in_other_departments(
+                    detected_state, requested_month, month_names
+                )
 
         # Create AI generator for personalization sections
         # This uses Sonnet to generate contextual personalization based on threads/message
@@ -2219,6 +2331,54 @@ L'équipe CAB Formations"""
         }
 
         return response_result
+
+    def _search_month_in_other_departments(
+        self,
+        detected_state,
+        requested_month: int,
+        month_names: list
+    ) -> None:
+        """
+        Recherche des dates du mois demandé dans d'autres départements.
+
+        Appelé quand le candidat demande un mois spécifique qui n'existe pas
+        dans son département. Enrichit le context_data avec les alternatives.
+        """
+        from src.utils.cross_department_helper import get_dates_for_month_other_departments
+
+        context = detected_state.context_data
+        current_dept = context.get('departement', '')
+        compte_existe = context.get('compte_existe', False)
+
+        if not current_dept or not self.crm_client:
+            return
+
+        # month_names est une liste (index 1-12), pas un dict
+        month_name = month_names[requested_month] if 1 <= requested_month <= len(month_names) - 1 else str(requested_month)
+        logger.info(f"  🔍 Recherche de dates en {month_name} dans autres départements...")
+
+        try:
+            month_options = get_dates_for_month_other_departments(
+                crm_client=self.crm_client,
+                current_dept=current_dept,
+                requested_month=requested_month,
+                compte_existe=compte_existe,
+                limit=5
+            )
+
+            # Ajouter au contexte
+            context['month_cross_department'] = month_options
+            context['has_month_in_other_depts'] = month_options.get('has_month_options', False)
+
+            if month_options.get('has_same_region_options'):
+                logger.info(f"  ✅ {len(month_options['same_region_options'])} date(s) trouvée(s) dans la même région")
+            if month_options.get('has_other_region_options'):
+                logger.info(f"  ✅ {len(month_options['other_region_options'])} date(s) trouvée(s) dans d'autres régions")
+            if not month_options.get('has_month_options'):
+                logger.info(f"  ℹ️ Aucune date en {month_name} disponible")
+
+        except Exception as e:
+            logger.warning(f"  ⚠️ Erreur recherche cross-département: {e}")
 
     def _generate_personalization(
         self,

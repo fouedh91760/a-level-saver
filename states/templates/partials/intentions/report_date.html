@@ -1,4 +1,31 @@
 <!-- Partial: Réponse à l'intention REPORT_DATE -->
+{{#if is_clarification_mode}}
+<!-- Mode clarification: le candidat questionne une incoherence, pas une demande de changement -->
+<b>Concernant votre question sur les dates</b><br>
+{{#if date_examen}}
+Votre date d'examen actuellement enregistree est le <b>{{date_examen}}</b>{{#if cma_departement}} (CMA {{cma_departement}}){{/if}}.<br>
+{{/if}}
+{{#if previously_communicated_date}}
+{{#if date_changed_since_last_comm}}
+<i>Note : Dans notre precedent echange, la date du {{previously_communicated_date}} avait ete mentionnee. Cette date a depuis ete mise a jour.</i><br>
+{{/if}}
+{{/if}}
+{{#if same_month_other_depts}}
+<i>Note : Des dates en {{requested_month_name}} existent dans d'autres departements ({{#each same_month_other_depts}}{{#unless @first}}, {{/unless}}{{this.Departement}}{{/each}}), mais pas dans votre CMA d'inscription.</i><br>
+{{/if}}
+<br>
+{{#if can_modify_exam_date}}
+Si vous souhaitez modifier votre date d'examen, merci de nous confirmer votre choix parmi les options disponibles.<br>
+{{else}}
+{{#if mentions_force_majeure}}
+Pour un changement apres la date de cloture, un justificatif de force majeure est necessaire.<br>
+{{else}}
+La date de cloture etant passee, un changement n'est possible qu'avec un justificatif de force majeure.<br>
+{{/if}}
+{{/if}}
+<br>
+{{else}}
+<!-- Mode request: comportement standard (demande de changement) -->
 <b>Concernant votre demande de changement de date</b><br>
 <br>
 {{#if can_modify_exam_date}}
@@ -13,3 +40,4 @@ Un changement n'est possible qu'avec un justificatif de force majeure (certifica
 {{/if}}
 {{/if}}
 <br>
+{{/if}}

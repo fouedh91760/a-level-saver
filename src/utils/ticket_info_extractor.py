@@ -481,4 +481,141 @@ def extract_cab_proposals_from_threads(threads: List[Dict]) -> Dict[str, Any]:
         if result['dates_proposed_recently']:
             logger.info(f"  ⏰ Dates proposees recemment (< 48h)")
 
+    # NOUVEAU: Extraire la derniere date d'examen mentionnee par CAB
+    for thread in reversed(threads):
+        if thread.get('direction') != 'out':
+            continue
+        content = get_clean_thread_content(thread)
+
+        # Chercher pattern "examen du DD/MM/YYYY" ou "examen le DD/MM/YYYY"
+        date_match = re.search(r'examen[^\d]*(\d{1,2}/\d{1,2}/\d{4})', content, re.IGNORECASE)
+        if date_match and not result.get('last_proposed_exam_date'):
+            result['last_proposed_exam_date'] = date_match.group(1)
+            break
+
     return result
+
+
+def detect_candidate_references(thread_content: str) -> Dict[str, Any]:
+    """
+    Detecte si le candidat fait reference a une communication precedente.
+
+    Permet de distinguer:
+    - Une demande directe (request)
+    - Une demande de clarification (clarification) - "vous m'aviez dit X mais..."
+    - Une verification (verification) - "donc si j'ai bien compris..."
+    - Un suivi (follow_up) - "suite a votre mail..."
+
+    Args:
+        thread_content: Contenu du message du candidat
+
+    Returns:
+        {
+            'references_previous_communication': bool,
+            'mentions_discrepancy': bool,
+            'communication_mode': str,  # 'request' | 'clarification' | 'verification' | 'follow_up'
+            'discrepancy_details': str | None
+        }
+    """
+    content_lower = thread_content.lower()
+
+    # Patterns de reference a communication precedente
+    reference_patterns = [
+        r"vous m'?a(vez|viez) dit",
+        r"vous m'?a(vez|viez) envoye",
+        r"vous m'?a(vez|viez) indique",
+        r"vous m'?a(vez|viez) propose",
+        r"dans (votre|le) (dernier |precedent )?mail",
+        r"dans (votre|le) (dernier |precedent )?message",
+        r"suite [aà] votre (mail|message|reponse)",
+        r"comme (convenu|indique|mentionne)",
+        r"on m'a dit que",
+        r"j'ai recu un mail",
+        r"selon votre (mail|message)",
+    ]
+
+    # Patterns d'incoherence/discordance
+    discrepancy_patterns = [
+        r"mais (je vois|il y a|c'est|j'ai)",
+        r"pourtant",
+        r"par contre",
+        r"c'est (different|pas pareil|contradictoire)",
+        r"(annule|change|modifie)\s*\?",
+        r"c'est (encore|toujours) (valable|d'actualite|valide)",
+        r"est[- ]ce (que c'est )?toujours",
+        r"on maintient",
+        r"c'est confirme",
+    ]
+
+    # Patterns de verification
+    verification_patterns = [
+        r"(donc|alors) si j'ai bien compris",
+        r"pour (confirmer|verifier|etre sur)",
+        r"c'est bien [cç]a",
+        r"c'est correct",
+        r"j'ai bien compris",
+        r"est[- ]ce (bien |correct )?que",
+    ]
+
+    references_previous = any(re.search(p, content_lower) for p in reference_patterns)
+    mentions_discrepancy = any(re.search(p, content_lower) for p in discrepancy_patterns)
+    is_verification = any(re.search(p, content_lower) for p in verification_patterns)
+
+    # Determiner le mode de communication
+    communication_mode = _infer_communication_mode(
+        references_previous,
+        mentions_discrepancy,
+        is_verification
+    )
+
+    # Extraire les details de la discordance si presente
+    discrepancy_details = None
+    if mentions_discrepancy:
+        # Essayer d'extraire le contexte
+        for pattern in discrepancy_patterns:
+            match = re.search(f"(.{{0,50}}{pattern}.{{0,50}})", content_lower)
+            if match:
+                discrepancy_details = match.group(1).strip()
+                break
+
+    result = {
+        'references_previous_communication': references_previous,
+        'mentions_discrepancy': mentions_discrepancy,
+        'is_verification': is_verification,
+        'communication_mode': communication_mode,
+        'discrepancy_details': discrepancy_details
+    }
+
+    if references_previous or mentions_discrepancy:
+        logger.info(f"  📝 Communication mode: {communication_mode}")
+        if references_previous:
+            logger.info(f"     → Reference a communication precedente detectee")
+        if mentions_discrepancy:
+            logger.info(f"     → Discordance/question detectee: {discrepancy_details[:50] if discrepancy_details else 'N/A'}...")
+
+    return result
+
+
+def _infer_communication_mode(
+    references_previous: bool,
+    mentions_discrepancy: bool,
+    is_verification: bool
+) -> str:
+    """
+    Determine le mode de communication du candidat.
+
+    Args:
+        references_previous: Le candidat mentionne une comm precedente
+        mentions_discrepancy: Le candidat note une incoherence
+        is_verification: Le candidat verifie sa comprehension
+
+    Returns:
+        'clarification' | 'verification' | 'follow_up' | 'request'
+    """
+    if mentions_discrepancy:
+        return 'clarification'
+    if is_verification:
+        return 'verification'
+    if references_previous:
+        return 'follow_up'
+    return 'request'

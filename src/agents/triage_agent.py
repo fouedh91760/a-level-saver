@@ -233,8 +233,16 @@ CONTEXTE SUPPLÉMENTAIRE (pour toutes les intentions):
 - wants_earlier_date: true si le candidat demande une date plus tôt, plus proche, plus rapide,
   ou s'il mentionne vouloir un autre département, d'autres options, toutes les dates disponibles,
   ou une urgence particulière (pressé, au plus vite, rapidement, etc.)
-- requested_month: le mois spécifique demandé par le candidat (1-12 ou null si non mentionné)
-  Exemples: "juillet" → 7, "septembre" → 9, "fin d'année" → 12
+- mentioned_month: Mois MENTIONNÉ par le candidat (1-12), MÊME en mode clarification ou vérification
+  DIFFÉRENT de requested_month qui implique une DEMANDE explicite de changement
+  Exemples:
+  - "vous m'aviez dit février vers le 24" → mentioned_month: 2, requested_month: null
+  - "je voudrais passer en mars" → mentioned_month: 3, requested_month: 3
+  - "c'est toujours le 15 juin ?" → mentioned_month: 6, requested_month: null
+  ⚠️ TOUJOURS extraire le mois si mentionné, cela permet de proposer des alternatives
+- requested_month: le mois spécifique DEMANDÉ pour un changement (1-12 ou null si non mentionné)
+  Exemples: "je voudrais juillet" → 7, "reporter à septembre" → 9
+  ⚠️ Ne pas confondre avec mentioned_month: ici c'est une DEMANDE, pas une mention
 - requested_location: la ville ou le département demandé tel que mentionné par le candidat
   Exemples: "Montpellier", "Lyon", "Paris", "département 34"
 - requested_dept_code: le CODE DÉPARTEMENT (2 chiffres) correspondant à la location demandée
@@ -244,6 +252,25 @@ CONTEXTE SUPPLÉMENTAIRE (pour toutes les intentions):
   Strasbourg → "67", Rennes → "35", Rouen → "76", Nîmes → "30", Perpignan → "66"
   Si le candidat mentionne directement un numéro de département, utilise-le.
   null si aucune location mentionnée.
+
+CONTEXTE COMMUNICATION (comment le candidat formule sa demande):
+- communication_mode: Le MODE de formulation du message (pas le sujet)
+  - "request": Demande directe d'info ou d'action (défaut)
+    Exemples: "Quelles sont les dates ?", "Je veux changer de date", "Envoyez-moi mes identifiants"
+  - "clarification": Le candidat questionne une INCOHÉRENCE ou demande des éclaircissements
+    Exemples: "vous m'aviez dit février mais je vois mars", "c'est annulé ?", "c'est toujours valable ?"
+    ⚠️ IMPORTANT: utilisé quand le candidat note une DISCORDANCE entre ce qu'il a compris et ce qu'il voit
+  - "verification": Le candidat vérifie sa COMPRÉHENSION (pas un choix)
+    Exemples: "donc si j'ai bien compris c'est le 31 mars ?", "pour confirmer...", "c'est bien ça ?"
+    ⚠️ DIFFÉRENT de confirmation: il ne CONFIRME pas un choix, il VÉRIFIE une info
+  - "follow_up": Suite EXPLICITE à un message précédent
+    Exemples: "suite à votre mail", "comme convenu", "vous m'avez demandé de..."
+
+- references_previous_communication: true si le candidat mentionne un email/message PRÉCÉDENT de CAB
+  Exemples: "vous m'aviez dit", "dans votre dernier mail", "on m'a dit que", "j'ai reçu un mail"
+
+- mentions_discrepancy: true si le candidat note une INCOHÉRENCE entre 2 sources d'info
+  Exemples: "mais je vois", "pourtant", "par contre", "c'est différent", "annulé ?", "toujours valable ?"
 
 ---
 
@@ -262,10 +289,15 @@ Réponds UNIQUEMENT en JSON valide:
         "force_majeure_details": "description courte si force majeure détectée" | null,
         "wants_earlier_date": true | false,
         "session_preference": "jour" | "soir" | null,
+        "mentioned_month": 1-12 | null,
         "requested_month": 1-12 | null,
         "requested_location": "ville ou département tel que mentionné" | null,
         "requested_dept_code": "75" | "34" | ... | null,
-        "remboursement_cma_choice": "remboursement" | "conserver" | null
+        "remboursement_cma_choice": "remboursement" | "conserver" | null,
+        "communication_mode": "request" | "clarification" | "verification" | "follow_up",
+        "references_previous_communication": true | false,
+        "mentions_discrepancy": true | false,
+        "discrepancy_details": "description courte si discordance détectée" | null
     }
 }
 

@@ -1,0 +1,16 @@
+<!-- Partial: Reconnaissance du contexte de communication precedente -->
+<!-- Affiche un message de reconnaissance quand le candidat fait reference a un echange precedent -->
+{{#if references_previous_communication}}
+{{#if is_clarification_mode}}
+<!-- Mode clarification: le candidat questionne une incoherence -->
+<b>Concernant votre question</b><br>
+Nous comprenons votre interrogation suite aux informations recues.<br>
+<br>
+{{else}}
+{{#if is_follow_up_mode}}
+<!-- Mode follow-up: suite a un message precedent -->
+<b>Suite a notre precedent echange</b><br>
+<br>
+{{/if}}
+{{/if}}
+{{/if}}

@@ -1,13 +1,9 @@
 <!-- Partial: Reponse a l'intention DEMANDE_CONVOCATION -->
-<!-- Note: Le titre n'est affiché que si le contenu correspondant existe -->
+<!-- Note: Le titre n'est affiche que si le contenu correspondant existe -->
 {{#if evalbox_convoc_recue}}
 <b>Concernant votre convocation</b><br>
 Votre convocation est disponible ! Vous pouvez la telecharger sur <a href="https://www.exament3p.fr">exament3p.fr</a> avec vos identifiants.<br>
-{{#if identifiant_examt3p}}
-&rarr; Identifiant : <b>{{identifiant_examt3p}}</b><br>
-&rarr; Mot de passe : <b>{{mot_de_passe_examt3p}}</b><br>
-{{/if}}
-<br>
+{{> partials/cma/identifiants_examt3p}}
 <i>Pensez a l'imprimer pour le jour de l'examen.</i><br>
 <br>
 {{/if}}
@@ -33,11 +29,7 @@ Corrigez vos documents AVANT le {{date_cloture}} pour conserver votre date d'exa
 <br>
 <b>Comment corriger :</b><br>
 &rarr; Connectez-vous sur <a href="https://www.exament3p.fr">exament3p.fr</a><br>
-{{#if identifiant_examt3p}}
-&rarr; Identifiant : <b>{{identifiant_examt3p}}</b><br>
-&rarr; Mot de passe : <b>{{mot_de_passe_examt3p}}</b><br>
-{{/if}}
-<br>
+{{> partials/cma/identifiants_examt3p}}
 {{/if}}
 {{#if evalbox_dossier_synchronise}}
 <b>Concernant votre convocation</b><br>
@@ -82,11 +74,7 @@ Votre dossier est valide et votre examen approche, mais vous n'avez pas encore r
 3. <b>Envoyez un message via l'onglet Messagerie</b> de la plateforme pour contacter la CMA<br>
 4. Si aucune reponse sous 24h, <b>contactez directement la CMA</b> de votre departement<br>
 <br>
-{{#if identifiant_examt3p}}
-Vos identifiants ExamT3P :<br>
-&rarr; Identifiant : <b>{{identifiant_examt3p}}</b><br>
-&rarr; Mot de passe : <b>{{mot_de_passe_examt3p}}</b><br>
-{{/if}}
+{{> partials/cma/identifiants_examt3p}}
 {{else}}
 Votre dossier est valide par la CMA. Votre convocation vous sera envoyee par email environ 7 a 10 jours avant votre examen du {{date_examen}}.<br>
 <br>

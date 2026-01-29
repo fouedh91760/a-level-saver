@@ -1,0 +1,22 @@
+<!-- Partial: ALTERNATIVES MOIS DANS AUTRES DEPARTEMENTS -->
+<!-- Utilise quand le candidat mentionne un mois (clarification/discordance) et qu'il y a des options ailleurs -->
+{{#if has_month_in_other_depts}}
+<b>Dates disponibles en {{month_cross_department.requested_month_name}} dans d'autres departements :</b><br>
+<br>
+{{#if month_cross_department.has_same_region_options}}
+<i>Dans votre region ({{month_cross_department.current_region}}) :</i><br>
+{{#each month_cross_department.same_region_options}}&nbsp;&nbsp;&rarr; <b>{{this.date_examen_formatted}}</b> &mdash; CMA {{this.Departement}} (cloture : {{this.date_cloture_formatted}}){{#if this.is_urgent}} <span style="color:#c0392b;">⚠️ cloture proche</span>{{/if}}<br>
+{{/each}}<br>
+{{/if}}
+{{#if month_cross_department.has_other_region_options}}
+<i>Dans d'autres regions :</i><br>
+{{#each month_cross_department.other_region_options}}&nbsp;&nbsp;&rarr; <b>{{this.date_examen_formatted}}</b> &mdash; CMA {{this.Departement}} ({{this.region}})<br>
+{{/each}}<br>
+{{/if}}
+{{#if month_cross_department.requires_department_change_process}}
+<i>Note : Votre compte ExamT3P etant cree sur la CMA {{departement}}, un changement de departement necessite une demande via l'onglet Messagerie de <a href="https://www.exament3p.fr">exament3p.fr</a>.</i><br>
+{{else}}
+<i>Note : Vous pouvez vous inscrire directement dans le departement de votre choix.</i><br>
+{{/if}}
+<br>
+{{/if}}

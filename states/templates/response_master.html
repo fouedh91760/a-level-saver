@@ -15,6 +15,20 @@
 {{> salutation_personnalisee}}
 
 <!-- =====================================================================
+     CONTEXTE: Reconnaissance communication precedente (clarification/follow-up)
+     ===================================================================== -->
+{{> partials/context/previous_communication}}
+
+<!-- =====================================================================
+     CONTEXTE: Alternatives mois mentionné (clarification/discordance)
+     Affiche les dates du mois mentionné dans d'autres départements
+     Ne s'affiche PAS si report_possible est actif (géré par partials/report/possible.html)
+     ===================================================================== -->
+{{#unless report_possible}}
+{{> partials/context/month_alternatives}}
+{{/unless}}
+
+<!-- =====================================================================
      SECTION 0: ALERTES PRIORITAIRES (Uber, Résultats, Report, Credentials)
      Ces alertes sont affichées en premier mais n'empêchent pas Section 1
      ===================================================================== -->

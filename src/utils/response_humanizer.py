@@ -25,6 +25,13 @@ PRÉSERVER EXACTEMENT (ne jamais modifier) :
 - Les adresses email
 - Les identifiants/mots de passe
 - Les montants
+- Les numéros de département et CMA (CMA 34, CMA 75, département 67, etc.)
+- Les noms de région
+
+PRÉSERVER OBLIGATOIREMENT (structure et contenu) :
+- Les listes de dates alternatives dans d'autres départements
+- Les sections "Dans votre région" et "Dans d'autres régions"
+- Toute mention de dates disponibles ailleurs (même si le candidat n'a pas de date dans son département)
 
 CE QUE TU FAIS :
 1. Fusionner les sections redondantes en un texte fluide
@@ -38,6 +45,7 @@ CE QUE TU NE FAIS PAS :
 - Inventer des informations
 - Ajouter des explications métier qui ne sont pas dans l'original
 - Supprimer des informations importantes
+- Supprimer les dates alternatives d'autres départements
 
 FORMAT : Retourne UNIQUEMENT l'email reformulé en HTML."""
 
@@ -160,6 +168,16 @@ def _validate_humanized_response(original: str, humanized: str) -> Dict[str, Any
     missing_emails = original_emails - humanized_emails
     if missing_emails:
         issues.append(f"Emails manquants: {missing_emails}")
+
+    # Extraire les numéros CMA/département (cross-département)
+    # Pattern: "CMA 34", "CMA 75", "CMA 06", etc.
+    cma_pattern = r'CMA\s*\d{1,3}'
+    original_cmas = set(re.findall(cma_pattern, original, re.IGNORECASE))
+    humanized_cmas = set(re.findall(cma_pattern, humanized, re.IGNORECASE))
+
+    missing_cmas = original_cmas - humanized_cmas
+    if missing_cmas:
+        issues.append(f"CMA manquants: {missing_cmas}")
 
     return {
         'valid': len(issues) == 0,

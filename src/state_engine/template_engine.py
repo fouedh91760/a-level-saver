@@ -717,7 +717,8 @@ class TemplateEngine:
         """Résout les {{#each items}}...{{/each}}."""
         result = template
 
-        pattern = r'\{\{#each\s+(\w+)\s*\}\}(.*?)\{\{/each\}\}'
+        # Support dot notation (ex: month_cross_department.other_region_options)
+        pattern = r'\{\{#each\s+([\w.]+)\s*\}\}(.*?)\{\{/each\}\}'
 
         while True:
             match = re.search(pattern, result, re.DOTALL)
@@ -727,7 +728,18 @@ class TemplateEngine:
             items_var = match.group(1)
             item_template = match.group(2)
 
-            items = self._get_context_value(items_var, context)
+            # Support dot notation for nested access
+            if '.' in items_var:
+                parts = items_var.split('.')
+                items = context.get(parts[0], {})
+                for part in parts[1:]:
+                    if isinstance(items, dict):
+                        items = items.get(part, [])
+                    else:
+                        items = []
+                        break
+            else:
+                items = self._get_context_value(items_var, context)
 
             if items and isinstance(items, list):
                 rendered_items = []
@@ -1060,9 +1072,42 @@ class TemplateEngine:
             ),
             'has_alternative_department_dates': bool(context.get('alternative_department_dates', [])),
 
+            # Cross-department comparison (dates plus proches dans d'autres CMA)
+            **self._prepare_cross_department_comparison(
+                current_date=date_examen,
+                current_dept=departement,
+                alternative_dates=context.get('alternative_department_dates', []),
+                compte_existe=context.get('compte_existe', False)
+            ),
+
+            # Cross-department data enrichie (si disponible via cross_department_helper)
+            **self._extract_cross_department_data(context),
+
+            # Month-based cross-department data (mode clarification - mois demandé sans date locale)
+            'month_cross_department': context.get('month_cross_department', {}),
+            'has_month_in_other_depts': context.get('has_month_in_other_depts', False),
+
+            # CMA contact flags (pour le partial contact_cma.html)
+            **self._prepare_cma_contact_flags(context),
+
             # Dates deja communiquees (anti-repetition)
             'dates_already_communicated': context.get('dates_already_communicated', False),
             'dates_proposed_recently': context.get('dates_proposed_recently', False),
+
+            # Date precedemment communiquee (pour mode clarification)
+            'previously_communicated_date': context.get('cab_proposals', {}).get('last_proposed_exam_date', ''),
+            'date_changed_since_last_comm': self._check_date_changed(
+                date_examen_formatted,
+                context.get('cab_proposals', {}).get('last_proposed_exam_date', '')
+            ),
+
+            # Mode de communication du candidat (clarification vs request)
+            'communication_mode': context.get('communication_mode', 'request'),
+            'references_previous_communication': context.get('references_previous_communication', False),
+            'mentions_discrepancy': context.get('mentions_discrepancy', False),
+            'is_clarification_mode': context.get('is_clarification_mode', False),
+            'is_verification_mode': context.get('is_verification_mode', False),
+            'is_follow_up_mode': context.get('is_follow_up_mode', False),
 
             # Choix remboursement CMA (pour ERREUR_PAIEMENT_CMA)
             'remboursement_cma_choice_remboursement': intent_context.get('remboursement_cma_choice') == 'remboursement',
@@ -1089,6 +1134,12 @@ class TemplateEngine:
         report_bloque = result.get('report_bloque', False)
         report_force_majeure = result.get('report_force_majeure', False)
         is_report_intention = report_possible or report_bloque or report_force_majeure
+
+        # FIX: Section 0 override pour éviter duplication
+        # Si report_possible/bloque/force_majeure est actif, désactiver intention_report_date
+        # car partials/report/*.html gère déjà l'intention REPORT_DATE
+        if is_report_intention:
+            result['intention_report_date'] = False
 
         # Calculer show_dates_section (CENTRALISÉ - Section 4)
         # Afficher les dates si:
@@ -1359,11 +1410,15 @@ class TemplateEngine:
             actions['action_completer_dossier'] = True
             actions['has_required_action'] = True
         elif evalbox == 'Dossier Synchronisé':
-            actions['action_surveiller_paiement'] = True
-            actions['has_required_action'] = True
+            # Uber ELIGIBLE = CAB a déjà payé, pas de lien de paiement à surveiller
+            if not (is_uber_20 and uber_case == 'ELIGIBLE'):
+                actions['action_surveiller_paiement'] = True
+                actions['has_required_action'] = True
         elif evalbox in ['Pret a payer', 'Pret a payer par cheque']:
-            actions['action_surveiller_paiement'] = True
-            actions['has_required_action'] = True
+            # Uber ELIGIBLE = CAB a déjà payé, pas de paiement attendu
+            if not (is_uber_20 and uber_case == 'ELIGIBLE'):
+                actions['action_surveiller_paiement'] = True
+                actions['has_required_action'] = True
         elif evalbox == 'VALIDE CMA':
             actions['action_attendre_convocation'] = True
             actions['has_required_action'] = True
@@ -1484,6 +1539,84 @@ class TemplateEngine:
 
         return formatted
 
+    def _prepare_cross_department_comparison(
+        self,
+        current_date: str,
+        current_dept: str,
+        alternative_dates: List[Dict],
+        compte_existe: bool = False
+    ) -> Dict[str, Any]:
+        """
+        Prepare une comparaison claire entre la date actuelle et les alternatives.
+
+        Args:
+            current_date: Date actuelle de l'examen (YYYY-MM-DD)
+            current_dept: Departement actuel du candidat
+            alternative_dates: Dates alternatives dans d'autres departements
+            compte_existe: True si le candidat a deja un compte ExamT3P
+
+        Returns:
+            Dict avec has_earlier_options, earlier_options, days_could_save, etc.
+        """
+        if not current_date or not alternative_dates:
+            return {
+                'has_earlier_options': False,
+                'earlier_options': [],
+                'earliest_option': None,
+                'days_could_save': 0,
+            }
+
+        try:
+            current_date_obj = datetime.strptime(str(current_date)[:10], '%Y-%m-%d')
+        except Exception:
+            return {
+                'has_earlier_options': False,
+                'earlier_options': [],
+                'earliest_option': None,
+                'days_could_save': 0,
+            }
+
+        # Trouver les dates plus proches dans d'autres departements
+        earlier_options = []
+        for date_info in alternative_dates:
+            alt_date_str = date_info.get('Date_Examen', '')
+            alt_dept = date_info.get('Departement', '')
+
+            if not alt_date_str or alt_dept == current_dept:
+                continue
+
+            try:
+                alt_date_obj = datetime.strptime(str(alt_date_str)[:10], '%Y-%m-%d')
+                if alt_date_obj < current_date_obj:
+                    days_earlier = (current_date_obj - alt_date_obj).days
+                    earlier_options.append({
+                        'date_examen_formatted': self._format_date(alt_date_str),
+                        'Date_Examen': alt_date_str,
+                        'dept': alt_dept,
+                        'Departement': alt_dept,
+                        'days_earlier': days_earlier,
+                        'comparison_text': f"{days_earlier} jours plus tot",
+                        'Date_Cloture_Inscription': date_info.get('Date_Cloture_Inscription', ''),
+                        'date_cloture_formatted': self._format_date(date_info.get('Date_Cloture_Inscription', '')),
+                    })
+            except Exception:
+                continue
+
+        # Trier par date (plus proche en premier)
+        earlier_options.sort(key=lambda x: x.get('Date_Examen', ''))
+
+        # Limiter a 5 alternatives
+        earlier_options = earlier_options[:5]
+
+        return {
+            'has_earlier_options': bool(earlier_options),
+            'earlier_options': earlier_options,
+            'earliest_option': earlier_options[0] if earlier_options else None,
+            'days_could_save': earlier_options[0]['days_earlier'] if earlier_options else 0,
+            'compte_existe': compte_existe,
+            'cma_departement': current_dept,
+        }
+
     def _extract_prenom_from_contact(self, contact_data: Dict[str, Any], deal_data: Dict[str, Any]) -> str:
         """Extrait le prénom du candidat depuis Contact (prioritaire) ou Deal_Name (fallback)."""
         # Priorité 1: First_Name du Contact
@@ -1503,6 +1636,22 @@ class TemplateEngine:
             return parts[0].capitalize()
 
         return ''
+
+    def _check_date_changed(self, current_date: str, previous_date: str) -> bool:
+        """
+        Verifie si la date actuelle differe de la date precedemment communiquee.
+
+        Args:
+            current_date: Date actuelle formatee (DD/MM/YYYY)
+            previous_date: Date precedemment communiquee (DD/MM/YYYY)
+
+        Returns:
+            True si les dates sont differentes et non vides
+        """
+        if not current_date or not previous_date:
+            return False
+        # Comparer directement (meme format DD/MM/YYYY)
+        return current_date.strip() != previous_date.strip()
 
     def _format_date(self, date_str: str) -> str:
         """Formate une date en DD/MM/YYYY."""
@@ -1679,6 +1828,58 @@ class TemplateEngine:
             'show_session_info': show_session_info,
         }
 
+    def _prepare_cma_contact_flags(self, context: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Prepare les flags pour le partial contact_cma.html.
+        Ces flags determinent quand et comment afficher les instructions de contact CMA.
+        """
+        primary_intent = context.get('primary_intent') or context.get('detected_intent', '')
+        intent_context = context.get('intent_context', {})
+        mentions_force_majeure = intent_context.get('mentions_force_majeure', False)
+
+        # Scenarios necessitant contact CMA
+        requires_contact = any([
+            context.get('requires_department_change_process'),
+            context.get('report_bloque') and mentions_force_majeure,
+            context.get('convocation_anormale'),
+            context.get('cloture_passed') and primary_intent == 'REPORT_DATE',
+        ])
+
+        # Calculer urgence
+        days_until_cloture = context.get('days_until_cloture', 999)
+
+        return {
+            'requires_cma_contact': requires_contact,
+            'cma_contact_urgent': days_until_cloture < 5,
+            'is_department_change': context.get('requires_department_change_process', False),
+            'is_date_change': primary_intent == 'REPORT_DATE',
+        }
+
+    def _extract_cross_department_data(self, context: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Extrait les donnees cross-departement enrichies si disponibles.
+        Ces donnees sont generees par cross_department_helper.get_cross_department_alternatives().
+        """
+        cross_dept_data = context.get('cross_department_data', {})
+        if not cross_dept_data:
+            return {}
+
+        return {
+            # Separation par region
+            'same_region_options': cross_dept_data.get('same_region_options', []),
+            'other_region_options': cross_dept_data.get('other_region_options', []),
+            'has_same_region_options': cross_dept_data.get('has_same_region_options', False),
+            'has_other_region_options': cross_dept_data.get('has_other_region_options', False),
+
+            # Flags de changement de departement
+            'requires_department_change_process': cross_dept_data.get('requires_department_change_process', False),
+            'current_region': cross_dept_data.get('current_region', ''),
+
+            # Urgence
+            'urgency_level': cross_dept_data.get('urgency_level', 'low'),
+            'closest_closure_days': cross_dept_data.get('closest_closure_days'),
+        }
+
     def _flatten_session_options_filtered(self, context: Dict[str, Any]) -> list:
         """
         Retourne les sessions aplaties, FILTRÉES selon la préférence si:
@@ -1744,20 +1945,31 @@ class TemplateEngine:
         replaced = []
         result = template
 
-        # Pattern pour les placeholders: {{placeholder_name}}
-        pattern = r'\{\{(\w+)\}\}'
+        # Pattern pour les placeholders: {{placeholder_name}} ou {{a.b.c}} (dot notation)
+        pattern = r'\{\{([\w.]+)\}\}'
 
         for match in re.finditer(pattern, template):
             placeholder = match.group(1)
             # Ignorer les blocs spéciaux (personnalisation, etc.)
             if placeholder in ['personnalisation', 'full_response']:
                 continue
-            if placeholder in data and data[placeholder]:
-                value = data[placeholder]
-                # Ne pas convertir les booléens en string ici (déjà gérés par conditionnels)
-                if not isinstance(value, bool):
-                    result = result.replace(f"{{{{{placeholder}}}}}", str(value))
-                    replaced.append(placeholder)
+
+            # Support dot notation for nested access
+            if '.' in placeholder:
+                parts = placeholder.split('.')
+                value = data.get(parts[0], {})
+                for part in parts[1:]:
+                    if isinstance(value, dict):
+                        value = value.get(part)
+                    else:
+                        value = None
+                        break
+            else:
+                value = data.get(placeholder)
+
+            if value and not isinstance(value, bool):
+                result = result.replace(f"{{{{{placeholder}}}}}", str(value))
+                replaced.append(placeholder)
 
         return result, replaced
 
