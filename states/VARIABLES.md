@@ -94,6 +94,31 @@
 
 ---
 
+## Variables Préférence Session
+
+| Variable | Type | Description | Exemple |
+|----------|------|-------------|---------|
+| `{{session_preference}}` | string | Préférence jour/soir | "jour" ou "soir" |
+| `{{session_preference_jour}}` | bool | Préfère cours du jour | true/false |
+| `{{session_preference_soir}}` | bool | Préfère cours du soir | true/false |
+| `{{session_message}}` | string | Message pré-formaté | "Cours du soir sélectionné" |
+
+---
+
+## Variables Booléennes Auto-Calculées
+
+| Variable | Type | Description |
+|----------|------|-------------|
+| `{{date_examen_vide}}` | bool | true si Date_examen_VTC est vide |
+| `{{session_vide}}` | bool | true si Session est vide |
+| `{{has_sessions_proposees}}` | bool | true si sessions_proposees non vide |
+| `{{has_next_dates}}` | bool | true si prochaines_dates non vide |
+| `{{has_required_action}}` | bool | true si action requise pour avancer |
+| `{{show_statut_section}}` | bool | true si section statut à afficher |
+| `{{show_dates_section}}` | bool | true si section dates à afficher |
+
+---
+
 ## Structures de données
 
 ### prochaines_dates
@@ -107,10 +132,28 @@
 ### sessions_proposees
 ```yaml
 - nom: "CDJ - 24 mars - 28 mars 2026"
-  type: "jour"
-  debut: "24/03/2026"
-  fin: "28/03/2026"
+  type: "jour"                      # "jour" ou "soir"
+  debut: "24/03/2026"               # Date début formatée
+  fin: "28/03/2026"                 # Date fin formatée
   horaires: "8h30 - 16h30"
+  date_examen: "31/03/2026"         # Date examen associée
+  date_examen_formatted: "31/03/2026"  # Alias
+  date_cloture_formatted: "15/03/2026" # Date clôture formatée
+  departement: "75"                 # Département
+  is_jour: true                     # true si cours du jour
+  is_soir: false                    # true si cours du soir
+  is_first_of_exam: true            # true si première session de cette date
+```
+
+**Note :** `is_first_of_exam` permet de grouper les sessions par date d'examen dans les boucles :
+```handlebars
+{{#each sessions_proposees}}
+{{#if this.is_first_of_exam}}
+<b>Examen du {{this.date_examen_formatted}}</b>
+{{/if}}
+{{#if this.is_jour}}→ Cours du jour : {{this.debut}} - {{this.fin}}{{/if}}
+{{#if this.is_soir}}→ Cours du soir : {{this.debut}} - {{this.fin}}{{/if}}
+{{/each}}
 ```
 
 ### documents_refuses
