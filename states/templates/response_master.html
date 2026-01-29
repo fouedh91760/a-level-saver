@@ -118,6 +118,9 @@
 {{#if intention_date_lointaine}}
 {{> partials/intentions/date_lointaine}}
 {{/if}}
+{{#if intention_demande_exception}}
+{{> partials/intentions/demande_exception}}
+{{/if}}
 {{#if intention_question_examen_pratique}}
 {{> partials/intentions/question_examen_pratique}}
 {{/if}}
@@ -212,7 +215,11 @@
 <br>
 {{/if}}
 {{#if has_next_dates}}
+{{#if dates_proposed_recently}}
+<i>Comme indiqué dans notre précédent message, voici les dates disponibles :</i><br>
+{{else}}
 <b>Prochaines dates d'examen disponibles{{#if session_preference}} ({{preference_horaire_text}}){{/if}}</b><br>
+{{/if}}
 {{#each next_dates}}
 {{#if this.is_first_of_dept}}
 <b>CMA {{this.Departement}}</b><br>

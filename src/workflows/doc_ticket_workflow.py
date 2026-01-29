@@ -1162,7 +1162,7 @@ Deux comptes ExamenT3P fonctionnels ont été détectés pour ce candidat, et le
         # Si ces étapes ne sont pas complétées, on ne peut pas les inscrire à l'examen
         from src.utils.uber_eligibility_helper import analyze_uber_eligibility
         from src.utils.examt3p_crm_sync import sync_examt3p_to_crm, sync_exam_date_from_examt3p
-        from src.utils.ticket_info_extractor import extract_confirmations_from_threads
+        from src.utils.ticket_info_extractor import extract_confirmations_from_threads, extract_cab_proposals_from_threads
 
         # ================================================================
         # SYNC EXAMT3P → CRM (AVANT toute analyse)
@@ -1231,6 +1231,18 @@ Deux comptes ExamenT3P fonctionnels ont été détectés pour ce candidat, et le
             if ticket_confirmations.get('blocked_updates'):
                 for blocked in ticket_confirmations['blocked_updates']:
                     logger.warning(f"  🔒 BLOCAGE: {blocked['reason']}")
+
+        # ================================================================
+        # DETECTION DATES DEJA COMMUNIQUEES (anti-repetition)
+        # ================================================================
+        cab_proposals = extract_cab_proposals_from_threads(threads_data) if threads_data else {}
+        dates_already_communicated = cab_proposals.get('proposal_count', 0) > 0
+        dates_proposed_recently = cab_proposals.get('dates_proposed_recently', False)
+
+        if dates_already_communicated:
+            logger.info(f"  📋 Dates deja proposees: {len(cab_proposals.get('dates_already_proposed', []))} date(s)")
+            if dates_proposed_recently:
+                logger.info("  ⏰ Proposees recemment (< 48h)")
 
         logger.info("  🚗 Vérification éligibilité Uber 20€...")
         uber_eligibility_result = analyze_uber_eligibility(deal_data)
@@ -1640,6 +1652,10 @@ Deux comptes ExamenT3P fonctionnels ont été détectés pour ce candidat, et le
             'uber_case_blocks_dates': uber_case_blocks_dates,
             # Cohérence formation/examen (cas manqué formation + examen imminent)
             'training_exam_consistency_result': training_exam_consistency_result,
+            # Dates deja communiquees (anti-repetition)
+            'dates_already_communicated': dates_already_communicated,
+            'dates_proposed_recently': dates_proposed_recently,
+            'cab_proposals': cab_proposals,
             # Lookups CRM enrichis (v2.2) - données complètes depuis les modules Zoho
             'enriched_lookups': enriched_lookups,
             'lookup_cache': lookup_cache,
@@ -1954,6 +1970,10 @@ L'équipe CAB Formations"""
             # Uber
             'is_uber_20_deal': uber_result.get('is_uber_20_deal', False),
             'uber_case': uber_result.get('case', ''),
+
+            # Dates deja communiquees (anti-repetition)
+            'dates_already_communicated': analysis_result.get('dates_already_communicated', False),
+            'dates_proposed_recently': analysis_result.get('dates_proposed_recently', False),
         })
 
         # RECALCULATE cloture_passed et can_modify_exam_date avec date_cloture enrichi

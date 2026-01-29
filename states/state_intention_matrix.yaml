@@ -240,6 +240,20 @@ intentions:
       - "date n'existe pas"
     priority: 70
 
+  # --- Demande d'exception ---
+  DEMANDE_EXCEPTION:
+    id: "I40"
+    description: "Demande d'exception ou derogation pour date examen"
+    triggers:
+      - "exception"
+      - "dérogation"
+      - "moyen exceptionnel"
+      - "cas particulier"
+      - "aucun moyen"
+      - "vraiment aucun"
+      - "situation exceptionnelle"
+    priority: 80
+
   # --- Questions documents ---
   DOCUMENT_QUESTION:
     id: "I17"
@@ -1391,6 +1405,13 @@ matrix:
     description: "Date lointaine non visible sur ExamT3P - tous états"
     context_flags:
       intention_date_lointaine: true
+      show_dates_section: true
+
+  "*:DEMANDE_EXCEPTION":
+    template: "response_master.html"
+    description: "Demande d'exception/derogation pour date examen - tous états"
+    context_flags:
+      intention_demande_exception: true
       show_dates_section: true
 
   # ===========================================================================

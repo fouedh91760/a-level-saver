@@ -1051,6 +1051,18 @@ class TemplateEngine:
                 self._get_session_preference(context)
             ),
 
+            # Dates alternatives dans d'autres departements (plus tot que la reference)
+            'alternative_department_dates': self._format_next_dates_for_template(
+                context.get('alternative_department_dates', []),
+                context.get('session_data'),
+                self._get_session_preference(context)
+            ),
+            'has_alternative_department_dates': bool(context.get('alternative_department_dates', [])),
+
+            # Dates deja communiquees (anti-repetition)
+            'dates_already_communicated': context.get('dates_already_communicated', False),
+            'dates_proposed_recently': context.get('dates_proposed_recently', False),
+
             # Flags pour le template master (architecture modulaire)
             # Sections à afficher (peuvent être désactivées via context_flags de la matrice)
             'show_statut_section': context.get('show_statut_section', True),  # Par défaut True, sauf si désactivé
@@ -1160,6 +1172,7 @@ class TemplateEngine:
         # Nouvelles intentions alignées (v2.2)
         'CONFIRMATION_PAIEMENT': 'intention_confirmation_paiement',
         'REFUS_PARTAGE_CREDENTIALS': 'intention_refus_credentials',
+        'DEMANDE_EXCEPTION': 'intention_demande_exception',
         'QUESTION_EXAMEN_PRATIQUE': 'intention_question_examen_pratique',
     }
 
@@ -1197,6 +1210,7 @@ class TemplateEngine:
             'intention_confirmation_paiement': False,
             'intention_refus_credentials': False,
             'intention_question_examen_pratique': False,
+            'intention_demande_exception': False,
         }
 
         # Récupérer l'intention principale (rétrocompatibilité + nouveau format)

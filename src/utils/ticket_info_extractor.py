@@ -385,3 +385,100 @@ def apply_ticket_confirmations_to_crm(
         logger.info(f"  🔍 DRY RUN: {list(updates_to_apply.keys())}")
 
     return result
+
+
+def extract_cab_proposals_from_threads(threads: List[Dict]) -> Dict[str, Any]:
+    """
+    Detecte si CAB a deja propose des dates d'examen dans les messages precedents.
+
+    Cette fonction permet d'eviter de repeter les memes dates dans les reponses
+    si elles ont deja ete communiquees recemment.
+
+    Args:
+        threads: Liste des threads du ticket
+
+    Returns:
+        {
+            'dates_already_proposed': List[str],  # Liste des dates proposees (DD/MM/YYYY)
+            'dates_proposed_recently': bool,  # True si proposees dans les derniers 48h
+            'proposal_count': int  # Nombre de fois que des dates ont ete proposees
+        }
+    """
+    from datetime import timedelta
+    from src.utils.text_utils import get_clean_thread_content
+
+    result = {
+        'dates_already_proposed': [],
+        'dates_proposed_recently': False,
+        'proposal_count': 0
+    }
+
+    if not threads:
+        return result
+
+    logger.info("🔍 Detection des dates deja proposees par CAB...")
+
+    # Marqueurs de proposition de dates dans les reponses CAB
+    proposal_markers = [
+        "prochaines dates d'examen",
+        "prochaines dates disponibles",
+        "dates disponibles",
+        "voici les dates",
+        "merci de nous confirmer la date",
+        "date qui vous convient",
+        "option 1",
+        "option 2",
+    ]
+
+    # Pattern pour extraire les dates format DD/MM/YYYY
+    date_pattern = r"(\d{1,2}/\d{1,2}/\d{4})"
+
+    found_dates = set()
+    now = datetime.now()
+    recent_threshold = now - timedelta(hours=48)
+
+    for thread in threads:
+        # Seulement les messages sortants (CAB -> candidat)
+        if thread.get('direction') != 'out':
+            continue
+
+        # Recuperer le contenu du thread
+        content = get_clean_thread_content(thread).lower()
+        thread_date_str = thread.get('createdTime', '')
+
+        # Verifier si c'est un message de proposition de dates
+        is_proposal = any(marker in content for marker in proposal_markers)
+
+        if not is_proposal:
+            continue
+
+        result['proposal_count'] += 1
+
+        # Parser la date du thread
+        thread_date = None
+        if thread_date_str:
+            try:
+                if 'T' in str(thread_date_str):
+                    thread_date = datetime.fromisoformat(thread_date_str.replace('Z', '+00:00'))
+                    thread_date = thread_date.replace(tzinfo=None)
+                else:
+                    thread_date = datetime.strptime(thread_date_str[:10], '%Y-%m-%d')
+            except Exception:
+                pass
+
+        # Verifier si recent (< 48h)
+        if thread_date and thread_date > recent_threshold:
+            result['dates_proposed_recently'] = True
+
+        # Extraire les dates mentionnees (format DD/MM/YYYY)
+        dates_found = re.findall(date_pattern, content)
+        found_dates.update(dates_found)
+
+    result['dates_already_proposed'] = list(found_dates)
+
+    if result['dates_already_proposed']:
+        logger.info(f"  📋 {len(result['dates_already_proposed'])} date(s) deja proposee(s)")
+        if result['dates_proposed_recently']:
+            logger.info(f"  ⏰ Dates proposees recemment (< 48h)")
+
+    return result

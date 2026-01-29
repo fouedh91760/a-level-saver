@@ -1,0 +1,20 @@
+<!-- Partial: Reponse a l'intention DEMANDE_EXCEPTION -->
+<b>Concernant votre demande</b><br>
+Nous comprenons que vous souhaitez passer l'examen plus tot que prevu.<br>
+<br>
+<b>Important :</b> Une fois la date de cloture des inscriptions passee, il n'est malheureusement <b>plus possible de s'y inscrire</b>, meme a titre exceptionnel. La CMA (Chambre des Metiers) n'accepte aucune derogation sur ce point.<br>
+<br>
+{{#if has_alternative_department_dates}}
+<b>Cependant</b>, des dates plus proches sont disponibles dans d'autres departements :<br>
+{{#each alternative_department_dates}}
+&nbsp;&nbsp;→ <b>{{this.date_examen_formatted}}</b> (cloture : {{this.date_cloture_formatted}}) — {{this.Departement}}{{#if this.session_info}} — {{this.session_info}}{{/if}}<br>
+{{/each}}
+<br>
+Si vous etes flexible sur le lieu, cela vous permettrait de passer l'examen plus rapidement.<br>
+{{else}}
+Malheureusement, nous n'avons pas trouve de date plus proche dans d'autres departements actuellement.<br>
+{{/if}}
+{{#unless compte_existe}}
+<i>Note : Comme vous n'avez pas encore de compte ExamT3P, vous pouvez vous inscrire dans le departement de votre choix.</i><br>
+{{/unless}}
+<br>

@@ -175,6 +175,10 @@ INTENTIONS POSSIBLES (par ordre de spécificité - préfère les intentions spé
 - DATE_LOINTAINE_EXAMT3P: Le candidat ne peut pas choisir la date qu'il veut sur ExamT3P
   Exemples: "je ne peux pas choisir de date en juillet", "la date n'apparaît pas", "pas de date disponible en août"
   ⚠️ DIFFÉRENT de REPORT_DATE: ici le candidat CONSTATE une impossibilité, il ne DEMANDE pas un changement
+- DEMANDE_EXCEPTION: Demande d'exception ou dérogation pour passer l'examen plus tôt
+  Exemples: "moyen exceptionnel", "exception possible", "dérogation", "vraiment aucun moyen", "aucune solution"
+  ⚠️ DIFFÉRENT de DEMANDE_DATES_FUTURES: le candidat sait que c'est trop tard et demande une EXCEPTION aux règles
+  ⚠️ DIFFÉRENT de REPORT_DATE: pas de date existante à changer, il veut contourner les règles de clôture
 - DEMANDE_APPEL_TEL: Candidat demande à être appelé
   Exemples: "appelez-moi", "pouvez-vous m'appeler", "je préfère par téléphone"
 - RECLAMATION: Candidat mécontent, réclamation
