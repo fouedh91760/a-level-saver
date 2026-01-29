@@ -69,6 +69,75 @@ NOM_DU_SCENARIO:
 
 ---
 
+## PROCESS OBLIGATOIRE : Ajout d'une Nouvelle Intention
+
+**⚠️ RÈGLE STRICTE : Toute intention ajoutée dans le YAML DOIT être ajoutée dans le prompt du TriageAgent !**
+
+Le TriageAgent (Claude Sonnet) ne peut détecter que les intentions qu'il connaît. Si une intention existe dans `state_intention_matrix.yaml` mais pas dans le prompt du TriageAgent, elle ne sera **JAMAIS détectée**.
+
+### Étape 1 : Définir l'intention dans `states/state_intention_matrix.yaml`
+```yaml
+intentions:
+  NOM_INTENTION:
+    id: "IXX"
+    description: "Description claire"
+    triggers:
+      - "phrase déclencheuse 1"
+      - "phrase déclencheuse 2"
+    priority: XX
+```
+
+### Étape 2 : Ajouter l'intention dans le prompt du TriageAgent
+
+**OBLIGATOIRE** - Modifier `src/agents/triage_agent.py` dans la variable `SYSTEM_PROMPT` :
+
+```python
+**Catégorie appropriée:**
+- NOM_INTENTION: Description claire de quand utiliser cette intention
+  Exemples: "exemple 1", "exemple 2"
+  ⚠️ Notes importantes si nécessaire (différence avec autre intention, etc.)
+```
+
+### Étape 3 : Ajouter les entrées dans la matrice État×Intention
+
+Dans `states/state_intention_matrix.yaml`, ajouter les combinaisons pertinentes :
+```yaml
+"*:NOM_INTENTION":
+  template: "response_master.html"
+  context_flags:
+    intention_xxx: true
+```
+
+### Étape 4 : Créer le partial si nécessaire
+
+Si l'intention nécessite une réponse spécifique :
+- Créer `states/templates/partials/intentions/nom_intention.html`
+- Ajouter le flag dans `response_master.html`
+
+**Résumé des fichiers touchés (dans l'ordre) :**
+| # | Fichier | Action |
+|---|---------|--------|
+| 1 | `states/state_intention_matrix.yaml` | Définir l'intention (section `intentions:`) |
+| 2 | **`src/agents/triage_agent.py`** | **OBLIGATOIRE** - Ajouter dans SYSTEM_PROMPT |
+| 3 | `states/state_intention_matrix.yaml` | Ajouter entrées matrice État×Intention |
+| 4 | `states/templates/partials/intentions/<nom>.html` | Template partial (si nécessaire) |
+| 5 | `states/templates/response_master.html` | Ajouter section {{#if intention_xxx}} |
+
+### Vérification de cohérence
+
+Avant de considérer l'ajout terminé, vérifier que l'intention existe dans les DEUX fichiers :
+```bash
+# Vérifier dans le YAML
+grep "NOM_INTENTION" states/state_intention_matrix.yaml
+
+# Vérifier dans le TriageAgent
+grep "NOM_INTENTION" src/agents/triage_agent.py
+```
+
+**Si l'intention n'est pas dans les DEUX fichiers, elle ne fonctionnera PAS.**
+
+---
+
 ## RÈGLE D'OR : Ne Pas Réinventer la Roue
 
 Avant de coder une nouvelle fonctionnalité, **TOUJOURS vérifier** si elle existe déjà dans :

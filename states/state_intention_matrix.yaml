@@ -226,17 +226,18 @@ intentions:
   # --- Date lointaine ExamT3P ---
   DATE_LOINTAINE_EXAMT3P:
     id: "I39"
-    description: "Veut une date pas encore visible sur ExamT3P"
+    description: "Veut une date pas encore visible sur ExamT3P ou un mois spécifique"
     triggers:
       - "date pas disponible"
       - "date non visible"
       - "date pas encore"
-      - "septembre"
-      - "octobre"
-      - "novembre"
-      - "décembre"
+      - "pas de date en"
+      - "ne peux pas choisir de date"
+      - "choisir une date en"
       - "plus tard dans l'année"
       - "date plus lointaine"
+      - "date n'apparaît pas"
+      - "date n'existe pas"
     priority: 70
 
   # --- Questions documents ---

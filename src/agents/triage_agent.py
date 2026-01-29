@@ -90,6 +90,9 @@ INTENTIONS POSSIBLES (par ordre de spécificité - préfère les intentions spé
   Exemples: "Je voudrais reporter", "changer ma date", "décaler mon examen"
   ⚠️ Si "Date examen actuelle" contient une date ET que le candidat demande une autre date/mois/département → c'est REPORT_DATE !
   Exemples avec date existante: "je voudrais juillet au lieu de mars", "dates à Montpellier" (si sa date actuelle est ailleurs), "je ne peux pas en mars"
+- CONFIRMATION_DATE_EXAMEN: Candidat CONFIRME son choix de date d'examen
+  Exemples: "je confirme la date du 15 mars", "je choisis le 31/03", "ok pour cette date"
+  ⚠️ Important pour mise à jour CRM (crm_update: true)
 - DEMANDE_AUTRES_DEPARTEMENTS: Veut voir des dates dans d'autres villes/départements
   Exemples: "dates ailleurs", "autre département", "dates à Lyon", "d'autres options"
 
@@ -98,12 +101,23 @@ INTENTIONS POSSIBLES (par ordre de spécificité - préfère les intentions spé
   Exemples: "cours du soir", "formation du jour", "horaires de formation", "infos sur les cours"
 - CONFIRMATION_SESSION: CONFIRME son choix de session
   Exemples: "je choisis cours du soir", "je prends l'option 2", "je confirme la formation du jour"
+- DEMANDE_DATE_VISIO: Demande la date/heure de sa prochaine formation en visio
+  Exemples: "quand est ma formation ?", "date de la visio", "horaires de la formation"
+- DEMANDE_LIEN_VISIO: Demande le lien Zoom/Teams pour rejoindre la formation
+  Exemples: "lien zoom", "lien de la formation", "comment rejoindre la visio"
+- DEMANDE_CERTIFICAT_FORMATION: Demande son certificat/attestation de formation
+  Exemples: "certificat de formation", "attestation", "justificatif de formation"
 
 **Intentions liées au DOSSIER:**
 - STATUT_DOSSIER: Question sur l'avancement
   Exemples: "où en est mon dossier", "mon inscription", "avancement", "statut"
 - DOCUMENT_QUESTION: Question sur les documents
   Exemples: "quels documents", "pièces à fournir", "document manquant"
+- ENVOIE_DOCUMENTS: Candidat CONFIRME avoir envoyé/téléchargé ses documents
+  Exemples: "j'ai envoyé mes documents", "j'ai téléchargé mes pièces", "documents envoyés"
+  ⚠️ DIFFÉRENT de DOCUMENT_QUESTION: ici c'est une CONFIRMATION d'action
+- SIGNALE_PROBLEME_DOCS: Problème technique lors de l'upload des documents
+  Exemples: "erreur lors de l'envoi", "impossible de télécharger", "bug sur le site"
 - CONFIRMATION_PAIEMENT: Confirmation ou question sur le paiement
   Exemples: "j'ai payé", "paiement effectué", "facture", "preuve de paiement"
 
@@ -118,16 +132,54 @@ INTENTIONS POSSIBLES (par ordre de spécificité - préfère les intentions spé
 **Intentions liées aux IDENTIFIANTS:**
 - DEMANDE_IDENTIFIANTS: Demande d'identifiants ExamT3P
   Exemples: "mot de passe oublié", "mes identifiants", "connexion ExamT3P"
+- ENVOIE_IDENTIFIANTS: Candidat PARTAGE ses identifiants ExamT3P
+  Exemples: "voici mes identifiants", "mon login est...", "email: xxx, mdp: yyy"
+  ⚠️ Important pour mise à jour CRM des credentials
 - REFUS_PARTAGE_CREDENTIALS: Refuse de partager ses identifiants (sécurité)
   Exemples: "je ne veux pas donner mon mot de passe", "données personnelles", "RGPD"
+- PROBLEME_CONNEXION_EXAMT3P: Problème de connexion à ExamT3P
+  Exemples: "je n'arrive pas à me connecter à examt3p", "erreur de connexion", "mot de passe refusé"
+- PROBLEME_CONNEXION_ELEARNING: Problème de connexion à la plateforme e-learning
+  Exemples: "je n'arrive pas à accéder aux cours", "erreur sur cab-formations", "connexion e-learning impossible"
+
+**Intentions liées à l'OFFRE UBER:**
+- DEMANDE_INFOS_OFFRE: Questions sur l'offre Uber 20€
+  Exemples: "comment marche l'offre Uber", "c'est quoi l'offre à 20€", "conditions Uber"
+
+**Intentions liées aux RÉSULTATS:**
+- RESULTAT_EXAMEN: Question sur le résultat (candidat demande son résultat)
+  Exemples: "résultat de l'examen", "ai-je réussi", "admis ou pas"
+- ANNONCE_RESULTAT_POSITIF: Candidat ANNONCE qu'il a réussi
+  Exemples: "j'ai réussi !", "je suis admis", "j'ai eu mon examen"
+- ANNONCE_RESULTAT_NEGATIF: Candidat ANNONCE qu'il a échoué
+  Exemples: "j'ai raté", "je n'ai pas réussi", "recalé", "échec à l'examen"
+- DEMANDE_REINSCRIPTION: Candidat veut se réinscrire après échec
+  Exemples: "je veux me réinscrire", "repasser l'examen", "nouvelle inscription"
+
+**Intentions liées à la CARTE VTC:**
+- QUESTION_CARTE_VTC: Question sur la carte VTC après réussite
+  Exemples: "comment obtenir ma carte VTC", "demande de carte", "carte professionnelle"
+- QUESTION_EXAMEN_PRATIQUE: Question sur l'examen pratique (hors scope CAB)
+  Exemples: "examen pratique", "conduite", "partie pratique"
 
 **Autres intentions:**
-- RESULTAT_EXAMEN: Question sur le résultat
-  Exemples: "résultat de l'examen", "ai-je réussi", "admis ou pas"
 - QUESTION_PROCESSUS: Question sur le processus
   Exemples: "comment ça marche", "prochaines étapes", "c'est quoi la suite"
 - DEMANDE_SUPPRESSION_DONNEES: Demande RGPD de suppression
   Exemples: "supprimer mes données", "droit à l'oubli"
+- PERMIS_PROBATOIRE: Question sur le permis probatoire (jeune permis < 3 ans)
+  Exemples: "permis probatoire", "jeune permis", "moins de 3 ans de permis", "fin de probation"
+- DATE_LOINTAINE_EXAMT3P: Le candidat ne peut pas choisir la date qu'il veut sur ExamT3P
+  Exemples: "je ne peux pas choisir de date en juillet", "la date n'apparaît pas", "pas de date disponible en août"
+  ⚠️ DIFFÉRENT de REPORT_DATE: ici le candidat CONSTATE une impossibilité, il ne DEMANDE pas un changement
+- DEMANDE_APPEL_TEL: Candidat demande à être appelé
+  Exemples: "appelez-moi", "pouvez-vous m'appeler", "je préfère par téléphone"
+- RECLAMATION: Candidat mécontent, réclamation
+  Exemples: "pas satisfait", "plainte", "je veux me plaindre", "scandaleux"
+- DEMANDE_REMBOURSEMENT: Demande de remboursement
+  Exemples: "remboursement", "rembourser", "annuler et rembourser"
+- REMERCIEMENT: Simple remerciement sans autre demande
+  Exemples: "merci beaucoup", "super merci", "c'est parfait merci"
 - QUESTION_GENERALE: UNIQUEMENT si aucune intention spécifique ne correspond
   ⚠️ N'utilise QUESTION_GENERALE que si tu ne peux vraiment pas classifier autrement !
 
@@ -184,7 +236,7 @@ Réponds UNIQUEMENT en JSON valide:
     "target_department": "DOC" | "Refus CMA" | "Contact" | "Comptabilité" | null,
     "reason": "explication courte",
     "confidence": 0.0-1.0,
-    "primary_intent": "REPORT_DATE" | "DEMANDE_IDENTIFIANTS" | "STATUT_DOSSIER" | "CONFIRMATION_SESSION" | "DEMANDE_DATES_FUTURES" | "QUESTION_SESSION" | "QUESTION_GENERALE" | ... | null,
+    "primary_intent": "REPORT_DATE" | "DEMANDE_IDENTIFIANTS" | "STATUT_DOSSIER" | "CONFIRMATION_SESSION" | "DEMANDE_DATES_FUTURES" | "QUESTION_SESSION" | "PERMIS_PROBATOIRE" | "DATE_LOINTAINE_EXAMT3P" | "QUESTION_GENERALE" | ... | null,
     "secondary_intents": ["QUESTION_SESSION", "DEMANDE_DATES_FUTURES", ...],
     "intent_context": {
         "is_urgent": true | false,
