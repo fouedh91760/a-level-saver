@@ -235,8 +235,6 @@ dept = str(date_info.get('Departement', ''))
 # Voir ligne ~2191 "FILTRE FINAL"
 ```
 
-**Note :** Les anciens gotchas regex (6.2-6.5) ne s'appliquent plus avec pybars3.
-
 ---
 
 ## Fichiers de Référence

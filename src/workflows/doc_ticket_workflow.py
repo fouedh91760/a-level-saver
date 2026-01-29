@@ -529,6 +529,17 @@ Le candidat demande sa convocation mais la date d'examen dans Zoho CRM est dans 
                 result['deadline_passed_reschedule'] = True
                 result['new_exam_date'] = new_date
 
+            # CONFIRMATION_SESSION: Si le candidat a confirmé sa session avec des dates
+            if analysis_result.get('session_confirmed') and analysis_result.get('matched_session_id'):
+                matched_session_id = analysis_result['matched_session_id']
+                matched_session_name = analysis_result.get('matched_session_name', '')
+                matched_session_type = analysis_result.get('matched_session_type', '')
+                logger.info(f"  📚 CONFIRMATION_SESSION: Session confirmée → {matched_session_name} (ID: {matched_session_id})")
+                ai_updates['Session'] = matched_session_id
+                if matched_session_type:
+                    ai_updates['Preference_horaire'] = matched_session_type
+                result['session_confirmed_update'] = True
+
             has_ai_updates = bool(ai_updates)
             scenario_requires_update = response_result.get('requires_crm_update')
 
@@ -1707,6 +1718,35 @@ Deux comptes ExamenT3P fonctionnels ont été détectés pour ce candidat, et le
             date_examen_vtc_result['alternative_department_dates'] = []  # Pas d'alternatives
             logger.info("  📝 CONFIRMATION_SESSION: dates alternatives supprimées du contexte IA")
 
+        # ================================================================
+        # MATCHING SESSION CONFIRMÉE PAR LE CANDIDAT
+        # ================================================================
+        # Si le candidat a confirmé sa session avec des dates (ex: "du 16/03 au 27/03"),
+        # on essaie de matcher avec les sessions proposées pour mettre à jour le CRM.
+        session_confirmed = False
+        matched_session_id = None
+        matched_session_name = None
+        matched_session_type = None
+
+        if detected_intent == 'CONFIRMATION_SESSION':
+            intent_context = triage_result.get('intent_context', {}) if triage_result else {}
+            confirmed_dates = intent_context.get('confirmed_session_dates')
+
+            if confirmed_dates and session_data and session_data.get('proposed_options'):
+                logger.info(f"  🔍 Matching session confirmée: {confirmed_dates}")
+                matched = self._match_session_by_confirmed_dates(
+                    confirmed_dates,
+                    session_data['proposed_options']
+                )
+                if matched:
+                    session_confirmed = True
+                    matched_session_id = matched.get('id')
+                    matched_session_name = matched.get('name')
+                    matched_session_type = matched.get('session_type')
+                    logger.info(f"  ✅ Session matchée: {matched_session_name} (ID: {matched_session_id})")
+                else:
+                    logger.warning(f"  ⚠️ Aucune session ne matche les dates confirmées: {confirmed_dates}")
+
         return {
             'contact_data': contact_data,  # Données du contact lié (First_Name, Last_Name)
             'deal_id': deal_id,
@@ -1748,7 +1788,76 @@ Deux comptes ExamenT3P fonctionnels ont été détectés pour ce candidat, et le
             # Lookups CRM enrichis (v2.2) - données complètes depuis les modules Zoho
             'enriched_lookups': enriched_lookups,
             'lookup_cache': lookup_cache,
+            # Session confirmée par le candidat (CONFIRMATION_SESSION avec dates)
+            'session_confirmed': session_confirmed,
+            'matched_session_id': matched_session_id,
+            'matched_session_name': matched_session_name,
+            'matched_session_type': matched_session_type,
         }
+
+    def _match_session_by_confirmed_dates(
+        self,
+        confirmed_dates: str,
+        proposed_options: List[Dict]
+    ) -> Optional[Dict]:
+        """
+        Matche une session confirmée par le candidat avec les sessions proposées.
+
+        Args:
+            confirmed_dates: Dates au format "DD/MM/YYYY-DD/MM/YYYY" (début-fin)
+            proposed_options: Liste des options de session proposées
+
+        Returns:
+            Dict avec id, name, session_type si trouvé, None sinon
+        """
+        from src.utils.date_utils import parse_date_flexible
+
+        try:
+            # Parser les dates confirmées
+            parts = confirmed_dates.split('-')
+            if len(parts) != 2:
+                logger.warning(f"Format dates confirmées invalide: {confirmed_dates}")
+                return None
+
+            start_str, end_str = parts[0].strip(), parts[1].strip()
+            confirmed_start = parse_date_flexible(start_str)
+            confirmed_end = parse_date_flexible(end_str)
+
+            if not confirmed_start or not confirmed_end:
+                logger.warning(f"Impossible de parser les dates: {start_str}, {end_str}")
+                return None
+
+            # Chercher dans les sessions proposées
+            for option in proposed_options:
+                sessions = option.get('sessions', [])
+                for session in sessions:
+                    session_start = parse_date_flexible(session.get('Date_d_but', ''))
+                    session_end = parse_date_flexible(session.get('Date_fin', ''))
+
+                    if not session_start or not session_end:
+                        continue
+
+                    # Vérifier si les dates correspondent (tolérance de 1 jour)
+                    start_match = abs((session_start - confirmed_start).days) <= 1
+                    end_match = abs((session_end - confirmed_end).days) <= 1
+
+                    if start_match and end_match:
+                        session_type = session.get('session_type', '')
+                        session_name = 'Cours du jour' if session_type == 'jour' else 'Cours du soir' if session_type == 'soir' else session.get('Name', '')
+
+                        return {
+                            'id': session.get('id'),
+                            'name': session_name,
+                            'session_type': session_type,
+                            'Date_d_but': session.get('Date_d_but'),
+                            'Date_fin': session.get('Date_fin'),
+                        }
+
+            return None
+
+        except Exception as e:
+            logger.error(f"Erreur lors du matching de session: {e}")
+            return None
 
     def _generate_duplicate_uber_response(
         self,
@@ -2066,6 +2175,12 @@ L'équipe CAB Formations"""
             # Session
             'proposed_sessions': session_data.get('proposed_options', []),
             'session_preference': session_data.get('session_preference'),
+
+            # Session confirmée par le candidat (CONFIRMATION_SESSION avec dates)
+            'session_confirmed': analysis_result.get('session_confirmed', False),
+            'matched_session_id': analysis_result.get('matched_session_id'),
+            'matched_session_name': analysis_result.get('matched_session_name'),
+            'matched_session_type': analysis_result.get('matched_session_type'),
 
             # Uber
             'is_uber_20_deal': uber_result.get('is_uber_20_deal', False),
@@ -2876,6 +2991,22 @@ Réponds UNIQUEMENT avec le format demandé, rien d'autre."""
 
             if not session_found:
                 logger.warning(f"  ⚠️ Session formation non trouvée: {session_name}")
+
+        # ================================================================
+        # 2.5 Session confirmée par le candidat (CONFIRMATION_SESSION avec dates)
+        # ================================================================
+        # Si le candidat a confirmé sa session avec des dates et qu'on a matché une session
+        if analysis_result.get('session_confirmed') and analysis_result.get('matched_session_id'):
+            matched_session_id = analysis_result['matched_session_id']
+            matched_session_name = analysis_result.get('matched_session_name', '')
+            crm_updates['Session'] = matched_session_id
+            logger.info(f"  📊 Session (confirmée): {matched_session_name} → ID {matched_session_id}")
+
+            # Aussi mettre à jour Preference_horaire si on a le type
+            matched_type = analysis_result.get('matched_session_type')
+            if matched_type:
+                crm_updates['Preference_horaire'] = matched_type
+                logger.info(f"  📊 Preference_horaire: {matched_type}")
 
         # ================================================================
         # 3. Autres champs (texte simple - pas de mapping nécessaire)

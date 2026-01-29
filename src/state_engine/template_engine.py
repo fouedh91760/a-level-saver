@@ -241,6 +241,10 @@ class TemplateEngine:
         # 5. Remplacer les placeholders simples restants
         response_text, replaced = self._replace_placeholders(response_text, placeholder_data)
 
+        # 5.5 Injecter le choix de session si nécessaire (templates legacy)
+        # Si session vide + sessions disponibles + pas déjà dans la réponse → injecter
+        response_text = self._inject_session_choice_if_needed(response_text, placeholder_data)
+
         # 6. Générer les sections IA si nécessaire
         ai_sections = []
         response_config = state.response_config
@@ -934,7 +938,12 @@ class TemplateEngine:
         # - Session pas encore choisie
         # - On a des sessions à proposer
         # - Pas dans un cas de report (géré par Section 0)
-        if not is_report_intention:
+        # - Le candidat n'a PAS déjà confirmé sa session (CONFIRMATION_SESSION avec dates)
+        if context.get('session_confirmed'):
+            # Le candidat vient de confirmer sa session → pas besoin de redemander
+            result['show_sessions_section'] = False
+            logger.info("📚 show_sessions_section=False (session déjà confirmée par le candidat)")
+        elif not is_report_intention:
             result['show_sessions_section'] = (
                 bool(date_examen) and
                 not deal_data.get('Session') and
@@ -1751,6 +1760,98 @@ class TemplateEngine:
                 replaced.append(placeholder)
 
         return result, replaced
+
+    def _inject_session_choice_if_needed(
+        self,
+        response_text: str,
+        placeholder_data: Dict[str, Any]
+    ) -> str:
+        """
+        Injecte le bloc de choix de session si nécessaire.
+
+        Conditions:
+        - show_sessions_section est True (session vide + sessions disponibles)
+        - La réponse ne contient pas déjà une demande de session
+
+        Permet aux templates legacy de proposer le choix de session.
+        """
+        # Vérifier si on doit afficher les sessions
+        if not placeholder_data.get('show_sessions_section'):
+            return response_text
+
+        # Vérifier si la réponse contient déjà une demande de session
+        markers = [
+            'votre choix de session',
+            'cours du jour</b> ou <b>cours du soir',
+            'sessions de formation disponibles',
+            'préférence de session'
+        ]
+        response_lower = response_text.lower()
+        if any(marker.lower() in response_lower for marker in markers):
+            return response_text
+
+        # Générer le bloc de sessions
+        sessions_block = self._generate_sessions_block(placeholder_data)
+        if not sessions_block:
+            return response_text
+
+        logger.info("📚 Injection du bloc de choix de session (template legacy)")
+
+        # Injecter avant la signature
+        signature_markers = [
+            'Bien cordialement',
+            'Cordialement',
+            "L'équipe CAB"
+        ]
+
+        for marker in signature_markers:
+            if marker in response_text:
+                insert_pos = response_text.find(marker)
+                return (
+                    response_text[:insert_pos] +
+                    sessions_block +
+                    '<br>' +
+                    response_text[insert_pos:]
+                )
+
+        # Pas de signature trouvée - ajouter à la fin
+        return response_text + '<br>' + sessions_block
+
+    def _generate_sessions_block(self, placeholder_data: Dict[str, Any]) -> str:
+        """
+        Génère le HTML du bloc de choix de session.
+        """
+        sessions = placeholder_data.get('sessions_proposees', [])
+        if not sessions:
+            # Fallback: demande simple sans liste
+            return (
+                '<b>Choix de session de formation</b><br>'
+                'Merci de nous indiquer votre préférence : '
+                '<b>cours du jour</b> ou <b>cours du soir</b>.<br>'
+                '<br>'
+            )
+
+        # Bloc avec liste des sessions
+        preference = placeholder_data.get('session_preference', '')
+        pref_text = f" ({placeholder_data.get('preference_horaire_text', '')})" if preference else ""
+
+        html = f'<b>Sessions de formation disponibles{pref_text}</b><br>'
+
+        current_exam = None
+        for session in sessions:
+            exam_date = session.get('date_examen_formatted', '')
+            if exam_date != current_exam:
+                current_exam = exam_date
+                html += f'Pour l\'examen du {exam_date} :<br>'
+
+            if session.get('is_jour'):
+                html += f'&nbsp;&nbsp;→ <b>Cours du jour</b> : du {session.get("date_debut", "")} au {session.get("date_fin", "")}<br>'
+            if session.get('is_soir'):
+                html += f'&nbsp;&nbsp;→ <b>Cours du soir</b> : du {session.get("date_debut", "")} au {session.get("date_fin", "")}<br>'
+
+        html += '<br><b>Merci de nous confirmer votre choix de session.</b><br><br>'
+
+        return html
 
     def _generate_ai_section(
         self,

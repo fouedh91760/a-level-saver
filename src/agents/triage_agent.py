@@ -103,7 +103,8 @@ INTENTIONS POSSIBLES (par ordre de spécificité - préfère les intentions spé
 - QUESTION_SESSION: Question sur les sessions de formation (cours du soir/jour)
   Exemples: "cours du soir", "formation du jour", "horaires de formation", "infos sur les cours"
 - CONFIRMATION_SESSION: CONFIRME son choix de session
-  Exemples: "je choisis cours du soir", "je prends l'option 2", "je confirme la formation du jour"
+  Exemples: "je choisis cours du soir", "je prends l'option 2", "je confirme la formation du jour",
+            "je participerai aux sessions du 16/03 au 27/03"
 - DEMANDE_DATE_VISIO: Demande la date/heure de sa prochaine formation en visio
   Exemples: "quand est ma formation ?", "date de la visio", "horaires de la formation"
 - DEMANDE_LIEN_VISIO: Demande le lien Zoom/Teams pour rejoindre la formation
@@ -304,9 +305,13 @@ Réponds UNIQUEMENT en JSON valide:
 IMPORTANT: Si le candidat exprime plusieurs intentions, liste l'intention principale dans primary_intent
 et les autres dans secondary_intents (array, peut être vide).
 
-Pour CONFIRMATION_SESSION, extraire la préférence:
-- "jour" si le candidat mentionne: cours du jour, formation du jour, journée, matin
-- "soir" si le candidat mentionne: cours du soir, formation du soir, soirée, après le travail
+Pour CONFIRMATION_SESSION, extraire dans intent_context:
+- session_preference: "jour" ou "soir" si mentionné explicitement
+  → "jour" si: cours du jour, formation du jour, journée, matin
+  → "soir" si: cours du soir, formation du soir, soirée, après le travail
+- confirmed_session_dates: "DD/MM/YYYY-DD/MM/YYYY" si le candidat mentionne une plage de dates
+  → Exemples: "du 16/03 au 27/03" → "16/03/2026-27/03/2026"
+  → Format: date_debut-date_fin (avec l'année en cours ou l'année suivante si passée)
 """
 
     def __init__(self):
