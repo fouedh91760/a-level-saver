@@ -7,6 +7,106 @@ Le workflow traite les tickets DOC en utilisant plusieurs agents spécialisés e
 
 ---
 
+## ARCHITECTURE CRITIQUE : Pipeline de Génération de Réponse
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                         PIPELINE DE RÉPONSE                                  │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│   1. TEMPLATE ENGINE (Déterministe)                                         │
+│      ├── Contient TOUTE la logique métier                                   │
+│      ├── Données factuelles (dates, liens, identifiants)                    │
+│      ├── Explications métier (ex: "clôture passée")                         │
+│      └── Structure en sections (intentions, statut, dates, actions)         │
+│                               ↓                                             │
+│   2. RESPONSE HUMANIZER (IA Sonnet) - src/utils/response_humanizer.py       │
+│      ├── Reformule pour rendre NATUREL et EMPATHIQUE                        │
+│      ├── Fusionne les sections redondantes                                  │
+│      ├── Ajoute des transitions fluides                                     │
+│      └── ⚠️  NE CONTIENT JAMAIS DE RÈGLES MÉTIER                            │
+│                               ↓                                             │
+│   3. RÉPONSE FINALE                                                         │
+│      └── Humaine, structurée, pédagogique, complète                         │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### ⚠️ RÈGLE D'OR : Séparation Métier / Mise en Forme
+
+| Composant | Responsabilité | Ce qu'il NE FAIT PAS |
+|-----------|----------------|----------------------|
+| **Template Engine** | Logique métier, données factuelles, explications | Mise en forme naturelle |
+| **Response Humanizer** | Reformulation empathique, transitions, fluidité | Ajouter des infos métier |
+
+**Pourquoi cette séparation ?**
+- Le Template Engine garantit l'**exactitude factuelle** (dates, règles, conditions)
+- Le Humanizer garantit la **qualité humaine** (ton, empathie, fluidité)
+- Si une info métier manque → **l'ajouter dans le template**, jamais dans le prompt du Humanizer
+
+### Response Humanizer (`src/utils/response_humanizer.py`)
+
+**Objectif** : Transformer une réponse structurée/robotique en email naturel et empathique.
+
+```python
+from src.utils.response_humanizer import humanize_response
+
+result = humanize_response(
+    template_response=response_html,    # Sortie du TemplateEngine
+    candidate_message=customer_message, # Message du candidat (contexte)
+    candidate_name="Aziz",              # Prénom pour personnalisation
+    use_ai=True                         # Activer l'humanisation
+)
+
+humanized_email = result['humanized_response']
+```
+
+**Ce que fait le Humanizer :**
+- ✅ Fusionne "Concernant X" + "Concernant Y" en paragraphes fluides
+- ✅ Ajoute des transitions naturelles ("Par ailleurs", "Concernant votre question sur...")
+- ✅ Rend le ton chaleureux et professionnel
+- ✅ Répond dans l'ordre logique aux questions du candidat
+- ✅ Préserve 100% des données factuelles (dates, liens, emails)
+
+**Ce que le Humanizer ne fait JAMAIS :**
+- ❌ Ajouter des explications métier (ex: pourquoi février n'est pas dispo)
+- ❌ Inventer des informations
+- ❌ Modifier les dates, liens, identifiants
+- ❌ Faire des promesses non présentes dans le template
+
+**Validation automatique** : Le Humanizer vérifie que toutes les dates, URLs et emails sont préservés. Si la validation échoue, il retourne la réponse template originale.
+
+### Exemple de transformation
+
+**Avant (Template Engine)** :
+```
+Concernant votre session de formation
+Nous avons bien noté votre préférence pour les cours du soir.
+
+Concernant votre convocation
+Vous n'avez pas encore de date d'examen assignée...
+
+Statut de votre dossier
+Votre dossier est en attente de traitement...
+
+Note : Pas de date disponible en février car la date de clôture est passée.
+```
+
+**Après (Humanizer)** :
+```
+Merci pour votre message. Je vais répondre à vos questions.
+
+Nous avons bien noté votre préférence pour les cours du soir. Votre dossier
+est actuellement en attente de traitement.
+
+Concernant votre souhait de passer l'examen en février, malheureusement
+il n'est plus possible de s'y inscrire car la date de clôture est passée.
+
+Pour recevoir votre convocation, vous devez d'abord choisir une date...
+```
+
+---
+
 ## PROCESS OBLIGATOIRE : Ajout d'un Nouveau Scénario
 
 Quand un nouveau cas métier est identifié (bug, comportement inattendu, nouveau workflow), **suivre ces étapes dans l'ordre** pour respecter l'architecture du State Engine :
