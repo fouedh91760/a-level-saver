@@ -724,6 +724,10 @@ class TemplateEngine:
             'evalbox_refus_cma': evalbox == 'Refusé CMA',
             'evalbox_convoc_recue': evalbox == 'Convoc CMA reçue',
             'no_evalbox_status': not evalbox or evalbox in ['None', '', 'N/A'],
+            # Flag pour avertissement modification identifiants (true = paiement non effectué)
+            # Payé = Dossier Synchronisé, VALIDE CMA, Convoc CMA reçue, Refusé CMA
+            # Non payé = Dossier crée, Pret a payer, Documents refusés/manquants, N/A
+            'evalbox_non_paye': evalbox not in ['Dossier Synchronisé', 'VALIDE CMA', 'Convoc CMA reçue', 'Refusé CMA'],
 
             # Numéro de dossier
             'num_dossier': examt3p_data.get('num_dossier', '') or context.get('num_dossier', ''),

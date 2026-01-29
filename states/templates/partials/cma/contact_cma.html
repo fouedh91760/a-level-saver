@@ -1,0 +1,29 @@
+<!-- Partial: Composant reutilisable pour contacter la CMA -->
+{{#if requires_cma_contact}}
+<b>Comment contacter la CMA</b><br>
+<br>
+1. Connectez-vous sur <a href="https://www.exament3p.fr">exament3p.fr</a><br>
+2. Allez dans l'onglet <b>Messagerie</b><br>
+3. Envoyez un message expliquant votre demande<br>
+
+{{#if cma_contact_urgent}}
+<br>
+<b style="color: #c0392b;">Delai court - Action supplementaire requise</b><br>
+La date de cloture etant proche ({{days_until_cloture}} jours), nous vous recommandons d'<b>appeler egalement la CMA</b> de votre departement pour accelerer le traitement.<br>
+{{/if}}
+
+<br>
+<b>Important :</b> Des que la CMA vous repond, merci de nous informer par retour de mail :<br>
+{{#if is_department_change}}
+&rarr; Votre nouveau departement d'inscription<br>
+&rarr; Votre nouvelle date d'examen<br>
+{{else}}
+&rarr; La decision de la CMA (accepte/refuse)<br>
+{{#if is_date_change}}
+&rarr; Votre nouvelle date d'examen si approuvee<br>
+{{/if}}
+{{/if}}
+<br>
+
+{{> partials/cma/identifiants_examt3p}}
+{{/if}}
