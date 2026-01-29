@@ -259,6 +259,16 @@ class DOCTicketWorkflow:
             analysis_result = self._run_analysis(ticket_id, triage_result)
             result['analysis_result'] = analysis_result
 
+            # Check for early exit (e.g., VTC classique → DOCS CAB)
+            if analysis_result.get('workflow_stage') == 'STOPPED_DOCS_CAB':
+                logger.info("🛑 SORTIE ANTICIPÉE → Deal VTC classique transféré vers DOCS CAB")
+                result['workflow_stage'] = 'STOPPED_DOCS_CAB'
+                result['transferred_to'] = analysis_result.get('transferred_to')
+                result['draft_created'] = False
+                result['crm_updated'] = False
+                result['success'] = True
+                return result
+
             # Check VÉRIFICATION #1: Identifiants ExamenT3P
             examt3p_data = analysis_result.get('examt3p_data', {})
             if examt3p_data.get('should_respond_to_candidate'):
@@ -280,6 +290,163 @@ class DOCTicketWorkflow:
                 logger.info(f"✅ Date examen VTC OK (CAS {date_examen_vtc_result.get('case', 'N/A')})")
 
             logger.info("✅ ANALYSIS → Données extraites")
+
+            # ================================================================
+            # CHECK: DEMANDE_CONVOCATION + Date passée → Traitement manuel
+            # ================================================================
+            # Si le candidat demande sa convocation mais l'examen est passé,
+            # c'est une incohérence qui nécessite un traitement manuel
+            detected_intent = triage_result.get('detected_intent', '')
+            secondary_intents = triage_result.get('secondary_intents', [])
+            all_intents = [detected_intent] + secondary_intents
+
+            date_case = date_examen_vtc_result.get('case')
+            date_passee_cases = [2, 7, 8]  # CAS 2, 7, 8 = date d'examen dans le passé
+
+            if 'DEMANDE_CONVOCATION' in all_intents and date_case in date_passee_cases:
+                logger.warning("🚨 INCOHÉRENCE DÉTECTÉE: Demande de convocation + date d'examen passée")
+
+                # Récupérer les infos pour la note
+                deal_data = analysis_result.get('deal_data', {})
+                contact_data = analysis_result.get('contact_data', {})
+                enriched_lookups = analysis_result.get('enriched_lookups', {})
+                threads_data = analysis_result.get('threads', [])  # Clé correcte: 'threads'
+
+                prenom = contact_data.get('First_Name', 'Candidat')
+                nom = contact_data.get('Last_Name', '')
+                date_examen = enriched_lookups.get('date_examen', 'N/A')
+                evalbox = deal_data.get('Evalbox', 'N/A')
+
+                # Générer un résumé des échanges via IA
+                threads_summary = "Non disponible"
+                try:
+                    import anthropic
+                    from config import settings
+
+                    # Extraire le contenu des threads pour le résumé
+                    threads_text = []
+                    for t in threads_data[:10]:  # Max 10 derniers threads
+                        direction = "CANDIDAT" if t.get('direction') == 'in' else "CAB"
+                        content = t.get('content', t.get('summary', ''))[:500]
+                        threads_text.append(f"[{direction}]: {content}")
+
+                    if threads_text:
+                        client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
+                        summary_response = client.messages.create(
+                            model="claude-3-5-haiku-20241022",
+                            max_tokens=300,
+                            messages=[{
+                                "role": "user",
+                                "content": f"""Résume en 3-4 phrases les échanges suivants entre un candidat VTC et CAB Formations.
+Focus sur: ce que demande le candidat, les problèmes mentionnés, les actions déjà faites.
+
+ÉCHANGES:
+{chr(10).join(threads_text)}
+
+RÉSUMÉ (3-4 phrases, en français):"""
+                            }]
+                        )
+                        threads_summary = summary_response.content[0].text.strip()
+                except Exception as e:
+                    logger.warning(f"⚠️ Impossible de générer le résumé des échanges: {e}")
+                    threads_summary = f"Erreur: {str(e)[:100]}"
+
+                # Récupérer l'état ExamT3P
+                examt3p_status = "Non disponible"
+                try:
+                    statut_dossier = examt3p_data.get('statut_dossier', 'N/A')
+                    num_dossier = examt3p_data.get('num_dossier', 'N/A')
+                    documents = examt3p_data.get('documents', [])
+                    examens = examt3p_data.get('examens', [])
+                    paiements = examt3p_data.get('paiements', [])
+
+                    # S'assurer que ce sont des listes
+                    if not isinstance(documents, list):
+                        documents = []
+                    if not isinstance(examens, list):
+                        examens = []
+                    if not isinstance(paiements, list):
+                        paiements = []
+
+                    docs_status = []
+                    for doc in documents[:5] if documents else []:
+                        if isinstance(doc, dict):
+                            doc_name = doc.get('name', doc.get('type', 'Document'))
+                            doc_state = doc.get('status', doc.get('state', 'N/A'))
+                            docs_status.append(f"• {doc_name}: {doc_state}")
+
+                    exams_status = []
+                    for exam in examens[:3] if examens else []:
+                        if isinstance(exam, dict):
+                            exam_date = exam.get('date', 'N/A')
+                            exam_result = exam.get('result', exam.get('status', 'N/A'))
+                            exams_status.append(f"• {exam_date}: {exam_result}")
+
+                    nb_docs = len(documents) if documents else 0
+                    nb_exams = len(examens) if examens else 0
+                    nb_paie = len(paiements) if paiements else 0
+
+                    examt3p_status = f"""<b>Statut dossier:</b> {statut_dossier}<br>
+<b>N° dossier:</b> {num_dossier}<br>
+<b>Documents ({nb_docs}):</b><br>{'<br>'.join(docs_status) if docs_status else '• Aucun document'}<br>
+<b>Examens ({nb_exams}):</b><br>{'<br>'.join(exams_status) if exams_status else '• Aucun examen enregistré'}<br>
+<b>Paiements:</b> {nb_paie} enregistré(s)"""
+                except Exception as e:
+                    logger.warning(f"⚠️ Impossible de récupérer l'état ExamT3P: {e}")
+                    examt3p_status = f"Erreur: {str(e)[:100]}"
+
+                # Créer le draft avec note manuelle enrichie
+                manual_note = f"""<b>⚠️ À TRAITER MANUELLEMENT</b><br>
+<br>
+Le candidat demande sa convocation mais la date d'examen dans Zoho CRM est dans le passé.<br>
+<br>
+<hr>
+<b>📋 INFORMATIONS CANDIDAT</b><br>
+<b>Nom:</b> {prenom} {nom}<br>
+<b>Date d'examen CRM:</b> {date_examen}<br>
+<b>Evalbox:</b> {evalbox}<br>
+<b>Intention détectée:</b> DEMANDE_CONVOCATION<br>
+<br>
+<hr>
+<b>💬 RÉSUMÉ DES ÉCHANGES</b><br>
+{threads_summary}<br>
+<br>
+<hr>
+<b>🌐 ÉTAT EXAMT3P</b><br>
+{examt3p_status}<br>
+<br>
+<hr>
+<b>🔧 ACTIONS POSSIBLES</b><br>
+→ Vérifier si le candidat a passé l'examen<br>
+→ Vérifier le résultat si examen passé<br>
+→ Proposer une nouvelle inscription si échec/absence<br>
+<br>
+<i>Ce ticket nécessite une intervention humaine.</i>"""
+
+                # Créer le brouillon
+                try:
+                    from config import settings
+                    ticket = self.desk_client.get_ticket(ticket_id)
+                    to_email = ticket.get('email', '')
+                    from_email = settings.zoho_desk_email_doc or settings.zoho_desk_email_default
+
+                    self.desk_client.create_ticket_reply_draft(
+                        ticket_id=ticket_id,
+                        content=manual_note,
+                        content_type="html",
+                        from_email=from_email,
+                        to_email=to_email
+                    )
+                    logger.info("✅ DRAFT MANUEL → Note créée pour traitement humain")
+                    result['draft_created'] = True
+                except Exception as e:
+                    logger.error(f"❌ Erreur création draft manuel: {e}")
+                    result['draft_created'] = False
+
+                result['workflow_stage'] = 'STOPPED_MANUAL_CONVOCATION'
+                result['reason'] = f'Demande convocation + date passée ({date_examen}) - Traitement manuel requis'
+                result['success'] = True
+                return result
 
             # ================================================================
             # STEP 3: AGENT RÉDACTEUR (Response generation with Claude + RAG)
@@ -1059,6 +1226,39 @@ Deux comptes ExamenT3P fonctionnels ont été détectés pour ce candidat, et le
                 logger.info("  ✅ Candidat Uber éligible - peut être inscrit à l'examen")
         else:
             logger.info("  ℹ️ Pas une opportunité Uber 20€")
+
+            # ================================================================
+            # SORTIE ANTICIPÉE: Deal VTC classique (hors partenariat Uber)
+            # ================================================================
+            # Les deals non-Uber (599€, 1299€, CPF, etc.) sont gérés manuellement
+            # par l'équipe DOCS CAB → Transfert et STOP (pas de draft, pas de CRM)
+            deal_stage = deal_data.get('Stage', '')
+            if deal_stage == 'GAGNÉ':
+                logger.info("\n🚦 SORTIE ANTICIPÉE - Deal VTC classique détecté")
+                logger.info(f"  Deal: {deal_data.get('Deal_Name', 'N/A')} ({deal_data.get('Amount', 0)}€)")
+                logger.info(f"  Stage: {deal_stage}")
+                logger.info("  → Transfert vers DOCS CAB et arrêt du workflow")
+
+                try:
+                    self.desk_client.move_ticket_to_department(ticket_id, "DOCS CAB")
+                    logger.info("✅ TRANSFER → Ticket transféré vers DOCS CAB")
+                    transferred = True
+                except Exception as transfer_error:
+                    logger.warning(f"⚠️ Impossible de transférer vers DOCS CAB: {transfer_error}")
+                    transferred = False
+
+                return {
+                    'success': True,
+                    'workflow_stage': 'STOPPED_DOCS_CAB',
+                    'reason': 'Deal VTC classique (non-Uber) - Transféré vers DOCS CAB',
+                    'ticket_id': ticket_id,
+                    'deal_id': deal_id,
+                    'deal_name': deal_data.get('Deal_Name', 'N/A'),
+                    'deal_amount': deal_data.get('Amount', 0),
+                    'transferred_to': 'DOCS CAB' if transferred else None,
+                    'draft_created': False,
+                    'crm_updated': False
+                }
 
         # ================================================================
         # RÈGLE: Si pas de Date_Dossier_re_u → pas de dates/sessions
