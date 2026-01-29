@@ -143,6 +143,19 @@
 {{> partials/intentions/refus_credentials}}
 {{/if}}
 
+{{#if intention_permis_probatoire}}
+{{> partials/intentions/permis_probatoire}}
+{{/if}}
+
+{{#if intention_date_lointaine}}
+{{> partials/intentions/date_lointaine}}
+{{/if}}
+
+<!-- SECTION PROSPECT : Rappel inscription -->
+{{#if is_prospect}}
+{{> partials/prospect/rappel_inscription}}
+{{/if}}
+
 <!-- =====================================================================
      SECTION 2: STATUT ACTUEL DU DOSSIER
      (Toujours affiché pour que le candidat sache où il en est)

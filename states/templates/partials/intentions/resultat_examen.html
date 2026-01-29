@@ -1,17 +1,34 @@
-<!-- Partial: Réponse à l'intention RESULTAT_EXAMEN -->
-<b>Concernant votre résultat d'examen</b><br>
+<!-- Partial: Reponse a l'intention RESULTAT_EXAMEN -->
+<b>Concernant votre resultat d'examen</b><br>
 <br>
-{{#if resultat_global}}
-Votre résultat : <b>{{resultat_global}}</b><br>
+{{#if resultat_admis}}
+{{> partials/resultats/admis}}
 {{/if}}
-{{#if note_bilan}}
-Note obtenue : {{note_bilan}}/20<br>
+
+{{#if resultat_non_admis}}
+{{> partials/resultats/non_admis}}
 {{/if}}
-{{#if attente_resultat}}
-Les résultats sont généralement disponibles sous 48 à 72 heures après l'examen.<br>
-Vous recevrez une notification par email dès que votre résultat sera publié.<br>
+
+{{#if resultat_absent}}
+{{> partials/resultats/absent}}
 {{/if}}
-{{#if examen_pas_encore}}
-Votre examen n'a pas encore eu lieu. Les résultats seront disponibles après votre passage.<br>
+
+{{#if examen_pas_encore_passe}}
+Votre examen est prevu le <b>{{date_examen}}</b>. Les resultats ne seront disponibles qu'apres avoir passe l'examen.<br>
+<br>
+Vous recevrez vos resultats par email dans les 48 a 72 heures suivant l'examen. Ils seront egalement consultables sur votre espace <a href="https://www.exament3p.fr">exament3p.fr</a>.<br>
+<br>
+En attendant, n'hesitez pas a reviser sur votre <a href="https://cab-formations.fr/user">espace e-learning</a>.<br>
 {{/if}}
+
+{{#unless resultat_admis}}
+{{#unless resultat_non_admis}}
+{{#unless resultat_absent}}
+{{#unless examen_pas_encore_passe}}
+Les resultats sont generalement disponibles sous 48 a 72 heures apres l'examen.<br>
+Vous recevrez une notification par email des que votre resultat sera publie. Vous pourrez egalement le consulter sur <a href="https://www.exament3p.fr">exament3p.fr</a>.<br>
+{{/unless}}
+{{/unless}}
+{{/unless}}
+{{/unless}}
 <br>

@@ -962,6 +962,21 @@ class TemplateEngine:
             'new_exam_date': self._format_date(context.get('new_exam_date', '')) if context.get('new_exam_date') else '',
             'new_exam_date_cloture': self._format_date(context.get('new_exam_date_cloture', '')) if context.get('new_exam_date_cloture') else '',
 
+            # Flags temporels pour templates (comparateurs Handlebars non supportés)
+            'exam_within_7_days': context.get('exam_within_7_days', False),
+            'exam_within_10_days': context.get('exam_within_10_days', False),
+            'examen_pas_encore_passe': context.get('examen_pas_encore_passe', False),
+            'examen_imminent': context.get('examen_imminent', False),
+            'convocation_anormale': context.get('convocation_anormale', False),
+            'days_until_exam': context.get('days_until_exam'),
+
+            # Pièces refusées (pour templates Refus CMA)
+            'pieces_refusees_details': context.get('pieces_refusees_details', []),
+            'has_pieces_refusees': context.get('has_pieces_refusees', False),
+
+            # Prospect (alias pour templates)
+            'is_prospect': context.get('is_prospect', False) or context.get('is_uber_prospect', False),
+
             # Booléens pour proposer dates/sessions
             'date_examen_vide': not date_examen,
             'session_vide': not deal_data.get('Session'),
@@ -1021,8 +1036,8 @@ class TemplateEngine:
             'same_dept_other_months': self._format_next_dates_for_template(context.get('same_dept_other_months', [])),
 
             # Flags pour le template master (architecture modulaire)
-            # Sections à afficher
-            'show_statut_section': True,  # Toujours afficher le statut
+            # Sections à afficher (peuvent être désactivées via context_flags de la matrice)
+            'show_statut_section': context.get('show_statut_section', True),  # Par défaut True, sauf si désactivé
             'show_dates_section': not date_examen and bool(context.get('next_dates', [])),
             # NOTE: show_sessions_section est calculé après car il dépend de report_possible
             'show_sessions_section': False,  # Sera mis à jour ci-dessous

@@ -1,0 +1,16 @@
+<!-- Partial: Reponse intention PERMIS_PROBATOIRE -->
+<b>Concernant votre permis probatoire</b><br>
+Pour passer l'examen VTC, vous devez avoir termine votre periode de probation de permis de conduire (3 ans, ou 2 ans si conduite accompagnee).<br>
+<br>
+<b>Regle importante :</b><br>
+Vous pouvez vous inscrire a un examen dont la <b>date de cloture des inscriptions</b> est posterieure a la fin de votre periode probatoire.<br>
+<br>
+{{#if has_next_dates}}
+<b>Prochaines dates d'examen disponibles :</b><br>
+{{#each next_dates}}
+&rarr; {{this.date_examen_formatted}} - Departement {{this.Departement}} (cloture : {{this.date_cloture_formatted}})<br>
+{{/each}}
+<br>
+{{/if}}
+<b>Merci de nous preciser la date de fin de votre periode probatoire</b> (indiquee sur votre permis de conduire) afin que nous puissions vous confirmer les dates d'examen accessibles pour vous.<br>
+<br>

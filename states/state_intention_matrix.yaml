@@ -210,6 +210,35 @@ intentions:
     routing: "Contact"
     priority: 90
 
+  # --- Permis probatoire ---
+  PERMIS_PROBATOIRE:
+    id: "I38"
+    description: "Question sur permis probatoire"
+    triggers:
+      - "permis probatoire"
+      - "jeune permis"
+      - "3 ans de permis"
+      - "fin de probation"
+      - "permis de moins de 3 ans"
+      - "période probatoire"
+    priority: 80
+
+  # --- Date lointaine ExamT3P ---
+  DATE_LOINTAINE_EXAMT3P:
+    id: "I39"
+    description: "Veut une date pas encore visible sur ExamT3P"
+    triggers:
+      - "date pas disponible"
+      - "date non visible"
+      - "date pas encore"
+      - "septembre"
+      - "octobre"
+      - "novembre"
+      - "décembre"
+      - "plus tard dans l'année"
+      - "date plus lointaine"
+    priority: 70
+
   # --- Questions documents ---
   DOCUMENT_QUESTION:
     id: "I17"
@@ -1215,6 +1244,79 @@ matrix:
       intention_statut_dossier: true
       show_statut_section: true
 
+  "CONVOCATION_RECEIVED:RESULTAT_EXAMEN":
+    template: "response_master.html"
+    description: "A la convocation, demande résultat - examen pas encore passé"
+    context_flags:
+      intention_resultat_examen: true
+      evalbox_convoc_recue: true
+      examen_pas_encore_passe: true
+      show_statut_section: true
+
+  # --- EVALBOX_REFUSE_CMA × Intentions ---
+  "EVALBOX_REFUSE_CMA:DEMANDE_CONVOCATION":
+    template: "response_master.html"
+    description: "Demande convocation mais dossier refusé CMA"
+    context_flags:
+      intention_demande_convocation: true
+      evalbox_refus_cma: true
+      show_documents_refuses: true
+      show_statut_section: true
+
+  "EVALBOX_REFUSE_CMA:REPORT_DATE":
+    template: "response_master.html"
+    description: "Demande report mais dossier déjà refusé = report auto"
+    context_flags:
+      intention_report_date: true
+      evalbox_refus_cma: true
+      report_deja_effectue: true
+      show_documents_refuses: true
+
+  # --- DOSSIER_SYNCHRONIZED × DEMANDE_CONVOCATION ---
+  "DOSSIER_SYNCHRONIZED:DEMANDE_CONVOCATION":
+    template: "response_master.html"
+    description: "Demande convocation mais dossier en cours d'instruction"
+    context_flags:
+      intention_demande_convocation: true
+      evalbox_dossier_synchronise: true
+      show_statut_section: true
+
+  # --- DEADLINE_RATEE × DEMANDE_CONVOCATION ---
+  "DEADLINE_RATEE:DEMANDE_CONVOCATION":
+    template: "response_master.html"
+    description: "Demande convocation mais deadline ratée = report auto"
+    context_flags:
+      intention_demande_convocation: true
+      deadline_missed: true
+      show_statut_section: true
+
+  # --- EXAM_DATE_EMPTY × DEMANDE_CONVOCATION ---
+  "EXAM_DATE_EMPTY:DEMANDE_CONVOCATION":
+    template: "response_master.html"
+    description: "Demande convocation mais pas de date assignée"
+    context_flags:
+      intention_demande_convocation: true
+      date_examen_vide: true
+      show_dates_section: true
+
+  # --- DATE_FUTURE_VALIDE_CMA × DEMANDE_CONVOCATION ---
+  "DATE_FUTURE_VALIDE_CMA:DEMANDE_CONVOCATION":
+    template: "response_master.html"
+    description: "Demande convocation - validé CMA"
+    context_flags:
+      intention_demande_convocation: true
+      evalbox_valide_cma: true
+      show_statut_section: true
+
+  # --- EXAM_DATE_PAST_VALIDATED × DEMANDE_CONVOCATION ---
+  "EXAM_DATE_PAST_VALIDATED:DEMANDE_CONVOCATION":
+    template: "response_master.html"
+    description: "Date passée + validé, demande convocation"
+    context_flags:
+      intention_demande_convocation: true
+      examen_probablement_passe: true
+      show_statut_section: true
+
   # --- REFUS_PARTAGE_CREDENTIALS (priorité maximale, s'applique à tout état) ---
   "*:REFUS_PARTAGE_CREDENTIALS":
     priority: 95
@@ -1244,6 +1346,51 @@ matrix:
     blocks:
       - verification_paiement
       - prochaines_etapes
+
+  "PROSPECT_UBER_20:STATUT_DOSSIER":
+    template: "response_master.html"
+    description: "Prospect demande statut"
+    context_flags:
+      intention_statut_dossier: true
+      is_prospect: true
+      show_statut_section: true
+
+  "PROSPECT_UBER_20:DEMANDE_CONVOCATION":
+    template: "response_master.html"
+    description: "Prospect demande convocation"
+    context_flags:
+      intention_demande_convocation: true
+      is_prospect: true
+
+  "PROSPECT_UBER_20:DEMANDE_IDENTIFIANTS":
+    template: "response_master.html"
+    description: "Prospect demande identifiants"
+    context_flags:
+      intention_demande_identifiants: true
+      is_prospect: true
+
+  "PROSPECT_UBER_20:DEMANDE_AUTRES_DATES":
+    template: "response_master.html"
+    description: "Prospect demande dates"
+    context_flags:
+      intention_demande_date: true
+      is_prospect: true
+      show_dates_section: true
+
+  # --- WILDCARDS pour nouvelles intentions (s'appliquent à tout état) ---
+  "*:PERMIS_PROBATOIRE":
+    template: "response_master.html"
+    description: "Question sur permis probatoire - tous états"
+    context_flags:
+      intention_permis_probatoire: true
+      show_dates_section: true
+
+  "*:DATE_LOINTAINE_EXAMT3P":
+    template: "response_master.html"
+    description: "Date lointaine non visible sur ExamT3P - tous états"
+    context_flags:
+      intention_date_lointaine: true
+      show_dates_section: true
 
   # ===========================================================================
   # UBER_DOCS_MISSING (CAS A) × Intentions
@@ -2038,6 +2185,7 @@ base_templates:
       # NE PAS inclure intention_report_date car report_possible couvre déjà le REPORT_DATE
       show_dates_section: false  # dates affichées dans le partial report/possible
       show_sessions_section: true
+      show_statut_section: false  # pas pertinent pour un report de date
 
   credentials_refused:
     file: "templates/base/credentials_refused.html"

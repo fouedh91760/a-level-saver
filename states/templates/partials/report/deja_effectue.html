@@ -1,0 +1,23 @@
+<!-- Partial: Report deja effectue automatiquement -->
+<b>Concernant votre demande de report</b><br>
+Votre dossier ayant ete refuse par la CMA, votre inscription a ete <b>automatiquement reportee</b> sur la prochaine session d'examen.<br>
+<br>
+{{#if has_pieces_refusees}}
+<b>Documents a corriger :</b><br>
+{{#each pieces_refusees_details}}
+- <b>{{this.nom}}</b> - {{this.motif}}<br>
+  &rarr; {{this.solution}}<br>
+{{/each}}
+<br>
+{{/if}}
+{{#if has_next_dates}}
+<b>Prochaine date d'examen :</b><br>
+{{#each next_dates}}
+{{#if this.is_first_of_dept}}
+&rarr; {{this.date_examen_formatted}} - Departement {{this.Departement}} (cloture : {{this.date_cloture_formatted}})<br>
+{{/if}}
+{{/each}}
+<br>
+{{/if}}
+<b style="color: #c0392b;">Important :</b> Corrigez vos documents avant la date de cloture pour eviter un nouveau report.<br>
+<br>

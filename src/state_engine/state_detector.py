@@ -277,6 +277,18 @@ class StateDetector:
             except Exception as e:
                 pass
 
+        # Flags temporels pour templates (remplacent les comparateurs Handlebars non supportés)
+        exam_within_7_days = days_until_exam is not None and 0 <= days_until_exam <= 7
+        exam_within_10_days = days_until_exam is not None and 0 <= days_until_exam <= 10
+        examen_pas_encore_passe = days_until_exam is not None and days_until_exam > 0
+        examen_imminent = days_until_exam is not None and 0 <= days_until_exam <= 3
+
+        # Flag pour convocation anormale (VALIDE CMA + J-7 + pas de convoc)
+        convocation_anormale = (
+            evalbox == 'VALIDE CMA' and
+            exam_within_7_days
+        )
+
         context = {
             # Données brutes
             'deal_data': deal_data,
@@ -301,6 +313,13 @@ class StateDetector:
             'cloture_passed': cloture_passed,
             'date_examen_passed': days_until_exam is not None and days_until_exam < 0,
             'date_examen_future': days_until_exam is not None and days_until_exam >= 0,
+
+            # Flags temporels pour templates (comparateurs non supportés en Handlebars)
+            'exam_within_7_days': exam_within_7_days,
+            'exam_within_10_days': exam_within_10_days,
+            'examen_pas_encore_passe': examen_pas_encore_passe,
+            'examen_imminent': examen_imminent,
+            'convocation_anormale': convocation_anormale,
 
             # Triage - intentions (primary_intent est le standard, detected_intent pour rétrocompat)
             'triage_action': triage_result.get('action', 'GO'),
@@ -336,9 +355,14 @@ class StateDetector:
             'extraction_failed': examt3p_data.get('extraction_failed', False),
             'error_type': examt3p_data.get('error_type'),  # 'technical' ou 'credentials'
 
+            # Pièces refusées (pour templates Refus CMA)
+            'pieces_refusees_details': examt3p_data.get('pieces_refusees_details', []),
+            'has_pieces_refusees': bool(examt3p_data.get('pieces_refusees_details')),
+
             # Uber spécifique
             'is_uber_20_deal': amount == 20 and 'GAGN' in str(stage).upper(),
             'is_uber_prospect': amount == 20 and 'ATTENTE' in str(stage).upper(),
+            'is_prospect': amount == 20 and 'ATTENTE' in str(stage).upper(),  # Alias pour templates
             'date_dossier_recu': deal_data.get('Date_Dossier_re_u'),
             'date_test_selection': deal_data.get('Date_test_selection'),
             'compte_uber': deal_data.get('Compte_Uber', False),
