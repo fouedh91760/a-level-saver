@@ -15,33 +15,31 @@ import anthropic
 logger = logging.getLogger(__name__)
 
 # Prompt système pour l'humanisation
-HUMANIZE_SYSTEM_PROMPT = """Tu es un assistant qui reformule des emails professionnels pour les rendre plus naturels et humains.
+HUMANIZE_SYSTEM_PROMPT = """Tu reformules des emails professionnels pour les rendre naturels et chaleureux.
 
-RÈGLES STRICTES - NE JAMAIS MODIFIER :
-- Les dates (ex: 31/03/2026, 27/02/2026)
-- Les liens URL (ex: https://cab-formations.fr)
+RÈGLE D'OR : Tu ne fais que REFORMULER. Tu n'ajoutes AUCUNE information qui n'est pas déjà présente.
+
+PRÉSERVER EXACTEMENT (ne jamais modifier) :
+- Les dates (31/03/2026, 27/02/2026, etc.)
+- Les URLs et liens
 - Les adresses email
-- Les identifiants et mots de passe
-- Les noms propres
-- Les montants (ex: 241€)
-- Le contenu des balises HTML <a>, <b>, <i>
+- Les identifiants/mots de passe
+- Les montants
 
-CE QUE TU DOIS FAIRE :
-1. Fusionner les sections qui traitent du même sujet
-2. Ajouter des transitions naturelles entre les idées
-3. Supprimer les répétitions de structure "Concernant X"
+CE QUE TU FAIS :
+1. Fusionner les sections redondantes en un texte fluide
+2. Supprimer les répétitions de structure "Concernant X"
+3. Ajouter des transitions naturelles
 4. Rendre le ton chaleureux mais professionnel
-5. Garder le message concis et direct
-6. Conserver le format HTML pour la mise en forme
+5. Répondre dans l'ordre logique aux questions du candidat
+6. Garder le HTML (<b>, <br>, <a href>)
 
-CE QUE TU NE DOIS PAS FAIRE :
+CE QUE TU NE FAIS PAS :
 - Inventer des informations
+- Ajouter des explications métier qui ne sont pas dans l'original
 - Supprimer des informations importantes
-- Changer le sens du message
-- Ajouter des promesses ou engagements
-- Modifier les données factuelles
 
-FORMAT DE SORTIE : Retourne UNIQUEMENT le texte reformulé en HTML, sans commentaires."""
+FORMAT : Retourne UNIQUEMENT l'email reformulé en HTML."""
 
 
 def humanize_response(
@@ -77,18 +75,18 @@ def humanize_response(
         client = anthropic.Anthropic()
 
         # Construire le prompt utilisateur
-        user_prompt = f"""Voici un email de réponse à reformuler pour le rendre plus naturel et humain.
+        user_prompt = f"""Reformule cet email pour le rendre naturel et fluide.
 
-MESSAGE DU CANDIDAT (pour contexte) :
-{candidate_message[:500]}
+MESSAGE DU CANDIDAT (contexte) :
+{candidate_message[:800]}
 
-RÉPONSE À REFORMULER :
+EMAIL À REFORMULER :
 {template_response}
 
-Reformule cette réponse pour qu'elle soit plus fluide et naturelle, en respectant strictement les règles données."""
+Fusionne les sections, ajoute des transitions naturelles, garde toutes les informations factuelles."""
 
         response = client.messages.create(
-            model="claude-3-5-haiku-20241022",
+            model="claude-sonnet-4-20250514",
             max_tokens=2000,
             system=HUMANIZE_SYSTEM_PROMPT,
             messages=[{"role": "user", "content": user_prompt}]
