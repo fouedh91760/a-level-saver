@@ -1302,15 +1302,20 @@ Deux comptes ExamenT3P fonctionnels ont été détectés pour ce candidat, et le
             exam_dates_for_session = [date_examen_info]
             logger.info(f"  📚 CONFIRMATION_SESSION + date assignée ({date_examen_info.get('Date_Examen')}) → sessions pour cette date uniquement")
         elif detected_intent == 'REPORT_DATE':
-            # CAS 2: REPORT_DATE → sessions pour les dates alternatives (exclure la date actuelle)
+            # CAS 2: REPORT_DATE → charger les dates SPÉCIFIQUES au département et exclure la date actuelle
             current_date = date_examen_info.get('Date_Examen') if date_examen_info else None
-            if next_dates and current_date:
-                # Filtrer la date actuelle des next_dates
-                exam_dates_for_session = [d for d in next_dates if d.get('Date_Examen') != current_date]
-                logger.info(f"  📚 REPORT_DATE: sessions pour {len(exam_dates_for_session)} date(s) alternative(s) (date actuelle {current_date} exclue)")
+            current_dept = date_examen_vtc_result.get('current_departement') or date_examen_vtc_result.get('date_examen_info', {}).get('Departement')
+
+            if current_dept:
+                # Charger les dates spécifiques au département (pas la liste globale)
+                from src.utils.date_examen_vtc_helper import get_next_exam_dates
+                dept_dates = get_next_exam_dates(self.crm_client, current_dept, limit=10)
+                # Filtrer la date actuelle
+                exam_dates_for_session = [d for d in dept_dates if d.get('Date_Examen') != current_date]
+                logger.info(f"  📚 REPORT_DATE: {len(exam_dates_for_session)} date(s) du département {current_dept} (date actuelle {current_date} exclue)")
             else:
-                exam_dates_for_session = next_dates if next_dates else []
-                logger.info(f"  📚 REPORT_DATE: sessions pour {len(exam_dates_for_session)} date(s)")
+                exam_dates_for_session = []
+                logger.warning(f"  📚 REPORT_DATE: département non trouvé, pas de dates chargées")
         elif next_dates:
             # CAS 3: Nouvelles dates proposées (changement de date ou première attribution)
             exam_dates_for_session = next_dates

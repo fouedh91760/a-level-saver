@@ -77,10 +77,10 @@ def get_sessions_for_exam_date(
             f"and(Date_d_but:greater_equal:{today_str}))"
         )
 
-        # Pagination
+        # Pagination - augmentée pour couvrir tous les cas
         all_sessions = []
         page = 1
-        max_pages = 5
+        max_pages = 20  # 20 pages × 200 = 4000 sessions max
 
         while page <= max_pages:
             params = {
@@ -127,7 +127,16 @@ def get_sessions_for_exam_date(
                 logger.debug(f"  Session ignorée (lieu={lieu_name}): {session.get('Name')}")
 
         if not uber_sessions:
+            # Debug: lister les lieux trouvés
+            lieux_trouves = set()
+            for s in all_sessions[:10]:  # Limiter à 10 pour le log
+                lieu = s.get('Lieu_de_formation')
+                if isinstance(lieu, dict):
+                    lieux_trouves.add(lieu.get('name', 'N/A'))
+                elif lieu:
+                    lieux_trouves.add(str(lieu))
             logger.warning(f"Aucune session Uber (VISIO Zoom VTC) trouvée pour l'examen du {exam_date}")
+            logger.warning(f"  Lieux trouvés dans les {len(all_sessions)} sessions: {lieux_trouves}")
             return []
 
         logger.info(f"  ✅ {len(uber_sessions)} session(s) Uber (VISIO Zoom VTC)")
