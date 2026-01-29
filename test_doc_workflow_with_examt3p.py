@@ -37,6 +37,13 @@ Exemples:
     python test_doc_workflow_with_examt3p.py --bulk --dry-run --output results.json
 """
 import sys
+import io
+
+# Fix Windows encoding issues with emojis
+if sys.platform == 'win32':
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
+    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
+
 import json
 import logging
 import argparse
