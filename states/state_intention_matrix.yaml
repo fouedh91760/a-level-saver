@@ -254,6 +254,23 @@ intentions:
       - "situation exceptionnelle"
     priority: 80
 
+  # --- Erreur paiement CMA (candidat Uber a payé lui-même) ---
+  ERREUR_PAIEMENT_CMA:
+    id: "I41"
+    description: "Candidat Uber a payé les frais CMA lui-même par erreur"
+    triggers:
+      - "j'ai payé"
+      - "j'ai réglé"
+      - "payé les frais"
+      - "payé 237"
+      - "payé 241"
+      - "débité"
+      - "prélevé"
+      - "remboursement"
+      - "rembourser"
+      - "me faire rembourser"
+    priority: 85
+
   # --- Questions documents ---
   DOCUMENT_QUESTION:
     id: "I17"
@@ -1413,6 +1430,13 @@ matrix:
     context_flags:
       intention_demande_exception: true
       show_dates_section: true
+
+  "*:ERREUR_PAIEMENT_CMA":
+    template: "response_master.html"
+    description: "Candidat Uber a payé les frais CMA lui-même - expliquer options"
+    context_flags:
+      intention_erreur_paiement_cma: true
+      show_statut_section: true
 
   # ===========================================================================
   # UBER_DOCS_MISSING (CAS A) × Intentions

@@ -1173,6 +1173,7 @@ class TemplateEngine:
         'CONFIRMATION_PAIEMENT': 'intention_confirmation_paiement',
         'REFUS_PARTAGE_CREDENTIALS': 'intention_refus_credentials',
         'DEMANDE_EXCEPTION': 'intention_demande_exception',
+        'ERREUR_PAIEMENT_CMA': 'intention_erreur_paiement_cma',
         'QUESTION_EXAMEN_PRATIQUE': 'intention_question_examen_pratique',
     }
 
@@ -1211,6 +1212,7 @@ class TemplateEngine:
             'intention_refus_credentials': False,
             'intention_question_examen_pratique': False,
             'intention_demande_exception': False,
+            'intention_erreur_paiement_cma': False,
         }
 
         # Récupérer l'intention principale (rétrocompatibilité + nouveau format)

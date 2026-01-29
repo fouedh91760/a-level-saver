@@ -183,8 +183,14 @@ INTENTIONS POSSIBLES (par ordre de spécificité - préfère les intentions spé
   Exemples: "appelez-moi", "pouvez-vous m'appeler", "je préfère par téléphone"
 - RECLAMATION: Candidat mécontent, réclamation
   Exemples: "pas satisfait", "plainte", "je veux me plaindre", "scandaleux"
-- DEMANDE_REMBOURSEMENT: Demande de remboursement
-  Exemples: "remboursement", "rembourser", "annuler et rembourser"
+- ERREUR_PAIEMENT_CMA: Candidat Uber 20€ qui a payé les frais CMA (237€/241€) lui-même par erreur
+  Exemples: "j'ai payé les frais", "j'ai été débité de 237€", "on m'a prélevé", "je me suis fait rembourser ?", "j'ai réglé moi-même"
+  ⚠️ UNIQUEMENT pour les candidats Uber 20€ qui mentionnent avoir payé les frais CMA
+  ⚠️ NE PAS ROUTER vers Comptabilité - reste dans DOC avec réponse explicative
+  ⚠️ DIFFÉRENT de DEMANDE_REMBOURSEMENT générale
+- DEMANDE_REMBOURSEMENT: Demande de remboursement (hors cas Uber paiement CMA)
+  Exemples: "remboursement formation", "annuler et rembourser", "je veux arrêter"
+  ⚠️ Ne pas utiliser si c'est un candidat Uber qui a payé les frais CMA → utiliser ERREUR_PAIEMENT_CMA
 - REMERCIEMENT: Simple remerciement sans autre demande
   Exemples: "merci beaucoup", "super merci", "c'est parfait merci"
 - QUESTION_GENERALE: UNIQUEMENT si aucune intention spécifique ne correspond
