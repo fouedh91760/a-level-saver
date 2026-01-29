@@ -1,0 +1,57 @@
+{
+  "capture_timestamp": "2026-01-29T21:38:21.764455",
+  "total_tickets": 5,
+  "successful": 1,
+  "errors": [
+    "198709000448019181",
+    "198709000448043841",
+    "198709000448028627",
+    "198709000448028260"
+  ],
+  "results": [
+    {
+      "ticket_id": "198709000448774407",
+      "success": true,
+      "state": "D-5",
+      "state_name": "DOSSIER_SYNCHRONIZED",
+      "intent": "REPORT_DATE",
+      "template": null,
+      "template_file": null,
+      "blocks_included": [],
+      "response_text": "Bonjour Sylvie,<br>\n\nMerci pour votre message. Je comprends votre questionnement concernant les dates d'examen.<br>\n\nPour clarifier la situation : votre date d'examen actuellement enregistrée est le <b>31/03/2026</b> avec une clôture des inscriptions le 27/02/2026. Il n'y a effectivement pas de date d'examen prévue en <b>février</b> dans votre département (CMA 34).<br>\n\nCependant, si vous souhaitez passer l'examen plus tôt, des dates en <b>février</b> sont disponibles dans d'autres départements de votre région :<br>\n&nbsp;&nbsp;→ <b>24/02/2026</b> — CMA 11 (clôture : 30/01/2026) <span style=\"color:#c0392b;\">⚠️ clôture proche</span><br>\n&nbsp;&nbsp;→ <b>24/02/2026</b> — CMA 65 (clôture : 30/01/2026) <span style=\"color:#c0392b;\">⚠️ clôture proche</span><br>\n&nbsp;&nbsp;→ <b>24/02/2026</b> — CMA 81 (clôture : 30/01/2026) <span style=\"color:#c0392b;\">⚠️ clôture proche</span><br>\n\n<i>Note importante : votre compte ExamT3P étant créé sur la CMA 34, un changement de département nécessite une demande via l'onglet Messagerie de <a href=\"https://www.exament3p.fr\">exament3p.fr</a>.</i><br>\n\nSi vous préférez rester dans votre département mais reporter à une date ultérieure, voici la prochaine session disponible :<br>\n&nbsp;&nbsp;→ <b>30/06/2026</b> — 34 (clôture : 22/05/2026)<br>\n\nConcernant votre formation, vos modules e-learning sont déjà disponibles sur votre <a href=\"https://cab-formations.fr/user\">espace e-learning</a> :<br>\n→ Email de connexion : vivi197537@outlook.fr<br>\n→ Mot de passe : celui que vous avez défini lors de votre inscription<br>\n\n<i>Mot de passe oublié ? Cliquez sur \"Mot de passe oublié\" sur la page de connexion pour le réinitialiser.</i><br>\n\nMerci de nous confirmer si vous souhaitez <b>conserver</b> la date du 31/03/2026 ou si vous préférez <b>changer</b> pour une autre option.<br>\n\n<i>PS : Pensez à vérifier vos spams si vous n'avez pas reçu nos emails. Ajoutez doc@cab-formations.fr à vos contacts.</i><br>\n\nBien cordialement,<br>\nL'équipe CAB Formations",
+      "response_length": 1999
+    },
+    {
+      "ticket_id": "198709000448019181",
+      "success": false,
+      "error": [
+        "RetryError[<Future at 0x185abdb6510 state=finished raised RetryError>]"
+      ],
+      "workflow_stage": "TRIAGE"
+    },
+    {
+      "ticket_id": "198709000448043841",
+      "success": false,
+      "error": [
+        "RetryError[<Future at 0x185abac3110 state=finished raised RetryError>]"
+      ],
+      "workflow_stage": "TRIAGE"
+    },
+    {
+      "ticket_id": "198709000448028627",
+      "success": false,
+      "error": [
+        "RetryError[<Future at 0x185abd482d0 state=finished raised RetryError>]"
+      ],
+      "workflow_stage": "TRIAGE"
+    },
+    {
+      "ticket_id": "198709000448028260",
+      "success": false,
+      "error": [
+        "RetryError[<Future at 0x185a9da7cd0 state=finished raised RetryError>]"
+      ],
+      "workflow_stage": "TRIAGE"
+    }
+  ]
+}

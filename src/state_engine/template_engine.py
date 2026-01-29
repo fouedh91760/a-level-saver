@@ -28,6 +28,10 @@ from .state_detector import DetectedState, DetectedStates
 
 logger = logging.getLogger(__name__)
 
+# Feature flag for pybars3-based rendering
+# Set to True to use pybars3 library instead of regex-based parsing
+PYBARS_ENABLED = True
+
 # Chemins vers les ressources
 STATES_PATH = Path(__file__).parent.parent.parent / "states"
 TEMPLATES_BASE_PATH = STATES_PATH / "templates" / "base_legacy"  # Migrated to partials
@@ -68,6 +72,15 @@ class TemplateEngine:
         self.blocks_registry = self.matrix.get('blocks_registry', {})
         self.base_templates = self.matrix.get('base_templates', {})
         self.state_intention_matrix = self.matrix.get('matrix', {})
+
+        # Initialize pybars3 renderer if enabled
+        if PYBARS_ENABLED:
+            from .pybars_renderer import PybarsRenderer
+            self.pybars_renderer = PybarsRenderer(self.states_path)
+            self.pybars_renderer.load_all_partials()
+            logger.info("TemplateEngine: Using pybars3 renderer")
+        else:
+            self.pybars_renderer = None
 
         logger.info(f"TemplateEngine initialisé: {len(self.blocks_registry)} blocs, {len(self.base_templates)} templates")
 
@@ -528,275 +541,30 @@ class TemplateEngine:
         """
         Parse le template et résout les partials, conditionnels, boucles.
 
-        Ordre de traitement:
-        1. {{> partial}} - Inclusion de blocs
-        2. {{#if}}...{{else}}...{{/if}} - Conditionnels
-        3. {{#unless}}...{{/unless}} - Conditionnels inverses
-        4. {{#each}}...{{/each}} - Boucles
+        Uses pybars3 library for robust Handlebars parsing.
+        Supports: {{variable}}, {{> partial}}, {{#if}}, {{#unless}}, {{#each}}
         """
-        result = template
+        if not self.pybars_renderer:
+            raise RuntimeError("PybarsRenderer not initialized. Ensure PYBARS_ENABLED=True")
 
-        # 1. Résoudre les partials ({{> bloc_name}})
-        result = self._resolve_partials(result, context, blocks_included)
+        return self.pybars_renderer.render(template, context)
 
-        # 1.5 Supprimer les commentaires Handlebars AVANT parsing des blocs
-        # (sinon {{!-- interfère avec les regex de {{#if}}, {{#unless}}, etc.)
-        result = re.sub(r'\{\{!--.*?--\}\}', '', result, flags=re.DOTALL)
-
-        # 2. Résoudre les conditionnels {{#if}}
-        result = self._resolve_if_blocks(result, context)
-
-        # 3. Résoudre les conditionnels inverses {{#unless}}
-        result = self._resolve_unless_blocks(result, context)
-
-        # 4. Résoudre les boucles {{#each}}
-        result = self._resolve_each_blocks(result, context)
-
-        return result
-
-    def _resolve_partials(
-        self,
-        template: str,
-        context: Dict[str, Any],
-        blocks_included: List[str]
-    ) -> str:
-        """Résout les {{> bloc_name}} en chargeant et injectant les blocs."""
-        result = template
-
-        # Pattern pour {{> bloc_name}} ou {{> path/to/partial}}
-        # Supporte les chemins avec / comme partials/intentions/statut_dossier
-        pattern = r'\{\{>\s*([\w/]+)\s*\}\}'
-
-        while True:
-            match = re.search(pattern, result)
-            if not match:
-                break
-
-            block_name = match.group(1)
-
-            # Si c'est un chemin (contient /), charger directement depuis templates/
-            if '/' in block_name:
-                block_content = self._load_partial_path(block_name)
-            else:
-                block_content = self._load_block(block_name)
-
-            if block_content:
-                # Résoudre récursivement les partials dans le bloc
-                block_content = self._resolve_partials(block_content, context, blocks_included)
-                # Supprimer les commentaires Handlebars AVANT parsing des blocs if/unless
-                block_content = re.sub(r'\{\{!--.*?--\}\}', '', block_content, flags=re.DOTALL)
-                # Résoudre les conditionnels dans le bloc
-                block_content = self._resolve_if_blocks(block_content, context)
-                block_content = self._resolve_unless_blocks(block_content, context)
-
-                result = result[:match.start()] + block_content + result[match.end():]
-                blocks_included.append(block_name.split('/')[-1])  # Juste le nom pour le log
-            else:
-                # Bloc non trouvé, supprimer le placeholder
-                logger.warning(f"Bloc {block_name} non trouvé, suppression du placeholder")
-                result = result[:match.start()] + result[match.end():]
-
-        return result
-
-    def _load_partial_path(self, partial_path: str) -> str:
-        """Charge un partial depuis un chemin relatif au dossier templates."""
-        # Construire le chemin complet - utiliser states_path / templates
-        templates_root = self.states_path / "templates"
-        full_path = templates_root / partial_path
-        extensions = ['.html', '.md', '']
-
-        for ext in extensions:
-            file_path = full_path.parent / (full_path.name + ext)
-            if file_path.exists():
-                try:
-                    with open(file_path, 'r', encoding='utf-8') as f:
-                        content = f.read()
-                        # Nettoyer le contenu comme pour les autres blocs
-                        return self._clean_block_content(content)
-                except Exception as e:
-                    logger.warning(f"Erreur lecture partial {file_path}: {e}")
-                    return ''
-
-        logger.warning(f"Partial non trouvé: {partial_path} (cherché dans {templates_root})")
-        return ''
-
-    def _resolve_if_blocks(self, template: str, context: Dict[str, Any]) -> str:
-        """Résout les {{#if condition}}...{{else}}...{{/if}} avec support des blocs imbriqués."""
-        result = template
-
-        # Traiter les blocs de l'intérieur vers l'extérieur
-        # en cherchant les blocs {{#if}} qui ne contiennent pas d'autres {{#if}}
-        max_iterations = 100  # Sécurité contre les boucles infinies
-
-        # Stocker les blocs "this.*" pour les restaurer après
-        this_blocks = {}
-        this_counter = 0
-
-        for _ in range(max_iterations):
-            # Chercher un {{#if}} dont le contenu ne contient pas d'autres {{#if}}
-            # Pattern: {{#if var}} (contenu sans {{#if}}) {{/if}} ou avec {{else}}
-            # Support des chemins pointés: sessions_proposees, this.is_soir, etc.
-            pattern = r'\{\{#if\s+([\w.]+)\s*\}\}((?:(?!\{\{#if)(?!\{\{#unless).)*?)(?:\{\{else\}\}((?:(?!\{\{#if)(?!\{\{#unless).)*?))?\{\{/if\}\}'
-
-            match = re.search(pattern, result, re.DOTALL)
-            if not match:
-                break
-
-            condition_var = match.group(1)
-            if_content = match.group(2) or ''
-            else_content = match.group(3) or ''
-
-            # SKIP: Les conditions "this.*" sont réservées pour le traitement {{#each}}
-            # Elles seront résolues par _resolve_if_blocks_in_each_item
-            if condition_var.startswith('this.'):
-                # Remplacer par un placeholder unique
-                placeholder = f"__THIS_IF_{this_counter}__"
-                this_blocks[placeholder] = match.group(0)
-                this_counter += 1
-                result = result[:match.start()] + placeholder + result[match.end():]
-                continue
-
-            # Évaluer la condition - support des chemins pointés (a.b.c)
-            condition_value = self._get_context_value_with_path(condition_var, context)
-
-            if condition_value:
-                replacement = if_content
-            else:
-                replacement = else_content
-
-            result = result[:match.start()] + replacement + result[match.end():]
-
-        # Restaurer les blocs "this.*"
-        for placeholder, original in this_blocks.items():
-            result = result.replace(placeholder, original)
-
-        return result
-
-    def _get_context_value_with_path(self, path: str, context: Dict[str, Any]) -> Any:
-        """Récupère une valeur du contexte avec support des chemins pointés (a.b.c)."""
-        # D'abord essayer comme variable simple via _get_context_value
-        simple_value = self._get_context_value(path, context)
-        if simple_value is not None:
-            return simple_value
-
-        # Ensuite traiter comme chemin pointé
-        if '.' in path:
-            parts = path.split('.')
-            value = context
-            for part in parts:
-                if isinstance(value, dict):
-                    value = value.get(part)
-                else:
-                    return None
-            return value
-
-        return context.get(path)
-
-    def _resolve_unless_blocks(self, template: str, context: Dict[str, Any]) -> str:
-        """Résout les {{#unless condition}}...{{else}}...{{/unless}}."""
-        result = template
-
-        # Support des chemins pointés comme month_cross_department.has_same_region_options
-        pattern = r'\{\{#unless\s+([\w.]+)\s*\}\}(.*?)(?:\{\{else\}\}(.*?))?\{\{/unless\}\}'
-
-        while True:
-            match = re.search(pattern, result, re.DOTALL)
-            if not match:
-                break
-
-            condition_var = match.group(1)
-            unless_content = match.group(2) or ''
-            else_content = match.group(3) or ''
-
-            # Évaluer la condition (inversée pour unless)
-            condition_value = self._get_context_value(condition_var, context)
-
-            if not condition_value:
-                replacement = unless_content
-            else:
-                replacement = else_content
-
-            result = result[:match.start()] + replacement + result[match.end():]
-
-        return result
-
-    def _resolve_each_blocks(self, template: str, context: Dict[str, Any]) -> str:
-        """Résout les {{#each items}}...{{/each}}."""
-        result = template
-
-        # Support dot notation (ex: month_cross_department.other_region_options)
-        pattern = r'\{\{#each\s+([\w.]+)\s*\}\}(.*?)\{\{/each\}\}'
-
-        while True:
-            match = re.search(pattern, result, re.DOTALL)
-            if not match:
-                break
-
-            items_var = match.group(1)
-            item_template = match.group(2)
-
-            # Support dot notation for nested access
-            if '.' in items_var:
-                parts = items_var.split('.')
-                items = context.get(parts[0], {})
-                for part in parts[1:]:
-                    if isinstance(items, dict):
-                        items = items.get(part, [])
-                    else:
-                        items = []
-                        break
-            else:
-                items = self._get_context_value(items_var, context)
-
-            if items and isinstance(items, list):
-                rendered_items = []
-                for item in items:
-                    rendered_item = item_template
-                    # Remplacer {{this.property}} ou {{this}}
-                    if isinstance(item, dict):
-                        for key, value in item.items():
-                            rendered_item = rendered_item.replace(f"{{{{this.{key}}}}}", str(value))
-                        # Résoudre les {{#if this.property}} conditionnels DANS chaque item
-                        rendered_item = self._resolve_if_blocks_in_each_item(rendered_item, item)
-                    else:
-                        rendered_item = rendered_item.replace("{{this}}", str(item))
-                    rendered_items.append(rendered_item)
-                replacement = ''.join(rendered_items)
-            else:
-                replacement = ''
-
-            result = result[:match.start()] + replacement + result[match.end():]
-
-        return result
-
-    def _resolve_if_blocks_in_each_item(self, template: str, item: Dict[str, Any]) -> str:
-        """Résout les {{#if this.property}} conditionnels à l'intérieur d'un item {{#each}}."""
-        result = template
-
-        # Pattern pour {{#if this.property}} avec contenu qui ne contient pas d'autres {{#if}}
-        pattern = r'\{\{#if\s+this\.(\w+)\s*\}\}((?:(?!\{\{#if).)*?)(?:\{\{else\}\}((?:(?!\{\{#if).)*?))?\{\{/if\}\}'
-
-        max_iterations = 50
-        for _ in range(max_iterations):
-            match = re.search(pattern, result, re.DOTALL)
-            if not match:
-                break
-
-            property_name = match.group(1)
-            if_content = match.group(2) or ''
-            else_content = match.group(3) or ''
-
-            # Évaluer la condition sur l'item
-            condition_value = item.get(property_name)
-
-            if condition_value:
-                replacement = if_content
-            else:
-                replacement = else_content
-
-            result = result[:match.start()] + replacement + result[match.end():]
-
-        return result
+    # =========================================================================
+    # REMOVED: Legacy regex-based Handlebars parsing methods
+    # The following methods have been removed in favor of pybars3:
+    # - _resolve_partials()
+    # - _load_partial_path()
+    # - _resolve_if_blocks()
+    # - _get_context_value_with_path()
+    # - _resolve_unless_blocks()
+    # - _resolve_each_blocks()
+    # - _resolve_if_blocks_in_each_item()
+    #
+    # pybars3 provides robust, library-based Handlebars parsing that:
+    # - Properly handles nested conditionals
+    # - Correctly strips HTML/Handlebars comments
+    # - Supports all standard Handlebars syntax
+    # =========================================================================
 
     def _get_context_value(self, key: str, context: Dict[str, Any]) -> Any:
         """Récupère une valeur du contexte, avec support des clés imbriquées."""

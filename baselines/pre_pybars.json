@@ -1,0 +1,68 @@
+{
+  "capture_timestamp": "2026-01-29T21:26:21.926074",
+  "total_tickets": 5,
+  "successful": 5,
+  "errors": [],
+  "results": [
+    {
+      "ticket_id": "198709000448774407",
+      "success": true,
+      "state": "D-5",
+      "state_name": "DOSSIER_SYNCHRONIZED",
+      "intent": "DEMANDE_DATES_FUTURES",
+      "template": null,
+      "template_file": null,
+      "blocks_included": [],
+      "response_text": "Bonjour Sylvie,<br><br>\n\nConcernant votre question sur la date du 24 février, je vous confirme que votre examen reste prévu pour le <b>31/03/2026</b>. Il n'y a pas eu d'annulation.<br><br>\n\n⏳ <b>Votre dossier est actuellement en cours d'instruction</b><br>\nN° de dossier : 00021515<br><br>\n\nVotre dossier est examiné par la CMA (Chambre des Métiers et de l'Artisanat), ce qui prend généralement entre 5 à 10 jours ouvrés. Pendant cette période d'instruction, la CMA vérifie la conformité de vos documents. Vous serez notifiée par email dès que votre dossier sera validé, et vous recevrez également un email en cas de pièce manquante ou non conforme.<br><br>\n\nEn attendant, je vous conseille de surveiller vos emails (y compris les spams) et de commencer à réviser sur votre <a href=\"https://cab-formations.fr/user\">espace e-learning</a>.<br><br>\n\n<b>Vos identifiants ExamT3P</b><br>\nPour suivre l'avancement de votre dossier, vous pouvez vous connecter sur <a href=\"https://www.exament3p.fr\">Mon espace ExamT3P</a> :<br>\n→ Identifiant : candidat.14561770016513385121768317466000@cab-formations.fr<br>\n→ Mot de passe : 30a790a103H(<br>\n<i>Ces identifiants sont strictement personnels et confidentiels.</i><br><br>\n\nUne fois votre dossier validé par la CMA, vous recevrez le lien de paiement. Sachez qu'en période de forte affluence (rentrée, fin d'année), les délais peuvent être légèrement plus longs.<br><br>\n\n<i>PS : N'hésitez pas à vérifier vos spams si vous n'avez pas reçu nos emails. Pensez à ajouter doc@cab-formations.fr à vos contacts.</i><br><br>\n\nBien cordialement,<br>\nL'équipe CAB Formations",
+      "response_length": 1604
+    },
+    {
+      "ticket_id": "198709000448019181",
+      "success": true,
+      "state": "D-1",
+      "state_name": "EXAM_DATE_EMPTY",
+      "intent": "STATUT_DOSSIER",
+      "template": null,
+      "template_file": null,
+      "blocks_included": [],
+      "response_text": "Bonjour Abdelkader,<br>\n<br>\nJe vous confirme que votre dossier est bien <b>en attente de traitement</b> depuis votre inscription du 12 janvier. Nous reviendrons vers vous rapidement avec plus d'informations.<br>\n<br>\nConcernant votre convocation, vous n'avez pas encore de date d'examen assignée car il vous faut d'abord choisir une date parmi celles disponibles. Voici les prochaines dates d'examen disponibles :<br>\n<br>\n<b>CMA 74</b><br>\n&nbsp;&nbsp;→ <b>31/03/2026</b> (clôture : 13/03/2026) — Cours du jour du 23/03/2026 au 27/03/2026<br>\n<br>\n<b>Merci de nous confirmer la date souhaitée</b> pour finaliser votre inscription et recevoir votre convocation.<br>\n<br>\nEn attendant, vos modules de formation sont déjà disponibles sur votre <a href=\"https://cab-formations.fr/user\">espace e-learning</a> :<br>\n→ Email de connexion : mennour.abdelk@gmail.com<br>\n→ Mot de passe : celui que vous avez défini lors de votre inscription<br>\n<br>\n<i>Mot de passe oublié ? Cliquez sur \"Mot de passe oublié\" sur la page de connexion pour le réinitialiser.</i><br>\n<br>\n<i>PS : Pensez à vérifier vos spams si vous n'avez pas reçu nos emails. Ajoutez doc@cab-formations.fr à vos contacts.</i><br>\n<br>\nBien cordialement,<br>\nL'équipe CAB Formations",
+      "response_length": 1240
+    },
+    {
+      "ticket_id": "198709000448043841",
+      "success": true,
+      "state": "D-6",
+      "state_name": "EXAM_DATE_ASSIGNED_WAITING",
+      "intent": "QUESTION_SESSION",
+      "template": null,
+      "template_file": null,
+      "blocks_included": [],
+      "response_text": "Bonjour Sandrine,<br>\n\nJe comprends parfaitement votre question sur la flexibilité des horaires de formation. Nous avons justement prévu deux formules adaptées à différentes disponibilités :<br>\n\n<b>Nos deux types de sessions :</b><br>\n<ul>\n<li><b>Cours du jour</b> : formation intensive sur 1 semaine (9h-17h) - idéale si vous êtes disponible en journée</li>\n<li><b>Cours du soir</b> : formation sur 2 semaines pour les personnes en activité (18h-22h) - parfaite si vous préférez les créneaux de soirée</li>\n</ul>\n\nPour votre examen du <b>31/03/2026</b>, voici les sessions disponibles :<br>\n\n&nbsp;&nbsp;→ <b>Cours du jour</b> : du 23/03/2026 au 27/03/2026<br>\n&nbsp;&nbsp;→ <b>Cours du soir</b> : du 16/03/2026 au 27/03/2026<br>\n\n<b>Merci de nous confirmer votre choix de session.</b><br>\n\nEn parallèle, votre dossier est actuellement <b>en attente de traitement</b> et nous reviendrons vers vous rapidement avec plus d'informations.<br>\n\nVous pouvez déjà accéder à vos modules de formation e-learning sur votre <a href=\"https://cab-formations.fr/user\">espace e-learning</a> :<br>\n→ Email de connexion : waselisandrine@gmail.com<br>\n→ Mot de passe : celui que vous avez défini lors de votre inscription<br>\n\n<i>Mot de passe oublié ? Cliquez sur \"Mot de passe oublié\" sur la page de connexion pour le réinitialiser.</i><br>\n\n<i>PS : Pensez à vérifier vos spams si vous n'avez pas reçu nos emails. Ajoutez doc@cab-formations.fr à vos contacts.</i><br>\n\nBien cordialement,<br>L'équipe CAB Formations",
+      "response_length": 1499
+    },
+    {
+      "ticket_id": "198709000448028627",
+      "success": true,
+      "state": "D-3",
+      "state_name": "REFUSED_CMA",
+      "intent": "ENVOIE_IDENTIFIANTS",
+      "template": null,
+      "template_file": null,
+      "blocks_included": [],
+      "response_text": "Bonjour Wassim,<br><br>\n\nJ'ai bien reçu votre message suite à votre réussite au test de sélection. Félicitations ! Je vois que vous avez déjà créé votre compte sur ExamT3P, c'est parfait.<br><br>\n\nCependant, la CMA a relevé un problème avec certains documents de votre dossier qui nécessite une correction de votre part. Voici ce que vous devez faire :<br><br>\n\n<b>⚠️ Action requise - Documents à corriger :</b><br>\n1. Connectez-vous sur <a href=\"https://www.exament3p.fr\">ExamT3P</a> avec vos identifiants<br>\n2. Accédez à la section \"Mes documents\"<br>\n3. Supprimez le document refusé<br>\n4. Téléchargez le nouveau document conforme<br><br>\n\nPour télécharger vos documents correctement, cliquez sur \"Parcourir\" pour chaque document, sélectionnez votre fichier, puis cliquez sur \"Envoyer\" pour valider. Les formats acceptés sont JPG, PNG ou PDF avec une taille maximale de 5 Mo par fichier.<br><br>\n\n<b>Vos identifiants de connexion :</b><br>\n→ Identifiant : candidat.14561770016579263141769556881000@cab-formations.fr<br>\n→ Mot de passe : e5842590afK-<br>\n<i>Ces identifiants sont strictement personnels et confidentiels.</i><br><br>\n\n<b>Attention aux délais :</b> Vous devez corriger ces documents avant le <b>06/03/2026</b> pour conserver votre date d'examen du <b>31/03/2026</b>. Avant cette date limite, vous devez avoir tous vos documents validés sur ExamT3P, votre dossier validé par la CMA et les frais d'inscription réglés. Passé cette date, il ne sera plus possible de vous inscrire à cette session d'examen.<br><br>\n\nN'hésitez pas si vous avez des questions !<br><br>\n\nBien cordialement,<br>\nL'équipe CAB Formations",
+      "response_length": 1627
+    },
+    {
+      "ticket_id": "198709000448028260",
+      "success": true,
+      "state": "D-6",
+      "state_name": "EXAM_DATE_ASSIGNED_WAITING",
+      "intent": "CONFIRMATION_SESSION",
+      "template": null,
+      "template_file": null,
+      "blocks_included": [],
+      "response_text": "Bonjour Yoan,<br>\n\nNous avons bien noté votre préférence pour les <b>cours du jour</b> sur une semaine.<br>\n\nVotre examen est prévu le <b>31/03/2026</b> et votre dossier est actuellement <b>en cours de constitution</b>. Pour finaliser votre inscription, vous devez compléter vos informations et télécharger vos documents sur ExamT3P.<br>\n\n<br>\n\n<b style=\"color: #d35400;\">Prochaine étape pour avancer</b><br>\n\nConnectez-vous sur <a href=\"https://www.exament3p.fr\">exament3p.fr</a> pour compléter votre dossier :<br>\n<br>\n\n→ Identifiant : <b>candidat.14561770016056845211769598622000@cab-formations.fr</b><br>\n→ Mot de passe : <b>b7ffc502f7N!</b><br>\n<br>\n\nUne fois connecté, vérifiez que toutes vos pièces sont bien téléchargées et validez votre dossier.<br>\n\n<br>\n\n<b>Sessions de formation disponibles (cours du jour)</b><br>\n\nPour votre examen du 31/03/2026, vous avez le choix entre deux sessions :<br>\n\n&nbsp;&nbsp;→ <b>Cours du jour</b> : du 23/03/2026 au 27/03/2026<br>\n\n&nbsp;&nbsp;→ <b>Cours du jour</b> : du 16/02/2026 au 20/02/2026<br>\n\n<br>\n<b>Merci de nous confirmer votre choix de session.</b><br>\n<br>\n\nEn parallèle, vos modules de formation e-learning sont déjà disponibles sur votre <a href=\"https://cab-formations.fr/user\">espace e-learning</a> :<br>\n→ Email de connexion : yoansainterose94@gmail.com<br>\n→ Mot de passe : celui que vous avez défini lors de votre inscription<br>\n\n<i>Mot de passe oublié ? Cliquez sur \"Mot de passe oublié\" sur la page de connexion pour le réinitialiser.</i><br>\n\n<br>\n\n<i>PS : Pensez à vérifier vos spams si vous n'avez pas reçu nos emails. Ajoutez doc@cab-formations.fr à vos contacts.</i><br>\n<br>Bien cordialement,<br>L'équipe CAB Formations",
+      "response_length": 1694
+    }
+  ]
+}

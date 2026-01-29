@@ -198,9 +198,22 @@ if not can_modify_exam_date(deal_data, exam_session):
     # Nécessite force majeure
 ```
 
-### 6. Template Engine Handlebars Custom - PIÈGES CRITIQUES
+### 6. Template Engine - pybars3
 
-**IMPORTANT : L'implémentation Handlebars est faite maison avec des regex, pas une vraie lib.**
+**Le Template Engine utilise maintenant pybars3** (bibliothèque Handlebars pour Python).
+
+#### Architecture
+- `src/state_engine/pybars_renderer.py` - Renderer pybars3 avec cache de partials
+- `src/state_engine/template_engine.py` - Orchestration (sélection template, préparation contexte)
+
+#### Syntaxe Handlebars supportée
+```html
+{{variable}}                    <!-- Remplacement de variable -->
+{{> partial_name}}              <!-- Inclusion de partial -->
+{{#if condition}}...{{/if}}     <!-- Conditionnel -->
+{{#unless condition}}...{{/unless}}  <!-- Conditionnel inversé -->
+{{#each items}}{{this.prop}}{{/each}}  <!-- Boucle -->
+```
 
 #### 6.1 Comparaison int vs string (départements)
 ```python
@@ -213,29 +226,7 @@ dept = str(date_info.get('Departement', ''))
 ```
 **Fichiers concernés :** `cross_department_helper.py`
 
-#### 6.2 `{{#unless}}` ne supporte PAS les chemins avec points
-```html
-<!-- FAUX - la regex (\w+) ne capture pas les points -->
-{{#unless month_cross_department.has_same_region_options}}
-
-<!-- CORRECT - utiliser {{#if}} avec {{else}} -->
-{{#if month_cross_department.has_same_region_options}}
-  <!-- contenu si vrai -->
-{{else}}
-  <!-- contenu si faux -->
-{{/if}}
-```
-**Règle : Préférer `{{#if}}/{{else}}` à `{{#unless}}` pour les chemins dotés.**
-
-#### 6.3 Commentaires Handlebars interfèrent avec le parsing
-```html
-<!-- PROBLÈME : commentaires non strippés avant _resolve_unless_blocks -->
-{{!-- Mon commentaire --}}
-{{#unless condition}}...{{/unless}}  <!-- ÉCHOUE ! -->
-```
-**Le stripping se fait dans `_resolve_partials()` ligne ~586, AVANT if/unless.**
-
-#### 6.4 `next_dates` écrasé à plusieurs endroits
+#### 6.2 `next_dates` écrasé à plusieurs endroits
 ```python
 # Le workflow écrit next_dates à 4+ endroits différents !
 # Lignes ~2040, ~2121, ~2153 dans doc_ticket_workflow.py
@@ -244,17 +235,7 @@ dept = str(date_info.get('Departement', ''))
 # Voir ligne ~2191 "FILTRE FINAL"
 ```
 
-#### 6.5 Blocs imbriqués cassent les regex
-```html
-<!-- PROBLÈME : regex gourmande matche mal -->
-{{#unless outer}}
-  {{#if inner}}...{{/if}}  <!-- Confond les délimiteurs -->
-{{/unless}}
-
-<!-- SOLUTION : Éviter unless avec blocs imbriqués, utiliser if/else -->
-```
-
-**Leçon générale :** L'implémentation regex est fragile. Pour les cas complexes, préférer `{{#if}}/{{else}}` qui est plus robuste.
+**Note :** Les anciens gotchas regex (6.2-6.5) ne s'appliquent plus avec pybars3.
 
 ---
 
