@@ -166,8 +166,15 @@ CONTEXTE SUPPLÉMENTAIRE (pour toutes les intentions):
   ou une urgence particulière (pressé, au plus vite, rapidement, etc.)
 - requested_month: le mois spécifique demandé par le candidat (1-12 ou null si non mentionné)
   Exemples: "juillet" → 7, "septembre" → 9, "fin d'année" → 12
-- requested_location: la ville ou le département demandé (string ou null si non mentionné)
-  Exemples: "Montpellier", "Lyon", "Paris", "34", "75"
+- requested_location: la ville ou le département demandé tel que mentionné par le candidat
+  Exemples: "Montpellier", "Lyon", "Paris", "département 34"
+- requested_dept_code: le CODE DÉPARTEMENT (2 chiffres) correspondant à la location demandée
+  Tu DOIS convertir les villes en codes département français:
+  Paris/Île-de-France → "75", Lyon → "69", Marseille → "13", Toulouse → "31",
+  Montpellier → "34", Nantes → "44", Bordeaux → "33", Lille → "59", Nice → "06",
+  Strasbourg → "67", Rennes → "35", Rouen → "76", Nîmes → "30", Perpignan → "66"
+  Si le candidat mentionne directement un numéro de département, utilise-le.
+  null si aucune location mentionnée.
 
 ---
 
@@ -187,7 +194,8 @@ Réponds UNIQUEMENT en JSON valide:
         "wants_earlier_date": true | false,
         "session_preference": "jour" | "soir" | null,
         "requested_month": 1-12 | null,
-        "requested_location": "ville ou département" | null
+        "requested_location": "ville ou département tel que mentionné" | null,
+        "requested_dept_code": "75" | "34" | ... | null
     }
 }
 

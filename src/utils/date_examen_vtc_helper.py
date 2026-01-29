@@ -1749,7 +1749,8 @@ def search_dates_for_month_and_location(
     crm_client,
     requested_month: int = None,
     requested_location: str = None,
-    candidate_region: str = None
+    candidate_region: str = None,
+    current_exam_date: str = None
 ) -> Dict[str, Any]:
     """
     Recherche des dates pour un mois et département spécifiques.
@@ -1760,6 +1761,7 @@ def search_dates_for_month_and_location(
         requested_month: Mois demandé (1-12)
         requested_location: Département demandé (ex: "34", "75")
         candidate_region: Région du candidat (optionnel)
+        current_exam_date: Date d'examen actuelle à exclure des alternatives (YYYY-MM-DD)
 
     Returns:
         {
@@ -1802,6 +1804,10 @@ def search_dates_for_month_and_location(
     for date_info in all_dates:
         date_str = date_info.get('Date_Examen', '')
         dept = str(date_info.get('Departement', ''))
+
+        # Exclure la date d'examen actuelle des alternatives
+        if current_exam_date and date_str[:10] == current_exam_date[:10]:
+            continue
 
         # Parser le mois de la date
         try:

@@ -1164,35 +1164,38 @@ Deux comptes ExamenT3P fonctionnels ont été détectés pour ce candidat, et le
             if triage_result.get('primary_intent') == 'REPORT_DATE':
                 intent_context = triage_result.get('intent_context', {})
                 requested_month = intent_context.get('requested_month')
-                requested_location = intent_context.get('requested_location')
+                requested_location = intent_context.get('requested_location')  # Nom original (ex: "Montpellier")
+                requested_dept_code = intent_context.get('requested_dept_code')  # Code département (ex: "34")
 
-                if requested_month or requested_location:
-                    from src.utils.date_examen_vtc_helper import search_dates_for_month_and_location, normalize_location_to_dept
+                if requested_month or requested_location or requested_dept_code:
+                    from src.utils.date_examen_vtc_helper import search_dates_for_month_and_location
 
-                    # Normaliser la location (ville → code département)
-                    normalized_dept = normalize_location_to_dept(requested_location) if requested_location else None
-                    if requested_location and normalized_dept:
-                        logger.info(f"  📍 Location normalisée: '{requested_location}' → département {normalized_dept}")
-                    elif requested_location:
-                        logger.warning(f"  ⚠️ Location non reconnue: '{requested_location}' - utilisation telle quelle")
-                        normalized_dept = requested_location  # Fallback
+                    # Utiliser le code département extrait par TriageAgent (prioritaire)
+                    dept_for_search = requested_dept_code or requested_location
+                    if requested_dept_code:
+                        logger.info(f"  📍 Département extrait par TriageAgent: {requested_dept_code} (location: {requested_location})")
+
+                    # Récupérer la date d'examen actuelle pour l'exclure des alternatives
+                    current_exam_date = date_examen_vtc_result.get('date_examen_info', {}).get('Date_Examen')
 
                     search_result = search_dates_for_month_and_location(
                         crm_client=self.crm_client,
                         requested_month=requested_month,
-                        requested_location=normalized_dept,
-                        candidate_region=date_examen_vtc_result.get('candidate_region')
+                        requested_location=dept_for_search,
+                        candidate_region=date_examen_vtc_result.get('candidate_region'),
+                        current_exam_date=current_exam_date
                     )
 
                     # Propager les résultats
                     date_examen_vtc_result['no_date_for_requested_month'] = search_result['no_date_for_requested_month']
                     date_examen_vtc_result['requested_month_name'] = search_result['requested_month_name']
-                    date_examen_vtc_result['requested_location'] = requested_location  # Garder le nom original pour l'affichage
+                    date_examen_vtc_result['requested_location'] = requested_location  # Nom original pour l'affichage
+                    date_examen_vtc_result['requested_dept_code'] = requested_dept_code  # Code département
                     date_examen_vtc_result['same_month_other_depts'] = search_result['same_month_other_depts']
                     date_examen_vtc_result['same_dept_other_months'] = search_result['same_dept_other_months']
 
                     if search_result['no_date_for_requested_month']:
-                        logger.info(f"  ⚠️ Pas de date en {search_result['requested_month_name']} sur {requested_location}")
+                        logger.info(f"  ⚠️ Pas de date en {search_result['requested_month_name']} sur {requested_location or requested_dept_code}")
 
             # ================================================================
             # ENRICHISSEMENT: Dates alternatives si candidat demande date plus tôt
@@ -1286,32 +1289,44 @@ Deux comptes ExamenT3P fonctionnels ont été détectés pour ce candidat, et le
         # ================================================================
         # LOGIQUE PRIORITÉ DATES POUR SESSIONS:
         # ================================================================
-        # 1. Si date déjà assignée + CONFIRMATION_SESSION → utiliser UNIQUEMENT date assignée
-        #    (le candidat confirme son choix, pas besoin de proposer d'autres dates)
-        # 2. Sinon si next_dates existe → utiliser next_dates (nouvelles dates proposées)
-        # 3. Sinon si date assignée existe ET session vide → utiliser date assignée
+        # 1. Si CONFIRMATION_SESSION + date assignée → sessions pour cette date uniquement
+        # 2. Si REPORT_DATE + alternatives trouvées → sessions pour les dates ALTERNATIVES (pas la date actuelle)
+        # 3. Sinon si next_dates existe → utiliser next_dates
+        # 4. Sinon si date assignée + session vide → utiliser date assignée
         # ================================================================
         detected_intent = triage_result.get('detected_intent', '') if triage_result else ''
         has_assigned_date = date_examen_info and isinstance(date_examen_info, dict) and date_examen_info.get('Date_Examen')
 
         if has_assigned_date and detected_intent == 'CONFIRMATION_SESSION':
-            # CAS PRIORITAIRE: Candidat confirme sa session → utiliser SA date assignée
+            # CAS 1: Candidat confirme sa session → utiliser SA date assignée
             exam_dates_for_session = [date_examen_info]
             logger.info(f"  📚 CONFIRMATION_SESSION + date assignée ({date_examen_info.get('Date_Examen')}) → sessions pour cette date uniquement")
+        elif detected_intent == 'REPORT_DATE':
+            # CAS 2: REPORT_DATE → sessions pour les dates alternatives (exclure la date actuelle)
+            current_date = date_examen_info.get('Date_Examen') if date_examen_info else None
+            if next_dates and current_date:
+                # Filtrer la date actuelle des next_dates
+                exam_dates_for_session = [d for d in next_dates if d.get('Date_Examen') != current_date]
+                logger.info(f"  📚 REPORT_DATE: sessions pour {len(exam_dates_for_session)} date(s) alternative(s) (date actuelle {current_date} exclue)")
+            else:
+                exam_dates_for_session = next_dates if next_dates else []
+                logger.info(f"  📚 REPORT_DATE: sessions pour {len(exam_dates_for_session)} date(s)")
         elif next_dates:
-            # Nouvelles dates proposées (changement de date ou première attribution)
+            # CAS 3: Nouvelles dates proposées (changement de date ou première attribution)
             exam_dates_for_session = next_dates
         elif has_assigned_date and session_is_empty:
-            # Pas de nouvelles dates, mais date existante et session vide
+            # CAS 4: Pas de nouvelles dates, mais date existante et session vide
             exam_dates_for_session = [date_examen_info]
             logger.info("  📚 Session vide mais date examen assignée - recherche sessions correspondantes...")
         else:
             exam_dates_for_session = []
 
+        # Pour REPORT_DATE, toujours chercher les sessions des dates alternatives
+        is_report_date = detected_intent == 'REPORT_DATE'
         should_analyze_sessions = (
             not skip_date_session_analysis
             and exam_dates_for_session
-            and (date_examen_vtc_result.get('should_include_in_response') or session_is_empty)
+            and (date_examen_vtc_result.get('should_include_in_response') or session_is_empty or is_report_date)
         )
 
         if should_analyze_sessions:

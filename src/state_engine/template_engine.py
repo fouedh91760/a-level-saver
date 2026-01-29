@@ -1266,12 +1266,26 @@ class TemplateEngine:
             # Pas de statut Evalbox - vérifier si date/session manquantes
             date_examen = context.get('date_examen')
             session = context.get('deal_data', {}).get('Session')
+            primary_intent = context.get('primary_intent') or context.get('detected_intent', '')
+            session_preference = context.get('session_preference')
+
             if not date_examen:
                 actions['action_choisir_date'] = True
                 actions['has_required_action'] = True
             elif not session:
-                actions['action_choisir_session'] = True
-                actions['has_required_action'] = True
+                # Ne pas demander de choisir une session si:
+                # 1. On connaît déjà la préférence (session_preference)
+                # 2. C'est un REPORT_DATE (on attend d'abord la confirmation de la nouvelle date)
+                if primary_intent == 'REPORT_DATE':
+                    # REPORT_DATE: on propose les sessions APRÈS confirmation de la nouvelle date
+                    pass  # Pas d'action requise ici
+                elif session_preference:
+                    # On connaît la préférence, pas besoin de demander
+                    pass  # La session sera proposée automatiquement
+                else:
+                    # Préférence inconnue, demander au candidat
+                    actions['action_choisir_session'] = True
+                    actions['has_required_action'] = True
 
         return actions
 
@@ -1486,10 +1500,14 @@ class TemplateEngine:
             else:
                 report_bloque = True
 
+        # show_session_info: afficher les infos session (pas pour REPORT_DATE car sessions dans report template)
+        show_session_info = primary_intent != 'REPORT_DATE'
+
         return {
             'report_bloque': report_bloque,
             'report_possible': report_possible,
             'report_force_majeure': report_force_majeure,
+            'show_session_info': show_session_info,
         }
 
     def _flatten_session_options_filtered(self, context: Dict[str, Any]) -> list:
