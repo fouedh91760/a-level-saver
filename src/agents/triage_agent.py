@@ -162,8 +162,8 @@ INTENTIONS POSSIBLES (par ordre de spécificité - préfère les intentions spé
 **Intentions liées à la CARTE VTC:**
 - QUESTION_CARTE_VTC: Question sur la carte VTC après réussite
   Exemples: "comment obtenir ma carte VTC", "demande de carte", "carte professionnelle"
-- QUESTION_EXAMEN_PRATIQUE: Question sur l'examen pratique (hors scope CAB)
-  Exemples: "examen pratique", "conduite", "partie pratique"
+- QUESTION_EXAMEN_PRATIQUE: Question sur l'examen/formation pratique (hors offre Uber 20€)
+  Exemples: "examen pratique", "formation pratique", "partie pratique", "pratique incluse", "théorique et pratique", "conduite", "véhicule double commande"
 
 **Autres intentions:**
 - QUESTION_PROCESSUS: Question sur le processus
