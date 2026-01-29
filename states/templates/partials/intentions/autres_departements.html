@@ -1,19 +1,6 @@
 <!-- Partial: Réponse à l'intention DEMANDE_AUTRES_DEPARTEMENTS -->
 <b>Dates dans d'autres départements</b><br>
-<br>
-{{#if alternative_department_dates}}
-Si vous êtes flexible sur le lieu, voici les dates disponibles dans d'autres départements :<br>
+{{#if alternative_department_dates}}Si vous êtes flexible sur le lieu, voici les dates disponibles dans d'autres départements :<br>
 <ul>
-{{#each alternative_department_dates}}
-<li><b>{{this.date_examen_formatted}}</b> - Département {{this.Departement}} (clôture : {{this.date_cloture_formatted}})</li>
-{{/each}}
-</ul>
-<br>
-{{else}}
-Nous avons vérifié les disponibilités dans d'autres départements mais il n'y a pas de date plus proche actuellement.<br>
-<br>
-{{/if}}
-{{#unless compte_existe}}
-<i>Note : Comme vous n'avez pas encore de compte ExamT3P, vous pouvez vous inscrire dans le département de votre choix.</i><br>
-<br>
-{{/unless}}
+{{#each alternative_department_dates}}<li><b>{{this.date_examen_formatted}}</b> - Département {{this.Departement}} (clôture : {{this.date_cloture_formatted}})</li>
+{{/each}}</ul>{{else}}Nous avons vérifié les disponibilités dans d'autres départements mais il n'y a pas de date plus proche actuellement.<br>{{/if}}{{#unless compte_existe}}<i>Note : Comme vous n'avez pas encore de compte ExamT3P, vous pouvez vous inscrire dans le département de votre choix.</i><br>{{/unless}}<br>

@@ -1,55 +1,28 @@
 <!-- Partial: REPORT POSSIBLE (clôture non passée) -->
 <b>Concernant votre demande de changement de date</b><br>
-<br>
-{{#if date_examen}}Votre date d'examen actuelle est le <b>{{date_examen}}</b>.{{/if}}
-{{#if date_cloture}} La date de clôture des inscriptions étant le {{date_cloture}}, un changement est encore possible.{{/if}}<br>
-<br>
-{{#if no_date_for_requested_month}}
+{{#if date_examen}}Votre date d'examen actuelle est le <b>{{date_examen}}</b>.{{/if}}{{#if date_cloture}} La date de clôture des inscriptions étant le {{date_cloture}}, un changement est encore possible.{{/if}}<br>
+{{#if no_date_for_requested_month}}<br>
 <b>Note importante :</b> Il n'y a pas de date d'examen prévue en <b>{{requested_month_name}}</b>{{#if requested_location}} sur {{requested_location}}{{/if}}.<br>
-<br>
 La plateforme ExamT3P n'affiche que les <b>2 prochaines dates d'examen</b> par département. Si vous souhaitez absolument passer en {{requested_month_name}}, voici comment procéder :<br>
 1. Inscrivez-vous sur la date la plus proche de {{requested_month_name}} parmi celles disponibles ci-dessous<br>
 2. Une fois inscrit, envoyez un message via l'onglet <b>Messagerie</b> de <a href="https://www.exament3p.fr">exament3p.fr</a><br>
 3. Précisez que vous souhaitez être repositionné en {{requested_month_name}}<br>
-<br>
 La CMA vous repositionnera sur la date souhaitée dès qu'elle sera ouverte aux inscriptions.<br>
-<br>
-{{/if}}
-{{#if has_sessions_proposees}}
+{{/if}}{{#if has_sessions_proposees}}<br>
 <b>Voici les dates disponibles avec leurs sessions de formation{{#if session_preference}} ({{session_preference}}){{/if}} :</b><br>
-<br>
-{{#each sessions_proposees}}
-{{#if this.is_first_of_exam}}
-<b>Examen du {{this.date_examen_formatted}}</b> — {{this.departement}} (clôture : {{this.cloture}})<br>
-{{/if}}
-&nbsp;&nbsp;→ {{this.nom}} : du {{this.debut}} au {{this.fin}}<br>
-{{/each}}
-<br>
+{{#each sessions_proposees}}{{#if this.is_first_of_exam}}<b>Examen du {{this.date_examen_formatted}}</b> — {{this.departement}} (clôture : {{this.cloture}})<br>{{/if}}&nbsp;&nbsp;→ {{this.nom}} : du {{this.debut}} au {{this.fin}}<br>
+{{/each}}<br>
 Merci de nous confirmer votre choix de date et session.<br>
-{{else}}
-{{#if same_month_other_depts}}
+{{else}}{{#if same_month_other_depts}}<br>
 <b>En {{requested_month_name}} dans d'autres départements :</b><br>
-{{#each same_month_other_depts}}
-&nbsp;&nbsp;→ <b>{{this.date_examen_formatted}}</b> — {{this.Departement}}<br>
-{{/each}}
-<br>
-{{/if}}
-{{#if same_dept_other_months}}
+{{#each same_month_other_depts}}&nbsp;&nbsp;→ <b>{{this.date_examen_formatted}}</b> — {{this.Departement}}<br>
+{{/each}}{{/if}}{{#if same_dept_other_months}}<br>
 <b>Sur {{requested_location}} (autres mois) :</b><br>
-{{#each same_dept_other_months}}
-&nbsp;&nbsp;→ <b>{{this.date_examen_formatted}}</b> (clôture : {{this.date_cloture_formatted}})<br>
-{{/each}}
-<br>
-{{/if}}
-{{#if has_next_dates}}
+{{#each same_dept_other_months}}&nbsp;&nbsp;→ <b>{{this.date_examen_formatted}}</b> (clôture : {{this.date_cloture_formatted}})<br>
+{{/each}}{{/if}}{{#if has_next_dates}}<br>
 <b>Prochaines dates disponibles :</b><br>
-{{#each next_dates}}
-&nbsp;&nbsp;→ <b>{{this.date_examen_formatted}}</b> — {{this.Departement}} (clôture : {{this.date_cloture_formatted}})<br>
-{{/each}}
-<br>
-{{/if}}
+{{#each next_dates}}&nbsp;&nbsp;→ <b>{{this.date_examen_formatted}}</b> — {{this.Departement}} (clôture : {{this.date_cloture_formatted}})<br>
+{{/each}}{{/if}}<br>
 Merci de nous confirmer la nouvelle date souhaitée pour que nous puissions effectuer le changement.<br>
-<br>
 <i>Note : Un changement de date entraîne également un changement de session de formation. Nous vous proposerons les nouvelles sessions disponibles une fois votre choix confirmé.</i><br>
 {{/if}}
-<br>

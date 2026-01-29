@@ -2,7 +2,6 @@
 <!-- Note: Pour REPORT_DATE, les sessions sont affichées avec les dates dans report/possible.html -->
 {{#if show_session_info}}
 <b>Concernant les sessions de formation</b><br>
-<br>
 {{#if session_preference_soir}}
 Les <b>cours du soir</b> que vous souhaitez se déroulent de 18h à 22h.<br>
 C'est idéal pour les personnes en activité professionnelle.<br>
@@ -20,7 +19,6 @@ Nous proposons deux types de sessions :<br>
 {{/if}}
 {{/if}}
 {{#if has_sessions_proposees}}
-<br>
 Voici les sessions disponibles :<br>
 <ul>
 {{#each sessions_proposees}}
@@ -28,5 +26,4 @@ Voici les sessions disponibles :<br>
 {{/each}}
 </ul>
 {{/if}}
-<br>
 {{/if}}

@@ -6,13 +6,12 @@ La plateforme ExamT3P n'affiche que les <b>2 prochaines dates d'examen</b> par d
 1. Inscrivez-vous sur la date la plus lointaine actuellement disponible<br>
 2. Une fois inscrit, envoyez un message via l'onglet <b>Messagerie</b> de <a href="https://www.exament3p.fr">exament3p.fr</a><br>
 3. Precisez la date a laquelle vous souhaitez etre positionne<br>
-<br>
 La CMA vous repositionnera sur la date souhaitee des qu'elle sera ouverte aux inscriptions.<br>
-<br>
 {{#if has_next_dates}}
+<br>
 <b>Dates actuellement disponibles :</b><br>
 {{#each next_dates}}
 &rarr; {{this.date_examen_formatted}} - Departement {{this.Departement}} (cloture : {{this.date_cloture_formatted}})<br>
 {{/each}}
-<br>
 {{/if}}
+<br>

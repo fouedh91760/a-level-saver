@@ -18,59 +18,45 @@
      SECTION 0: ALERTES PRIORITAIRES (Uber, Résultats, Report, Credentials)
      Ces alertes sont affichées en premier mais n'empêchent pas Section 1
      ===================================================================== -->
-
 {{#if uber_cas_a}}
 {{> partials/uber/cas_a_docs_manquants}}
 {{/if}}
-
 {{#if uber_cas_b}}
 {{> partials/uber/cas_b_test_manquant}}
 {{/if}}
-
 {{#if uber_cas_d}}
 {{> partials/uber/cas_d_compte_non_verifie}}
 {{/if}}
-
 {{#if uber_cas_e}}
 {{> partials/uber/cas_e_non_eligible}}
 {{/if}}
-
 {{#if uber_doublon}}
 {{> partials/uber/doublon_offre}}
 {{/if}}
-
 {{#if uber_prospect}}
 {{> partials/uber/prospect_paiement}}
 {{/if}}
-
 {{#if resultat_admis}}
 {{> partials/resultats/admis}}
 {{/if}}
-
 {{#if resultat_non_admis}}
 {{> partials/resultats/non_admis}}
 {{/if}}
-
 {{#if resultat_absent}}
 {{> partials/resultats/absent}}
 {{/if}}
-
 {{#if report_bloque}}
 {{> partials/report/bloque}}
 {{/if}}
-
 {{#if report_possible}}
 {{> partials/report/possible}}
 {{/if}}
-
 {{#if report_force_majeure}}
 {{> partials/report/force_majeure}}
 {{/if}}
-
 {{#if credentials_invalid}}
 {{> partials/credentials/invalid}}
 {{/if}}
-
 {{#if credentials_inconnus}}
 {{> partials/credentials/inconnus}}
 {{/if}}
@@ -78,75 +64,57 @@
 <!-- =====================================================================
      SECTION 1: RÉPONDRE À L'INTENTION DU CANDIDAT
      ===================================================================== -->
-
 {{#if intention_statut_dossier}}
 {{> partials/intentions/statut_dossier}}
 {{/if}}
-
 {{#if intention_demande_date}}
 {{> partials/intentions/demande_date}}
 {{/if}}
-
 {{#if intention_demande_identifiants}}
 {{> partials/intentions/demande_identifiants}}
 {{/if}}
-
 {{#if intention_confirmation_session}}
 {{> partials/intentions/confirmation_session}}
 {{/if}}
-
 {{#if intention_demande_convocation}}
 {{> partials/intentions/demande_convocation}}
 {{/if}}
-
 {{#if intention_demande_elearning}}
 {{> partials/intentions/demande_elearning}}
 {{/if}}
-
 {{#if intention_report_date}}
 {{> partials/intentions/report_date}}
 {{/if}}
-
 {{#if intention_probleme_documents}}
 {{> partials/intentions/probleme_documents}}
 {{/if}}
-
 {{#if intention_question_generale}}
 {{> partials/intentions/question_generale}}
 {{/if}}
-
 {{#if intention_resultat_examen}}
 {{> partials/intentions/resultat_examen}}
 {{/if}}
-
 {{#if intention_question_uber}}
 {{> partials/intentions/question_uber}}
 {{/if}}
-
 {{#if intention_question_session}}
 {{> partials/intentions/question_session}}
 {{/if}}
-
 {{#if intention_question_processus}}
 {{> partials/intentions/question_processus}}
 {{/if}}
-
 {{#if intention_autres_departements}}
 {{> partials/intentions/autres_departements}}
 {{/if}}
-
 {{#if intention_confirmation_paiement}}
 {{> partials/intentions/confirmation_paiement}}
 {{/if}}
-
 {{#if intention_refus_credentials}}
 {{> partials/intentions/refus_credentials}}
 {{/if}}
-
 {{#if intention_permis_probatoire}}
 {{> partials/intentions/permis_probatoire}}
 {{/if}}
-
 {{#if intention_date_lointaine}}
 {{> partials/intentions/date_lointaine}}
 {{/if}}
@@ -160,10 +128,8 @@
      SECTION 2: STATUT ACTUEL DU DOSSIER
      (Toujours affiché pour que le candidat sache où il en est)
      ===================================================================== -->
-
 {{#if show_statut_section}}
 <b>Statut de votre dossier</b><br>
-<br>
 {{#if evalbox_dossier_cree}}
 {{> partials/statuts/dossier_cree}}
 {{/if}}
@@ -192,10 +158,8 @@
      SECTION 3: ACTION REQUISE POUR AVANCER
      (Ce que le candidat doit faire pour progresser)
      ===================================================================== -->
-
 {{#if has_required_action}}
 <b style="color: #d35400;">Prochaine étape pour avancer</b><br>
-<br>
 {{#if action_passer_test}}
 {{> partials/actions/passer_test}}
 {{/if}}
@@ -233,11 +197,9 @@
      SECTION 4: INFORMATIONS COMPLÉMENTAIRES
      (Dates, sessions si pertinent)
      ===================================================================== -->
-
 {{#if show_dates_section}}
 {{#if has_next_dates}}
 <b>Prochaines dates d'examen disponibles</b><br>
-<br>
 {{#each next_dates}}
 {{#if this.is_first_of_dept}}
 <b>CMA {{this.Departement}}</b><br>
@@ -251,7 +213,6 @@
 {{#if show_sessions_section}}
 {{#if has_sessions_proposees}}
 <b>Sessions de formation disponibles</b><br>
-<br>
 {{#each sessions_proposees}}
 {{#if this.is_first_of_exam}}
 Pour l'examen du {{this.date_examen_formatted}} :<br>
@@ -270,7 +231,6 @@ Pour l'examen du {{this.date_examen_formatted}} :<br>
 <!-- =====================================================================
      SECTION 5: RESSOURCES
      ===================================================================== -->
-
 {{> acces_elearning_rappel}}
 {{> verifier_spams}}
 {{> signature}}
