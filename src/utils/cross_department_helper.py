@@ -75,8 +75,8 @@ def get_cross_department_alternatives(
         cloture_str = date_info.get('Date_Cloture_Inscription', '')
         days_until_cloture = _calc_days_until(cloture_str, today)
 
-        if days_until_cloture < 1:
-            continue  # Cloture passee, skip
+        if days_until_cloture < 7:
+            continue  # Cloture < 7 jours, pas assez de temps pour s'inscrire
 
         closest_closure_days = min(closest_closure_days, days_until_cloture)
 
@@ -275,8 +275,8 @@ def get_dates_for_month_other_departments(
         cloture_str = date_info.get('Date_Cloture_Inscription', '')
         days_until_cloture = _calc_days_until(cloture_str, today)
 
-        if days_until_cloture < 1:
-            continue  # Cloture passee
+        if days_until_cloture < 7:
+            continue  # Cloture < 7 jours, pas assez de temps pour s'inscrire
 
         # Enrichir
         enriched = {
