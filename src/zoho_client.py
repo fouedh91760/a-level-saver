@@ -1,17 +1,24 @@
 """Zoho API client with OAuth2 authentication."""
 import logging
+import threading
+import time
 from typing import Dict, Any, Optional, List
 import requests
-from datetime import datetime, timedelta
-from tenacity import retry, stop_after_attempt, wait_exponential
+from datetime import datetime
+# Note: tenacity removed - using custom retry logic for better rate limit handling
 from config import settings
-from src.zoho_token_manager import get_token_manager
+from src.zoho_token_manager import get_token_manager, ZohoRateLimitError
 
 logger = logging.getLogger(__name__)
 
 
 class ZohoAPIClient:
     """Base client for Zoho API interactions with OAuth2 authentication."""
+
+    # Class-level rate limiting for API calls (shared across all instances)
+    _api_lock = threading.Lock()
+    _last_api_call_time: float = 0
+    MIN_API_INTERVAL = 0.3  # 300ms minimum between API calls
 
     def __init__(self):
         self.access_token: Optional[str] = None
@@ -20,6 +27,19 @@ class ZohoAPIClient:
         self._session.proxies = {"http": None, "https": None}
         # Token management is now delegated to TokenManager singleton
         self._token_manager = get_token_manager()
+
+    def _apply_api_rate_limit(self) -> None:
+        """
+        Apply rate limiting between API calls to prevent hitting Zoho limits.
+
+        Uses a class-level lock to ensure rate limiting across all client instances.
+        """
+        with self._api_lock:
+            elapsed = time.time() - self._last_api_call_time
+            if elapsed < self.MIN_API_INTERVAL:
+                sleep_time = self.MIN_API_INTERVAL - elapsed
+                time.sleep(sleep_time)
+            ZohoAPIClient._last_api_call_time = time.time()
 
     def _get_credentials(self) -> tuple:
         """
@@ -51,18 +71,28 @@ class ZohoAPIClient:
             accounts_url=accounts_url
         )
 
-    @retry(
-        stop=stop_after_attempt(3),
-        wait=wait_exponential(multiplier=1, min=2, max=10)
-    )
     def _make_request(
         self,
         method: str,
         url: str,
         headers: Optional[Dict[str, str]] = None,
+        _retry_count: int = 0,
         **kwargs
     ) -> Dict[str, Any]:
-        """Make an authenticated API request to Zoho."""
+        """
+        Make an authenticated API request to Zoho.
+
+        Features:
+        - Rate limiting (300ms between calls)
+        - Auto-retry on 401 with token invalidation
+        - Exponential backoff on 429 rate limit
+        """
+        MAX_RETRIES = 3
+
+        # Apply rate limiting before the call
+        self._apply_api_rate_limit()
+
+        # Ensure valid token
         self._ensure_valid_token()
 
         if headers is None:
@@ -72,12 +102,36 @@ class ZohoAPIClient:
         headers["Content-Type"] = "application/json"
 
         try:
-            response = self._session.request(method, url, headers=headers, **kwargs)
+            response = self._session.request(
+                method, url, headers=headers, timeout=30, **kwargs
+            )
 
-            # Log détaillé si erreur
+            # Handle 401 Unauthorized - token may be revoked
+            if response.status_code == 401:
+                if _retry_count < MAX_RETRIES:
+                    logger.warning(f"401 Unauthorized - invalidating token and retrying...")
+                    # Invalidate the cached token
+                    client_id, _, refresh_token, _ = self._get_credentials()
+                    self._token_manager.invalidate(client_id, refresh_token)
+                    # Retry with fresh token
+                    return self._make_request(
+                        method, url, headers=None, _retry_count=_retry_count + 1, **kwargs
+                    )
+
+            # Handle 429 Too Many Requests - rate limited
+            if response.status_code == 429:
+                if _retry_count < MAX_RETRIES:
+                    retry_after = int(response.headers.get("Retry-After", 60))
+                    logger.warning(f"429 Rate Limited - waiting {retry_after}s before retry...")
+                    time.sleep(retry_after)
+                    return self._make_request(
+                        method, url, headers=None, _retry_count=_retry_count + 1, **kwargs
+                    )
+
+            # Log detailed error info
             if response.status_code >= 400:
                 logger.error(f"API Error {response.status_code}: {method} {url}")
-                logger.error(f"Response body: {response.text[:1000]}")  # Log les 1000 premiers caractères
+                logger.error(f"Response body: {response.text[:1000]}")
                 if 'json' in kwargs:
                     logger.error(f"Request payload size: {len(str(kwargs['json']))} chars")
 
@@ -89,8 +143,26 @@ class ZohoAPIClient:
 
             return response.json()
 
+        except requests.exceptions.Timeout as e:
+            logger.error(f"API request timeout: {method} {url}")
+            if _retry_count < MAX_RETRIES:
+                wait_time = 2 ** _retry_count  # Exponential backoff
+                logger.info(f"Retrying after {wait_time}s...")
+                time.sleep(wait_time)
+                return self._make_request(
+                    method, url, headers=None, _retry_count=_retry_count + 1, **kwargs
+                )
+            raise
+
         except requests.exceptions.RequestException as e:
             logger.error(f"API request failed: {method} {url} - {e}")
+            if _retry_count < MAX_RETRIES:
+                wait_time = 2 ** _retry_count  # Exponential backoff
+                logger.info(f"Retrying after {wait_time}s...")
+                time.sleep(wait_time)
+                return self._make_request(
+                    method, url, headers=None, _retry_count=_retry_count + 1, **kwargs
+                )
             raise
 
     def close(self) -> None:

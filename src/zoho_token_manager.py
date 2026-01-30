@@ -5,6 +5,7 @@ This singleton manages OAuth tokens for all Zoho API clients:
 - Thread-safe token cache (RLock)
 - File persistence (.token_cache.json)
 - Rate limiting (minimum 2s between refreshes per credential set)
+- Exponential backoff on rate limit errors
 - Shared across all ZohoAPIClient instances
 
 Usage:
@@ -28,9 +29,15 @@ from pathlib import Path
 from typing import Dict, Optional, Any
 
 import requests
-from tenacity import retry, stop_after_attempt, wait_exponential
 
 logger = logging.getLogger(__name__)
+
+
+class ZohoRateLimitError(Exception):
+    """Raised when Zoho API returns a rate limit error."""
+    def __init__(self, message: str, retry_after: int = 60):
+        super().__init__(message)
+        self.retry_after = retry_after
 
 
 class TokenManager:
@@ -55,6 +62,11 @@ class TokenManager:
 
     # Buffer before token expiration (refresh 5 minutes early)
     EXPIRATION_BUFFER_SECONDS = 300
+
+    # Rate limit handling
+    RATE_LIMIT_WAIT_SECONDS = 60  # Wait time when rate limited
+    MAX_REFRESH_ATTEMPTS = 3  # Max retry attempts for token refresh
+    BACKOFF_MULTIPLIER = 2  # Exponential backoff multiplier
 
     def __new__(cls) -> "TokenManager":
         """Ensure only one instance exists (singleton pattern)."""
@@ -114,7 +126,7 @@ class TokenManager:
             Valid access token string
 
         Raises:
-            Exception if token refresh fails
+            Exception if token refresh fails after all retries
         """
         cache_key = self._get_cache_key(client_id, refresh_token)
 
@@ -132,12 +144,13 @@ class TokenManager:
             # Need to refresh - apply rate limiting
             self._apply_rate_limit(cache_key)
 
-            # Refresh the token
-            token_data = self._refresh_token(
+            # Refresh the token with retry and exponential backoff
+            token_data = self._refresh_token_with_retry(
                 client_id=client_id,
                 client_secret=client_secret,
                 refresh_token=refresh_token,
-                accounts_url=accounts_url
+                accounts_url=accounts_url,
+                cache_key=cache_key
             )
 
             # Cache the new token
@@ -152,6 +165,54 @@ class TokenManager:
 
             return token_data["access_token"]
 
+    def _refresh_token_with_retry(
+        self,
+        client_id: str,
+        client_secret: str,
+        refresh_token: str,
+        accounts_url: str,
+        cache_key: str
+    ) -> Dict[str, Any]:
+        """
+        Refresh token with custom retry logic and exponential backoff.
+
+        Handles rate limit errors specially by waiting longer.
+        """
+        last_exception = None
+        wait_time = 2  # Initial wait time in seconds
+
+        for attempt in range(1, self.MAX_REFRESH_ATTEMPTS + 1):
+            try:
+                return self._refresh_token(
+                    client_id=client_id,
+                    client_secret=client_secret,
+                    refresh_token=refresh_token,
+                    accounts_url=accounts_url
+                )
+
+            except ZohoRateLimitError as e:
+                last_exception = e
+                wait_time = e.retry_after
+                logger.warning(
+                    f"Rate limited on attempt {attempt}/{self.MAX_REFRESH_ATTEMPTS}. "
+                    f"Waiting {wait_time}s before retry..."
+                )
+                time.sleep(wait_time)
+
+            except requests.exceptions.RequestException as e:
+                last_exception = e
+                if attempt < self.MAX_REFRESH_ATTEMPTS:
+                    logger.warning(
+                        f"Token refresh failed on attempt {attempt}/{self.MAX_REFRESH_ATTEMPTS}: {e}. "
+                        f"Waiting {wait_time}s before retry..."
+                    )
+                    time.sleep(wait_time)
+                    wait_time *= self.BACKOFF_MULTIPLIER  # Exponential backoff
+
+        # All retries exhausted
+        logger.error(f"Token refresh failed after {self.MAX_REFRESH_ATTEMPTS} attempts")
+        raise last_exception
+
     def _apply_rate_limit(self, cache_key: str) -> None:
         """
         Apply rate limiting to prevent too frequent refresh calls.
@@ -165,10 +226,6 @@ class TokenManager:
                 logger.debug(f"Rate limiting: sleeping {sleep_time:.2f}s for {cache_key[:8]}...")
                 time.sleep(sleep_time)
 
-    @retry(
-        stop=stop_after_attempt(3),
-        wait=wait_exponential(multiplier=1, min=2, max=10)
-    )
     def _refresh_token(
         self,
         client_id: str,
@@ -187,6 +244,10 @@ class TokenManager:
 
         Returns:
             Dict with access_token and expires_at
+
+        Raises:
+            ZohoRateLimitError: If rate limited by Zoho
+            requests.exceptions.RequestException: For other HTTP errors
         """
         url = f"{accounts_url}/oauth/v2/token"
         params = {
@@ -203,8 +264,28 @@ class TokenManager:
             response = requests.post(
                 url,
                 params=params,
-                proxies={"http": None, "https": None}
+                proxies={"http": None, "https": None},
+                timeout=30
             )
+
+            # Check for rate limiting BEFORE raise_for_status
+            if response.status_code in (429, 400):
+                try:
+                    error_data = response.json()
+                    error_msg = error_data.get("error_description", "")
+                    error_code = error_data.get("error", "")
+
+                    # Detect rate limiting errors
+                    if "too many requests" in error_msg.lower() or error_code == "Access Denied":
+                        retry_after = int(response.headers.get("Retry-After", self.RATE_LIMIT_WAIT_SECONDS))
+                        logger.warning(f"Zoho OAuth rate limited: {error_msg}")
+                        raise ZohoRateLimitError(
+                            f"Rate limited: {error_msg}",
+                            retry_after=retry_after
+                        )
+                except (json.JSONDecodeError, ValueError):
+                    pass  # Not a JSON response, continue with normal error handling
+
             response.raise_for_status()
             data = response.json()
 
@@ -223,6 +304,9 @@ class TokenManager:
                 "expires_at": expires_at
             }
 
+        except ZohoRateLimitError:
+            # Re-raise rate limit errors (don't wrap them)
+            raise
         except requests.exceptions.RequestException as e:
             logger.error(f"Failed to refresh access token: {e}")
             raise
