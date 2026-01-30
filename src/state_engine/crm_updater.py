@@ -81,6 +81,34 @@ class CRMUpdater:
         r'(\d{1,2})\s+(janvier|février|mars|avril|mai|juin|juillet|août|septembre|octobre|novembre|décembre)\s+(\d{4})',
     ]
 
+    # Prompt pour extraction LLM (cas ambigus)
+    EXTRACTION_PROMPT = """Analyse le message du candidat et extrait les informations de confirmation.
+
+Message du candidat:
+"{message}"
+
+Dates d'examen proposées:
+{proposed_dates}
+
+Sessions de formation proposées:
+{proposed_sessions}
+
+Extrais les informations suivantes (réponds UNIQUEMENT en JSON valide, sans markdown):
+{{
+  "date_examen": "YYYY-MM-DD ou null si non confirmée",
+  "session_id": "ID de la session choisie ou null",
+  "preference_horaire": "jour ou soir ou null si non précisé",
+  "confiance": "haute/moyenne/basse",
+  "raison": "explication courte"
+}}
+
+IMPORTANT:
+- date_examen: La date de l'EXAMEN confirmée (PAS la clôture, PAS les dates de cours/session)
+- session_id: L'ID de la session si le candidat confirme une session spécifique
+- Si le candidat dit juste "ok" ou "je confirme" sans préciser de date, mets null pour date_examen
+- Distingue bien: date d'examen (ex: 28/04/2026) vs date de clôture (ex: après "clôture:") vs dates de session (ex: "du 13/04 au 24/04")
+"""
+
     def __init__(self, crm_client=None):
         """
         Initialise le CRMUpdater.
@@ -100,6 +128,10 @@ class CRMUpdater:
         """
         Détermine les mises à jour CRM à effectuer.
 
+        IMPORTANT: Cette méthode est maintenant DÉTERMINISTE.
+        Elle essaie TOUJOURS d'extraire date/session si les conditions sont réunies,
+        indépendamment de l'intention détectée par le LLM.
+
         Args:
             state: État détecté
             candidate_message: Message du candidat (pour extraction confirmations)
@@ -112,25 +144,49 @@ class CRMUpdater:
         result = CRMUpdateResult()
         context = state.context_data
 
-        # Récupérer la config des mises à jour depuis l'état
-        crm_config = state.crm_updates_config
+        # ================================================================
+        # APPROCHE DÉTERMINISTE: Extraire automatiquement si conditions OK
+        # Ne PAS dépendre de l'intention LLM pour les mises à jour CRM
+        # ================================================================
 
-        if not crm_config:
-            logger.info("Pas de mise à jour CRM définie pour cet état")
-            return result
+        # 1. Extraire la date d'examen si:
+        #    - Date actuelle est vide (state = EXAM_DATE_EMPTY ou date_examen is None)
+        #    - ET on a des dates proposées
+        #    - ET le message semble contenir une confirmation
+        date_examen_actuelle = context.get('date_examen')
+        has_proposed_dates = bool(proposed_dates)
 
-        method = crm_config.get('method', '')
+        if not date_examen_actuelle and has_proposed_dates:
+            logger.info("📅 Extraction date: date vide + dates proposées → extraction automatique")
+            self._extract_date_choice(
+                result, candidate_message, proposed_dates, context
+            )
 
-        # Dispatch selon la méthode
-        if method == 'extract_session_choice':
+        # 2. Extraire la préférence de session si:
+        #    - Session actuelle est vide
+        #    - ET on a des sessions proposées
+        session_actuelle = context.get('deal_data', {}).get('Session')
+        has_proposed_sessions = bool(proposed_sessions)
+
+        if not session_actuelle and has_proposed_sessions:
+            logger.info("📚 Extraction session: session vide + sessions proposées → extraction automatique")
             self._extract_session_choice(
                 result, candidate_message, proposed_sessions, context
             )
 
-        elif method == 'extract_date_choice':
-            self._extract_date_choice(
-                result, candidate_message, proposed_dates, context
-            )
+        # 3. Fallback: Si config explicite définie, l'utiliser aussi
+        crm_config = state.crm_updates_config
+        if crm_config:
+            method = crm_config.get('method', '')
+            # Ne pas re-extraire si déjà fait ci-dessus
+            if method == 'extract_session_choice' and 'Preference_horaire' not in result.updates_applied:
+                self._extract_session_choice(
+                    result, candidate_message, proposed_sessions, context
+                )
+            elif method == 'extract_date_choice' and 'Date_examen_VTC' not in result.updates_applied:
+                self._extract_date_choice(
+                    result, candidate_message, proposed_dates, context
+                )
 
         # Vérifier les règles de blocage
         self._apply_blocking_rules(result, context)
@@ -144,10 +200,15 @@ class CRMUpdater:
         proposed_sessions: Optional[List[Dict]],
         context: Dict[str, Any]
     ):
-        """Extrait le choix de session du message candidat."""
+        """
+        Extrait le choix de session - Approche hybride.
+
+        1. Tente extraction simple (regex) pour jour/soir
+        2. Si ambigu → utilise résultat LLM (si déjà appelé par _extract_date_choice)
+        """
         message_lower = message.lower()
 
-        # Détecter la préférence jour/soir
+        # Étape 1: Extraction simple de la préférence jour/soir
         preference = None
         confidence_jour = 0
         confidence_soir = 0
@@ -165,18 +226,30 @@ class CRMUpdater:
         elif confidence_soir > 0 and confidence_jour == 0:
             preference = 'soir'
         elif confidence_jour > 0 and confidence_soir > 0:
-            # Ambigu - ne pas mettre à jour
-            result.updates_skipped['Preference_horaire'] = "Choix ambigu (jour ET soir mentionnés)"
-            logger.warning("Choix de session ambigu - pas de mise à jour")
-            return
+            # Ambigu par regex - essayer avec LLM
+            logger.info("Préférence horaire ambiguë (jour ET soir) → vérification LLM")
+            llm_result = context.get('_llm_extraction_result')
+            if llm_result and llm_result.get('preference_horaire'):
+                preference = llm_result['preference_horaire']
+                logger.info(f"Préférence horaire résolue par LLM: {preference}")
+            else:
+                result.updates_skipped['Preference_horaire'] = "Choix ambigu (jour ET soir mentionnés)"
+                logger.warning("Choix de session ambigu - pas de mise à jour")
+                return
 
         if not preference:
-            result.updates_skipped['Preference_horaire'] = "Aucune préférence détectée"
-            return
+            # Essayer avec le résultat LLM si disponible
+            llm_result = context.get('_llm_extraction_result')
+            if llm_result and llm_result.get('preference_horaire'):
+                preference = llm_result['preference_horaire']
+                logger.info(f"Préférence horaire depuis LLM: {preference}")
+            else:
+                result.updates_skipped['Preference_horaire'] = "Aucune préférence détectée"
+                return
 
         # Mettre à jour Preference_horaire
         result.updates_applied['Preference_horaire'] = preference
-        logger.info(f"Préférence horaire détectée: {preference}")
+        logger.info(f"✅ Préférence horaire: {preference}")
 
         # Trouver la session correspondante dans les propositions
         if proposed_sessions:
@@ -191,7 +264,7 @@ class CRMUpdater:
                 session_id = matching_session.get('id')
                 if session_id:
                     result.updates_applied['Session'] = session_id
-                    logger.info(f"Session sélectionnée: {matching_session.get('Name', session_id)}")
+                    logger.info(f"✅ Session sélectionnée: {matching_session.get('Name', session_id)}")
                 else:
                     result.updates_skipped['Session'] = "Session trouvée mais sans ID"
             else:
@@ -204,74 +277,60 @@ class CRMUpdater:
         proposed_dates: Optional[List[Dict]],
         context: Dict[str, Any]
     ):
-        """Extrait le choix de date d'examen du message candidat."""
-        # Extraire les dates du message
-        dates_found = []
+        """
+        Extrait le choix de date d'examen - Approche hybride.
 
-        for pattern in self.DATE_CHOICE_PATTERNS:
-            matches = re.findall(pattern, message)
-            for match in matches:
-                if isinstance(match, tuple):
-                    # Date en lettres (jour, mois, année)
-                    try:
-                        day, month_name, year = match
-                        month_map = {
-                            'janvier': 1, 'février': 2, 'mars': 3, 'avril': 4,
-                            'mai': 5, 'juin': 6, 'juillet': 7, 'août': 8,
-                            'septembre': 9, 'octobre': 10, 'novembre': 11, 'décembre': 12
-                        }
-                        month = month_map.get(month_name.lower(), 0)
-                        if month:
-                            dt = datetime(int(year), month, int(day))
-                            dates_found.append(dt.strftime('%Y-%m-%d'))
-                    except Exception as e:
-                        pass
-                else:
-                    # Date en chiffres
-                    normalized = self._normalize_date(match)
-                    if normalized:
-                        dates_found.append(normalized)
+        1. Tente extraction simple (regex) - rapide, 0 coût
+        2. Si ambigu → utilise LLM Haiku (~$0.001)
+        """
+        # Étape 1: Extraction simple
+        simple_result = self._try_simple_extraction(message, proposed_dates)
 
-        if not dates_found:
-            result.updates_skipped['Date_examen_VTC'] = "Aucune date détectée dans le message"
-            return
-
-        if len(dates_found) > 1:
-            # Plusieurs dates - essayer de trouver celle qui correspond aux propositions
-            if proposed_dates:
-                proposed_date_strs = {d.get('Date_Examen') for d in proposed_dates if d.get('Date_Examen')}
-                matching = [d for d in dates_found if d in proposed_date_strs]
-                if len(matching) == 1:
-                    dates_found = matching
-                else:
-                    result.updates_skipped['Date_examen_VTC'] = "Plusieurs dates mentionnées, choix ambigu"
-                    return
-            else:
-                result.updates_skipped['Date_examen_VTC'] = "Plusieurs dates mentionnées sans référence"
-                return
-
-        chosen_date = dates_found[0]
-
-        # Vérifier que la date fait partie des propositions
-        if proposed_dates:
-            proposed_date_strs = {d.get('Date_Examen') for d in proposed_dates if d.get('Date_Examen')}
-            if chosen_date not in proposed_date_strs:
-                result.updates_skipped['Date_examen_VTC'] = f"Date {chosen_date} non proposée"
-                logger.warning(f"Date choisie {chosen_date} n'est pas dans les propositions")
-                return
-
-            # Trouver l'ID de la session d'examen
-            for date_info in proposed_dates:
-                if date_info.get('Date_Examen') == chosen_date:
+        if simple_result:
+            # Extraction simple réussie - trouver l'ID
+            for date_info in proposed_dates or []:
+                date_examen = date_info.get('Date_Examen', '')
+                if date_examen and date_examen[:10] == simple_result:
                     exam_session_id = date_info.get('id')
                     if exam_session_id:
                         result.updates_applied['Date_examen_VTC'] = exam_session_id
-                        logger.info(f"Date d'examen sélectionnée: {chosen_date} (ID: {exam_session_id})")
-                    else:
-                        result.updates_skipped['Date_examen_VTC'] = "Date trouvée mais sans ID session"
-                    break
+                        logger.info(f"✅ Date d'examen (regex): {simple_result} (ID: {exam_session_id})")
+                        return
+
+            result.updates_skipped['Date_examen_VTC'] = f"Date {simple_result} sans ID session"
+            return
+
+        # Étape 2: Extraction LLM pour cas ambigu
+        logger.info("Extraction simple ambiguë → utilisation LLM Haiku")
+
+        # Récupérer les sessions proposées du contexte
+        proposed_sessions = context.get('proposed_sessions', [])
+
+        llm_result = self._extract_with_llm(message, proposed_dates, proposed_sessions)
+
+        # Stocker le résultat LLM dans le contexte pour réutilisation par _extract_session_choice
+        context['_llm_extraction_result'] = llm_result
+
+        # Traiter le résultat LLM pour la date
+        if llm_result.get('date_examen'):
+            chosen_date = llm_result['date_examen']
+
+            # Valider contre proposed_dates
+            if proposed_dates:
+                for date_info in proposed_dates:
+                    date_examen = date_info.get('Date_Examen', '')
+                    if date_examen and date_examen[:10] == chosen_date:
+                        exam_session_id = date_info.get('id')
+                        if exam_session_id:
+                            result.updates_applied['Date_examen_VTC'] = exam_session_id
+                            logger.info(f"✅ Date d'examen (LLM): {chosen_date} (ID: {exam_session_id})")
+                            return
+
+            result.updates_skipped['Date_examen_VTC'] = f"Date LLM {chosen_date} non trouvée dans propositions"
         else:
-            result.updates_skipped['Date_examen_VTC'] = "Pas de dates proposées pour valider le choix"
+            result.updates_skipped['Date_examen_VTC'] = (
+                f"Extraction échouée: {llm_result.get('raison', 'raison inconnue')}"
+            )
 
     def _apply_blocking_rules(
         self,
@@ -295,17 +354,156 @@ class CRMUpdater:
             # Essayer DD/MM/YYYY
             dt = datetime.strptime(date_str, '%d/%m/%Y')
             return dt.strftime('%Y-%m-%d')
-        except Exception as e:
+        except Exception:
             pass
 
         try:
             # Essayer YYYY-MM-DD
             dt = datetime.strptime(date_str[:10], '%Y-%m-%d')
             return dt.strftime('%Y-%m-%d')
-        except Exception as e:
+        except Exception:
             pass
 
         return None
+
+    def _try_simple_extraction(
+        self,
+        message: str,
+        proposed_dates: Optional[List[Dict]]
+    ) -> Optional[str]:
+        """
+        Tente une extraction simple par regex.
+
+        Returns:
+            Date YYYY-MM-DD si extraction non-ambiguë, None sinon
+        """
+        dates_found = []
+
+        for pattern in self.DATE_CHOICE_PATTERNS:
+            matches = re.findall(pattern, message, re.IGNORECASE)
+            for match in matches:
+                if isinstance(match, tuple):
+                    # Format texte (jour, mois, année)
+                    try:
+                        day, month_name, year = match
+                        month_map = {
+                            'janvier': 1, 'février': 2, 'mars': 3, 'avril': 4,
+                            'mai': 5, 'juin': 6, 'juillet': 7, 'août': 8,
+                            'septembre': 9, 'octobre': 10, 'novembre': 11, 'décembre': 12
+                        }
+                        month = month_map.get(month_name.lower(), 0)
+                        if month:
+                            normalized = f"{int(year):04d}-{month:02d}-{int(day):02d}"
+                            if normalized not in dates_found:
+                                dates_found.append(normalized)
+                    except Exception:
+                        pass
+                else:
+                    normalized = self._normalize_date(match)
+                    if normalized and normalized not in dates_found:
+                        dates_found.append(normalized)
+
+        # Cas simple: exactement 1 date trouvée
+        if len(dates_found) == 1:
+            chosen = dates_found[0]
+            # Vérifier que c'est bien une date d'examen proposée
+            if proposed_dates:
+                exam_dates = {d.get('Date_Examen', '')[:10] for d in proposed_dates if d.get('Date_Examen')}
+                if chosen in exam_dates:
+                    logger.info(f"Extraction simple réussie: 1 date trouvée = {chosen}")
+                    return chosen
+                else:
+                    logger.info(f"Date {chosen} trouvée mais non proposée")
+                    return None
+            else:
+                return chosen
+
+        # Cas ambigu: 0 ou >1 dates
+        if len(dates_found) == 0:
+            logger.info("Extraction simple: aucune date trouvée")
+        else:
+            logger.info(f"Extraction simple ambiguë: {len(dates_found)} dates trouvées: {dates_found}")
+
+        return None
+
+    def _extract_with_llm(
+        self,
+        message: str,
+        proposed_dates: Optional[List[Dict]],
+        proposed_sessions: Optional[List[Dict]]
+    ) -> Dict[str, Any]:
+        """
+        Extraction structurée via LLM Haiku pour cas ambigus.
+
+        Returns:
+            {
+                'date_examen': '2026-04-28' ou None,
+                'session_id': 'xxx' ou None,
+                'preference_horaire': 'jour'/'soir'/None,
+                'confiance': 'haute'/'moyenne'/'basse',
+                'raison': str
+            }
+        """
+        # Formater les dates proposées pour le prompt
+        if not proposed_dates:
+            dates_str = "Aucune"
+        else:
+            dates_str = "\n".join([
+                f"- {d.get('Date_Examen', 'N/A')} (clôture: {str(d.get('Date_Cloture_Inscription', 'N/A'))[:10]}, ID: {d.get('id', 'N/A')})"
+                for d in proposed_dates
+            ])
+
+        # Formater les sessions proposées
+        if not proposed_sessions:
+            sessions_str = "Aucune"
+        else:
+            sessions_str = "\n".join([
+                f"- {s.get('Name', 'N/A')} (ID: {s.get('id', 'N/A')}, {s.get('Date_debut', 'N/A')} - {s.get('Date_fin', 'N/A')})"
+                for s in proposed_sessions
+            ])
+
+        prompt = self.EXTRACTION_PROMPT.format(
+            message=message,
+            proposed_dates=dates_str,
+            proposed_sessions=sessions_str
+        )
+
+        try:
+            import anthropic
+            import json
+
+            client = anthropic.Anthropic()
+
+            response = client.messages.create(
+                model="claude-3-5-haiku-20241022",
+                max_tokens=256,
+                messages=[{"role": "user", "content": prompt}]
+            )
+
+            # Parser la réponse JSON
+            content = response.content[0].text.strip()
+
+            # Nettoyer si wrapped dans ```json
+            if content.startswith("```"):
+                lines = content.split("\n")
+                # Enlever première et dernière ligne (``` markers)
+                content = "\n".join(lines[1:-1] if lines[-1].strip() == "```" else lines[1:])
+                if content.startswith("json"):
+                    content = content[4:].strip()
+
+            result = json.loads(content)
+            logger.info(f"LLM extraction réussie: {result}")
+            return result
+
+        except Exception as e:
+            logger.error(f"LLM extraction failed: {e}")
+            return {
+                'date_examen': None,
+                'session_id': None,
+                'preference_horaire': None,
+                'confiance': 'basse',
+                'raison': f'Erreur extraction: {str(e)}'
+            }
 
     def apply_updates(
         self,

@@ -934,7 +934,23 @@ class TemplateEngine:
         # - Pas de date d'examen assignée
         # - ET il y a des dates disponibles
         # - ET on n'est pas dans un cas de report (géré par Section 0)
-        if not is_report_intention:
+        # - Le candidat n'a PAS déjà confirmé sa date
+
+        # DÉTECTION DÉTERMINISTE: Vérifier si le message contient une confirmation de date
+        # Ne PAS dépendre de l'intention LLM qui est variable
+        is_date_confirmation = self._is_date_confirmation_message(
+            context.get('customer_message', ''),
+            context.get('next_dates', [])
+        )
+
+        if context.get('intention_confirmation_date') or is_date_confirmation:
+            # Le candidat confirme sa date → NE PAS redemander les dates
+            result['show_dates_section'] = False
+            if is_date_confirmation:
+                logger.info("📅 show_dates_section=False (détection déterministe: confirmation de date)")
+            else:
+                logger.info("📅 show_dates_section=False (intention CONFIRMATION_DATE_EXAMEN)")
+        elif not is_report_intention:
             result['show_dates_section'] = not date_examen and bool(context.get('next_dates', []))
 
         # Calculer show_sessions_section (CENTRALISÉ - Section 4)
@@ -961,6 +977,130 @@ class TemplateEngine:
             )
 
         return result
+
+    # Patterns pour détection déterministe des confirmations de date
+    CONFIRMATION_KEYWORDS = [
+        r'\bconfirme\b', r'\bconfirmé\b', r'\bconfirmation\b',
+        r'\bok\b', r"\bd['']accord\b", r'\bparfait\b',
+        r'\bça me va\b', r'\bça me convient\b',
+        r'\bje choisis?\b', r'\bje prends?\b', r'\bje valide\b',
+        r'\bpour le\b', r'\bpour la date\b',
+        r'\boui\b',
+    ]
+
+    DATE_PATTERNS = [
+        r'(\d{2}/\d{2}/\d{4})',  # DD/MM/YYYY
+        r'(\d{4}-\d{2}-\d{2})',  # YYYY-MM-DD
+        r'(\d{1,2})\s+(janvier|février|mars|avril|mai|juin|juillet|août|septembre|octobre|novembre|décembre)\s+(\d{4})',
+    ]
+
+    def _is_date_confirmation_message(
+        self,
+        message: str,
+        next_dates: List[Dict[str, Any]]
+    ) -> bool:
+        """
+        Détection DÉTERMINISTE si le message est une confirmation de date.
+
+        Cette méthode ne dépend PAS du LLM - elle utilise des regex pour:
+        1. Détecter des mots-clés de confirmation
+        2. Détecter une date dans le message
+        3. Vérifier que la date correspond à une date proposée
+
+        Args:
+            message: Message du candidat
+            next_dates: Dates d'examen proposées
+
+        Returns:
+            True si le message semble confirmer une date d'examen
+        """
+        if not message:
+            return False
+
+        message_lower = message.lower()
+
+        # 1. Vérifier la présence d'un mot-clé de confirmation
+        has_confirmation_keyword = False
+        for pattern in self.CONFIRMATION_KEYWORDS:
+            if re.search(pattern, message_lower):
+                has_confirmation_keyword = True
+                break
+
+        if not has_confirmation_keyword:
+            return False
+
+        # 2. Extraire les dates du message
+        dates_found = []
+        for pattern in self.DATE_PATTERNS:
+            matches = re.findall(pattern, message, re.IGNORECASE)
+            for match in matches:
+                if isinstance(match, tuple):
+                    # Format texte (jour, mois, année)
+                    try:
+                        day, month_name, year = match
+                        month_map = {
+                            'janvier': 1, 'février': 2, 'mars': 3, 'avril': 4,
+                            'mai': 5, 'juin': 6, 'juillet': 7, 'août': 8,
+                            'septembre': 9, 'octobre': 10, 'novembre': 11, 'décembre': 12
+                        }
+                        month = month_map.get(month_name.lower(), 0)
+                        if month:
+                            normalized = f"{int(year):04d}-{month:02d}-{int(day):02d}"
+                            if normalized not in dates_found:
+                                dates_found.append(normalized)
+                    except Exception:
+                        pass
+                else:
+                    # Format numérique (DD/MM/YYYY ou YYYY-MM-DD)
+                    normalized = self._normalize_date_for_detection(match)
+                    if normalized and normalized not in dates_found:
+                        dates_found.append(normalized)
+
+        # 3. Si on a trouvé des dates, vérifier qu'au moins une correspond aux propositions
+        if dates_found and next_dates:
+            proposed_exam_dates = set()
+            for date_info in next_dates:
+                exam_date = date_info.get('Date_Examen', '')
+                if exam_date:
+                    # Normaliser au format YYYY-MM-DD
+                    normalized = exam_date[:10] if len(exam_date) >= 10 else exam_date
+                    proposed_exam_dates.add(normalized)
+
+            # Vérifier si au moins une date trouvée est dans les propositions
+            for found_date in dates_found:
+                if found_date in proposed_exam_dates:
+                    logger.info(f"🎯 Détection déterministe: date {found_date} confirmée (dans propositions)")
+                    return True
+
+        # 4. Cas spécial: si le message contient un mot de confirmation
+        #    ET une date qui ressemble à une date d'examen (même sans next_dates)
+        #    → considérer comme confirmation si au moins une date trouvée
+        if dates_found and not next_dates:
+            # Pas de next_dates à vérifier, mais le candidat confirme avec une date
+            logger.info(f"🎯 Détection déterministe: confirmation avec date(s) {dates_found} (sans propositions)")
+            return True
+
+        return False
+
+    def _normalize_date_for_detection(self, date_str: str) -> Optional[str]:
+        """
+        Normalise une date en format YYYY-MM-DD pour la détection.
+        """
+        if not date_str:
+            return None
+
+        # Format DD/MM/YYYY
+        match = re.match(r'(\d{2})/(\d{2})/(\d{4})', date_str)
+        if match:
+            day, month, year = match.groups()
+            return f"{year}-{month}-{day}"
+
+        # Format YYYY-MM-DD (déjà normalisé)
+        match = re.match(r'(\d{4})-(\d{2})-(\d{2})', date_str)
+        if match:
+            return date_str
+
+        return None
 
     # Mapping state → flag pour les états (utilisés par response_master.html)
     # Ces flags permettent aux templates d'afficher les sections appropriées

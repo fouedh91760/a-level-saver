@@ -170,11 +170,18 @@ Réponds toujours en JSON avec la structure:
 
             # Mapping pour les champs lookup
             if field == 'Date_examen_VTC':
-                mapped_value = self._map_date_examen_vtc(value, deal_data)
-                if mapped_value:
-                    final_updates[field] = mapped_value
+                # Si la valeur est déjà un ID (nombre long), l'utiliser directement
+                # IDs Zoho CRM sont des nombres de 19 chiffres
+                if str(value).isdigit() and len(str(value)) > 10:
+                    logger.info(f"  📊 Date_examen_VTC: valeur déjà un ID → {value}")
+                    final_updates[field] = value
                 else:
-                    result['errors'].append(f"Failed to map Date_examen_VTC: {value}")
+                    # Sinon, mapper la date vers un ID
+                    mapped_value = self._map_date_examen_vtc(value, deal_data)
+                    if mapped_value:
+                        final_updates[field] = mapped_value
+                    else:
+                        result['errors'].append(f"Failed to map Date_examen_VTC: {value}")
 
             elif field in ['Session_choisie', 'Session']:
                 mapped_value = self._map_session(value, session_data, deal_data)

@@ -2503,6 +2503,9 @@ L'équipe CAB Formations"""
 
         proposed_dates = analysis_result.get('date_examen_vtc_result', {}).get('next_dates', [])
 
+        # Injecter proposed_sessions dans le contexte pour extraction LLM si nécessaire
+        detected_state.context_data['proposed_sessions'] = proposed_sessions
+
         crm_update_result = self.state_crm_updater.determine_updates(
             state=detected_state,
             candidate_message=customer_message,

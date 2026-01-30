@@ -1142,12 +1142,21 @@ matrix:
 
   "EXAM_DATE_EMPTY:CONFIRMATION_SESSION":
     template: "response_master.html"
-    description: "Session + statut date vide"
+    description: "Candidat confirme session (et potentiellement date) - date était vide"
+    # CRM updates: extraire date + session du message
+    crm_updates:
+      method: "extract_date_choice"
+      fields:
+        - field: "Date_examen_VTC"
+          source: "detected_date_id"
     context_flags:
       intention_confirmation_session: true
+      # IMPORTANT: Ne pas redemander la date - le candidat confirme souvent les deux ensemble
+      intention_confirmation_date: true
+      show_confirmation_section: true
       show_statut_section: true
-      show_sessions_section: true
-      action_choisir_date: true
+      show_sessions_section: false
+      action_choisir_date: false
 
   # Candidat confirme une date d'examen (Date_examen_VTC était vide)
   # → Accusé de réception + mise à jour CRM
