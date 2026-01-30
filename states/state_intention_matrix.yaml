@@ -1892,6 +1892,21 @@ matrix:
       - renvoi_information
       - communication_diplomatique
 
+  "*:PROBLEME_CONNEXION_EXAMT3P":
+    template: "response_master.html"
+    description: "Problème connexion ExamT3P - rappeler identifiants + conseils dépannage"
+    context_flags:
+      credentials_invalid: true
+      intention_demande_identifiants: true
+      show_statut_section: true
+
+  "*:PROBLEME_CONNEXION_ELEARNING":
+    template: "response_master.html"
+    description: "Problème connexion e-learning - rappeler identifiants"
+    context_flags:
+      intention_demande_elearning: true
+      show_statut_section: true
+
 # =============================================================================
 # SECTION 4: CONFIGURATION GLOBALE
 # =============================================================================

@@ -41,9 +41,9 @@ CONTEXTE MÉTIER:
 
 DÉPARTEMENTS DISPONIBLES:
 - DOC: Questions sur formation, examen, dates, sessions, identifiants ExamT3P (département par défaut pour candidats Uber 20€)
-- Refus CMA: UNIQUEMENT si la CMA a REFUSÉ un document (statut Evalbox = "Refusé CMA" ou "Documents manquants")
+- Refus CMA: Si la CMA a REFUSÉ un document OU si le candidat nous TRANSMET des documents (pièces jointes, justificatifs)
 - Contact: Demandes commerciales, autres formations (NON Uber 20€), RGPD
-- Comptabilité: Factures, remboursements, paiements
+- Comptabilité: UNIQUEMENT si le candidat DEMANDE EXPLICITEMENT sa facture pour la formation/offre souscrite
 
 RÈGLES DE TRIAGE:
 
@@ -76,6 +76,13 @@ IMPORTANT - DISTINCTION DOCUMENTS:
 - "Mon document a été refusé" = ROUTE Refus CMA (problème de refus CMA)
 - Comprends le CONTEXTE, pas juste les mots-clés
 - **PROSPECT UBER 20€ = TOUJOURS DOC** pour les pousser à payer et avancer
+
+IMPORTANT - DISTINCTION "FACTURE":
+- Sujet "Facture" SANS demande explicite = candidat TRANSMET un justificatif de domicile (facture EDF, téléphone...)
+  → ROUTE Refus CMA (TRANSMET_DOCUMENTS)
+- "Je voudrais ma facture pour la formation" = candidat DEMANDE sa facture de paiement
+  → ROUTE Comptabilité
+- En cas de doute, si le candidat n'écrit pas explicitement "je veux/demande ma facture", c'est un document transmis
 
 ---
 
