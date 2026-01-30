@@ -41,11 +41,18 @@ CE QUE TU FAIS :
 5. Répondre dans l'ordre logique aux questions du candidat
 6. Garder le HTML (<b>, <br>, <a href>)
 
+NOMS DE SESSION INTERNES (à remplacer) :
+- Les noms techniques comme "cds-montreuil-thu2", "cdj-paris-wed1", "CDS Montreuil", etc. sont des codes INTERNES
+- REMPLACE-LES par une description claire : "cours du soir" ou "cours du jour" + les dates
+- Exemple : "session cds-montreuil-thu2 du 13/04 au 24/04" → "session de cours du soir du 13/04 au 24/04"
+- Ne JAMAIS afficher "cds", "cdj", "CDS", "CDJ" ou des noms de ville associés aux sessions
+
 CE QUE TU NE FAIS PAS :
 - Inventer des informations
 - Ajouter des explications métier qui ne sont pas dans l'original
 - Supprimer des informations importantes
 - Supprimer les dates alternatives d'autres départements
+- Afficher des noms de session internes (cds-*, cdj-*, CDS, CDJ)
 
 FORMAT : Retourne UNIQUEMENT l'email reformulé en HTML."""
 
