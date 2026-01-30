@@ -61,6 +61,7 @@ def humanize_response(
     template_response: str,
     candidate_message: str,
     candidate_name: str = "",
+    previous_response: str = "",
     use_ai: bool = True
 ) -> Dict[str, Any]:
     """
@@ -70,6 +71,7 @@ def humanize_response(
         template_response: La réponse HTML générée par le template engine
         candidate_message: Le dernier message du candidat (pour contexte)
         candidate_name: Prénom du candidat
+        previous_response: Notre précédent message au candidat (pour éviter répétitions)
         use_ai: Si True, utilise l'IA pour humaniser. Sinon retourne tel quel.
 
     Returns:
@@ -89,16 +91,26 @@ def humanize_response(
     try:
         client = anthropic.Anthropic()
 
+        # Construire le contexte du message précédent si disponible
+        previous_context = ""
+        if previous_response:
+            previous_context = f"""
+NOTRE PRÉCÉDENT MESSAGE AU CANDIDAT (éviter de répéter ces infos) :
+{previous_response[:1000]}
+
+"""
+
         # Construire le prompt utilisateur
         user_prompt = f"""Reformule cet email pour le rendre naturel et fluide.
-
+{previous_context}
 MESSAGE DU CANDIDAT (contexte) :
 {candidate_message[:800]}
 
 EMAIL À REFORMULER :
 {template_response}
 
-Fusionne les sections, ajoute des transitions naturelles, garde toutes les informations factuelles."""
+Fusionne les sections, ajoute des transitions naturelles, garde toutes les informations factuelles.
+{"IMPORTANT : Évite de répéter les informations déjà communiquées dans notre précédent message." if previous_response else ""}"""
 
         response = client.messages.create(
             model="claude-sonnet-4-20250514",

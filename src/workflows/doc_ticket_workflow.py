@@ -2082,13 +2082,18 @@ L'équipe CAB Formations"""
         ticket = self.desk_client.get_ticket(ticket_id)
         ticket_subject = ticket.get('subject', '')
 
-        # Extract customer message with proper content extraction
+        # Extract customer message and our previous response
         from src.utils.text_utils import get_clean_thread_content
 
         customer_message = ""
+        previous_response = ""
         for thread in analysis_result.get('threads', []):
-            if thread.get('direction') == 'in':
+            if thread.get('direction') == 'in' and not customer_message:
                 customer_message = get_clean_thread_content(thread)
+            elif thread.get('direction') == 'out' and not previous_response:
+                previous_response = get_clean_thread_content(thread)
+            # Stop once we have both
+            if customer_message and previous_response:
                 break
 
         # State Engine - Deterministic response generation
@@ -2098,6 +2103,7 @@ L'équipe CAB Formations"""
             triage_result=triage_result,
             analysis_result=analysis_result,
             customer_message=customer_message,
+            previous_response=previous_response,
             ticket_subject=ticket_subject
         )
 
@@ -2107,6 +2113,7 @@ L'équipe CAB Formations"""
         triage_result: Dict,
         analysis_result: Dict,
         customer_message: str,
+        previous_response: str,
         ticket_subject: str
     ) -> Dict:
         """
@@ -2123,6 +2130,7 @@ L'équipe CAB Formations"""
             triage_result: Result from triage step (contains detected_intent)
             analysis_result: Result from analysis step (contains all data)
             customer_message: Candidate's message content
+            previous_response: Our previous message to the candidate
             ticket_subject: Ticket subject
 
         Returns:
@@ -2420,6 +2428,7 @@ L'équipe CAB Formations"""
             template_response=response_text,
             candidate_message=customer_message,
             candidate_name=candidate_name,
+            previous_response=previous_response,
             use_ai=True  # Activer l'humanisation IA
         )
 
