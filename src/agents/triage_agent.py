@@ -59,20 +59,21 @@ RÈGLES DE TRIAGE:
      Ces prospects doivent être poussés à finaliser leur paiement des 20€
      On répond à leurs questions et on les encourage à convertir
 
-3. **ROUTE vers Refus CMA** SEULEMENT si:
+3. **ROUTE vers Refus CMA** si:
    - Le candidat signale que la CMA a REFUSÉ son dossier
    - OU deal_data.Evalbox == "Refusé CMA" ou "Documents manquants"
-   - NE PAS router si le candidat dit juste "j'ai envoyé mes documents"
+   - OU le candidat nous ENVOIE des documents en pièce jointe (intention TRANSMET_DOCUMENTS)
+     → On doit uploader ces documents sur son compte ExamT3P manuellement
 
 4. **ROUTE vers Contact** si:
    - Demande d'information sur une formation NON Uber (formation classique, TAXI, etc.)
    - ⚠️ JAMAIS pour les prospects Uber 20€ même en EN ATTENTE - ils restent dans DOC !
    - Demande de suppression de données (RGPD, droit à l'oubli, destruction données)
 
-IMPORTANT:
-- Le mot "document" ne signifie PAS automatiquement Refus CMA
-- "J'ai téléchargé mes documents" = GO (confirmation d'envoi)
-- "Mon document a été refusé" = ROUTE vers Refus CMA
+IMPORTANT - DISTINCTION DOCUMENTS:
+- "J'ai téléchargé mes documents SUR EXAMT3P" = GO (ENVOIE_DOCUMENTS - il l'a fait lui-même)
+- "Voici mon passeport en pièce jointe" = ROUTE Refus CMA (TRANSMET_DOCUMENTS - on doit uploader pour lui)
+- "Mon document a été refusé" = ROUTE Refus CMA (problème de refus CMA)
 - Comprends le CONTEXTE, pas juste les mots-clés
 - **PROSPECT UBER 20€ = TOUJOURS DOC** pour les pousser à payer et avancer
 
@@ -117,9 +118,12 @@ INTENTIONS POSSIBLES (par ordre de spécificité - préfère les intentions spé
   Exemples: "où en est mon dossier", "mon inscription", "avancement", "statut"
 - DOCUMENT_QUESTION: Question sur les documents
   Exemples: "quels documents", "pièces à fournir", "document manquant"
-- ENVOIE_DOCUMENTS: Candidat CONFIRME avoir envoyé/téléchargé ses documents
-  Exemples: "j'ai envoyé mes documents", "j'ai téléchargé mes pièces", "documents envoyés"
-  ⚠️ DIFFÉRENT de DOCUMENT_QUESTION: ici c'est une CONFIRMATION d'action
+- ENVOIE_DOCUMENTS: Candidat CONFIRME avoir téléchargé ses documents SUR EXAMT3P lui-même
+  Exemples: "j'ai téléchargé mes documents sur ExamT3P", "j'ai mis mes pièces sur le site", "documents ajoutés sur mon espace"
+  ⚠️ Action: GO - le candidat a fait l'upload lui-même, on accuse réception
+- TRANSMET_DOCUMENTS: Candidat nous ENVOIE des documents en pièce jointe (passeport, permis, etc.)
+  Exemples: "voici mon passeport", "ci-joint mes documents", "je vous envoie mon permis"
+  ⚠️ Action: ROUTE vers Refus CMA - on doit uploader les documents sur son compte ExamT3P
 - SIGNALE_PROBLEME_DOCS: Problème technique lors de l'upload des documents
   Exemples: "erreur lors de l'envoi", "impossible de télécharger", "bug sur le site"
 - CONFIRMATION_PAIEMENT: Confirmation ou question sur le paiement

@@ -170,13 +170,23 @@ intentions:
 
   ENVOIE_DOCUMENTS:
     id: "I14"
-    description: "J'ai envoyé/téléchargé mes documents"
+    description: "J'ai téléchargé mes documents SUR EXAMT3P (confirmation d'action)"
     triggers:
-      - "j'ai envoyé"
-      - "j'ai téléchargé"
-      - "documents envoyés"
-      - "pièces jointes"
-      - "uploadé"
+      - "j'ai téléchargé sur examt3p"
+      - "j'ai mis mes documents sur le site"
+      - "documents ajoutés sur mon espace"
+      - "uploadé sur examt3p"
+
+  TRANSMET_DOCUMENTS:
+    id: "I14b"
+    description: "Candidat nous ENVOIE des documents en pièce jointe (à uploader pour lui)"
+    routing: "Refus CMA"
+    triggers:
+      - "voici mon passeport"
+      - "ci-joint"
+      - "en pièce jointe"
+      - "je vous envoie"
+      - "je vous transmets"
 
   ENVOIE_IDENTIFIANTS:
     id: "I15"
