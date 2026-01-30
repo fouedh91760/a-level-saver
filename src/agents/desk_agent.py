@@ -39,12 +39,18 @@ Always respond in JSON format with the following structure:
 }
 """
 
-    def __init__(self):
+    def __init__(self, desk_client: Optional[ZohoDeskClient] = None):
+        """
+        Initialize DeskTicketAgent.
+
+        Args:
+            desk_client: Optional ZohoDeskClient instance (creates new one if None)
+        """
         super().__init__(
             name="DeskTicketAgent",
             system_prompt=self.SYSTEM_PROMPT
         )
-        self.desk_client = ZohoDeskClient()
+        self.desk_client = desk_client or ZohoDeskClient()
 
     def process(self, data: Dict[str, Any]) -> Dict[str, Any]:
         """

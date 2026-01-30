@@ -73,19 +73,36 @@ Always respond in JSON format with the following structure:
 }
 """
 
-    def __init__(self):
+    def __init__(
+        self,
+        desk_client: Optional[ZohoDeskClient] = None,
+        crm_client: Optional[ZohoCRMClient] = None
+    ):
+        """
+        Initialize DealLinkingAgent.
+
+        Args:
+            desk_client: Optional ZohoDeskClient instance (creates new one if None)
+            crm_client: Optional ZohoCRMClient instance (lazy init if None)
+        """
         super().__init__(
             name="DealLinkingAgent",
             system_prompt=self.SYSTEM_PROMPT
         )
-        self.linker = TicketDealLinker()
-        self.desk_client = ZohoDeskClient()
-        self.crm_client = None  # Lazy initialization to avoid import issues
+        # Use injected clients or create new ones
+        self.desk_client = desk_client or ZohoDeskClient()
+        self._injected_crm_client = crm_client
+        self.crm_client = crm_client  # May be None for lazy initialization
+        # Create linker with the same clients to avoid duplication
+        self.linker = TicketDealLinker(
+            desk_client=self.desk_client,
+            crm_client=crm_client
+        )
 
     def _get_crm_client(self) -> ZohoCRMClient:
         """Lazy initialization of CRM client."""
         if self.crm_client is None:
-            self.crm_client = ZohoCRMClient()
+            self.crm_client = self._injected_crm_client or ZohoCRMClient()
         return self.crm_client
 
     def _extract_email_from_thread(self, thread: Dict[str, Any]) -> Optional[str]:

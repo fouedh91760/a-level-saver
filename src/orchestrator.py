@@ -27,13 +27,28 @@ class ZohoAutomationOrchestrator:
     """
 
     def __init__(self):
-        self.dispatcher_agent = TicketDispatcherAgent()
-        self.deal_linking_agent = DealLinkingAgent()
-        self.desk_agent = DeskTicketAgent()
-        self.crm_agent = CRMOpportunityAgent()
+        """
+        Initialize orchestrator with shared Zoho clients.
+
+        Creates only 2 clients (Desk + CRM) and injects them into all agents
+        to share token management and reduce API calls.
+        """
+        # Create shared clients (TokenManager singleton handles token caching)
         self.desk_client = ZohoDeskClient()
         self.crm_client = ZohoCRMClient()
-        self.ticket_deal_linker = TicketDealLinker()
+
+        # Inject shared clients into all agents
+        self.dispatcher_agent = TicketDispatcherAgent(desk_client=self.desk_client)
+        self.deal_linking_agent = DealLinkingAgent(
+            desk_client=self.desk_client,
+            crm_client=self.crm_client
+        )
+        self.desk_agent = DeskTicketAgent(desk_client=self.desk_client)
+        self.crm_agent = CRMOpportunityAgent(crm_client=self.crm_client)
+        self.ticket_deal_linker = TicketDealLinker(
+            desk_client=self.desk_client,
+            crm_client=self.crm_client
+        )
 
     def process_ticket_with_crm_update(
         self,

@@ -58,14 +58,25 @@ class DOCTicketWorkflow:
     """Complete workflow orchestrator for DOC tickets."""
 
     def __init__(self):
-        """Initialize workflow with all required components."""
+        """
+        Initialize workflow with all required components.
+
+        Creates only 2 Zoho clients (Desk + CRM) and injects them into all agents
+        to share token management and reduce API calls.
+        """
+        # Create shared clients (TokenManager singleton handles token caching)
         self.desk_client = ZohoDeskClient()
         self.crm_client = ZohoCRMClient()
-        self.deal_linker = DealLinkingAgent()
-        self.examt3p_agent = ExamT3PAgent()
-        self.dispatcher = TicketDispatcherAgent()
-        self.crm_update_agent = CRMUpdateAgent()
-        self.triage_agent = TriageAgent()
+
+        # Inject shared clients into all agents
+        self.deal_linker = DealLinkingAgent(
+            desk_client=self.desk_client,
+            crm_client=self.crm_client
+        )
+        self.examt3p_agent = ExamT3PAgent()  # Uses Playwright, not Zoho API
+        self.dispatcher = TicketDispatcherAgent(desk_client=self.desk_client)
+        self.crm_update_agent = CRMUpdateAgent(crm_client=self.crm_client)
+        self.triage_agent = TriageAgent()  # Uses Anthropic API, not Zoho API
 
         # State Engine - Architecture State-Driven (seul mode supporté)
         self.state_detector = StateDetector()
@@ -76,7 +87,7 @@ class DOCTicketWorkflow:
         self.anthropic_client = anthropic.Anthropic()
         self.personalization_model = "claude-sonnet-4-5-20250929"
 
-        logger.info("✅ DOCTicketWorkflow initialized (State Engine)")
+        logger.info("✅ DOCTicketWorkflow initialized (State Engine, shared clients)")
 
     def process_ticket(
         self,

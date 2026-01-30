@@ -31,9 +31,20 @@ class TicketDealLinker:
     Supports multiple linking strategies with fallback mechanisms.
     """
 
-    def __init__(self):
-        self.desk_client = ZohoDeskClient()
-        self.crm_client = ZohoCRMClient()
+    def __init__(
+        self,
+        desk_client: Optional[ZohoDeskClient] = None,
+        crm_client: Optional[ZohoCRMClient] = None
+    ):
+        """
+        Initialize TicketDealLinker.
+
+        Args:
+            desk_client: Optional ZohoDeskClient instance (creates new one if None)
+            crm_client: Optional ZohoCRMClient instance (creates new one if None)
+        """
+        self.desk_client = desk_client or ZohoDeskClient()
+        self.crm_client = crm_client or ZohoCRMClient()
 
     def find_deal_for_ticket(
         self,

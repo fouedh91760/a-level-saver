@@ -11,6 +11,9 @@ from src.zoho_client import ZohoDeskClient
 
 logger = logging.getLogger(__name__)
 
+# Type alias for optional client injection
+ZohoDeskClientType = Optional[ZohoDeskClient]
+
 try:
     from business_rules import BusinessRules
     logger.info("Loaded custom business rules for dispatcher")
@@ -34,7 +37,13 @@ class TicketDispatcherAgent(BaseAgent):
     4. Validates department before allowing further processing
     """
 
-    def __init__(self):
+    def __init__(self, desk_client: ZohoDeskClientType = None):
+        """
+        Initialize TicketDispatcherAgent.
+
+        Args:
+            desk_client: Optional ZohoDeskClient instance (creates new one if None)
+        """
         system_prompt = """You are a Ticket Dispatcher Agent for Zoho Desk.
 
 Your role is to analyze support tickets and determine which department should handle them.
@@ -63,7 +72,7 @@ You must provide:
 Be precise and consistent in your routing decisions."""
 
         super().__init__(name="TicketDispatcherAgent", system_prompt=system_prompt)
-        self.desk_client = ZohoDeskClient()
+        self.desk_client = desk_client or ZohoDeskClient()
 
     def process(self, data: Dict[str, Any]) -> Dict[str, Any]:
         """

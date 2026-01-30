@@ -56,4 +56,6 @@ htmlcov/
 
 # Generated CRM schema
 crm_schema.json
-git
+
+# Token cache OAuth (sensitive - contains access tokens)
+.token_cache.json

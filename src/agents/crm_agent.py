@@ -44,12 +44,18 @@ Always respond in JSON format with the following structure:
 }
 """
 
-    def __init__(self):
+    def __init__(self, crm_client: Optional[ZohoCRMClient] = None):
+        """
+        Initialize CRMOpportunityAgent.
+
+        Args:
+            crm_client: Optional ZohoCRMClient instance (creates new one if None)
+        """
         super().__init__(
             name="CRMOpportunityAgent",
             system_prompt=self.SYSTEM_PROMPT
         )
-        self.crm_client = ZohoCRMClient()
+        self.crm_client = crm_client or ZohoCRMClient()
 
     def process(self, data: Dict[str, Any]) -> Dict[str, Any]:
         """

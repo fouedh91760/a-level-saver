@@ -65,12 +65,18 @@ Réponds toujours en JSON avec la structure:
     # Champs lookup (nécessitent ID, pas string)
     LOOKUP_FIELDS = ['Date_examen_VTC', 'Session_choisie', 'Session']
 
-    def __init__(self):
+    def __init__(self, crm_client: Optional[ZohoCRMClient] = None):
+        """
+        Initialize CRMUpdateAgent.
+
+        Args:
+            crm_client: Optional ZohoCRMClient instance (creates new one if None)
+        """
         super().__init__(
             name="CRMUpdateAgent",
             system_prompt=self.SYSTEM_PROMPT
         )
-        self.crm_client = ZohoCRMClient()
+        self.crm_client = crm_client or ZohoCRMClient()
 
     def process(self, data: Dict[str, Any]) -> Dict[str, Any]:
         """

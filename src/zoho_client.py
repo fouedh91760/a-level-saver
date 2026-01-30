@@ -5,6 +5,7 @@ import requests
 from datetime import datetime, timedelta
 from tenacity import retry, stop_after_attempt, wait_exponential
 from config import settings
+from src.zoho_token_manager import get_token_manager
 
 logger = logging.getLogger(__name__)
 
@@ -14,54 +15,41 @@ class ZohoAPIClient:
 
     def __init__(self):
         self.access_token: Optional[str] = None
-        self.token_expires_at: Optional[datetime] = None
         self._session = requests.Session()
         # Disable proxy for Zoho API calls
         self._session.proxies = {"http": None, "https": None}
+        # Token management is now delegated to TokenManager singleton
+        self._token_manager = get_token_manager()
 
-    def _is_token_expired(self) -> bool:
-        """Check if the current access token is expired."""
-        if not self.access_token or not self.token_expires_at:
-            return True
-        return datetime.now() >= self.token_expires_at
+    def _get_credentials(self) -> tuple:
+        """
+        Get OAuth credentials for this client.
 
-    @retry(
-        stop=stop_after_attempt(3),
-        wait=wait_exponential(multiplier=1, min=2, max=10)
-    )
-    def _refresh_access_token(self) -> None:
-        """Refresh the OAuth2 access token using the refresh token."""
-        logger.info("Refreshing Zoho access token")
+        Override in subclasses to use different credentials.
 
-        url = f"{settings.zoho_accounts_url}/oauth/v2/token"
-        params = {
-            "refresh_token": settings.zoho_refresh_token,
-            "client_id": settings.zoho_client_id,
-            "client_secret": settings.zoho_client_secret,
-            "grant_type": "refresh_token"
-        }
-
-        try:
-            # Explicitly disable proxy for Zoho API calls
-            response = requests.post(url, params=params, proxies={"http": None, "https": None})
-            response.raise_for_status()
-            data = response.json()
-
-            self.access_token = data["access_token"]
-            # Set expiration time (default 1 hour, with 5 min buffer)
-            expires_in = data.get("expires_in", 3600)
-            self.token_expires_at = datetime.now() + timedelta(seconds=expires_in - 300)
-
-            logger.info("Access token refreshed successfully")
-
-        except requests.exceptions.RequestException as e:
-            logger.error(f"Failed to refresh access token: {e}")
-            raise
+        Returns:
+            Tuple of (client_id, client_secret, refresh_token, accounts_url)
+        """
+        return (
+            settings.zoho_client_id,
+            settings.zoho_client_secret,
+            settings.zoho_refresh_token,
+            settings.zoho_accounts_url
+        )
 
     def _ensure_valid_token(self) -> None:
-        """Ensure we have a valid access token before making API calls."""
-        if self._is_token_expired():
-            self._refresh_access_token()
+        """
+        Ensure we have a valid access token before making API calls.
+
+        Delegates to TokenManager singleton for centralized token management.
+        """
+        client_id, client_secret, refresh_token, accounts_url = self._get_credentials()
+        self.access_token = self._token_manager.get_token(
+            client_id=client_id,
+            client_secret=client_secret,
+            refresh_token=refresh_token,
+            accounts_url=accounts_url
+        )
 
     @retry(
         stop=stop_after_attempt(3),
@@ -521,39 +509,26 @@ class ZohoCRMClient(ZohoAPIClient):
 
     def __init__(self):
         super().__init__()
-        # Use separate CRM credentials if available, otherwise use Desk credentials
-        self.client_id = settings.zoho_crm_client_id or settings.zoho_client_id
-        self.client_secret = settings.zoho_crm_client_secret or settings.zoho_client_secret
-        self.refresh_token = settings.zoho_crm_refresh_token or settings.zoho_refresh_token
+        # Store CRM-specific credentials for _get_credentials override
+        self._crm_client_id = settings.zoho_crm_client_id or settings.zoho_client_id
+        self._crm_client_secret = settings.zoho_crm_client_secret or settings.zoho_client_secret
+        self._crm_refresh_token = settings.zoho_crm_refresh_token or settings.zoho_refresh_token
 
-    def _refresh_access_token(self) -> None:
-        """Refresh the OAuth2 access token using CRM credentials."""
-        logger.info("Refreshing Zoho CRM access token")
+    def _get_credentials(self) -> tuple:
+        """
+        Get CRM-specific OAuth credentials.
 
-        url = f"{settings.zoho_accounts_url}/oauth/v2/token"
-        params = {
-            "refresh_token": self.refresh_token,
-            "client_id": self.client_id,
-            "client_secret": self.client_secret,
-            "grant_type": "refresh_token"
-        }
+        Uses separate CRM credentials if available, otherwise falls back to Desk credentials.
 
-        try:
-            # Explicitly disable proxy for Zoho API calls
-            response = requests.post(url, params=params, proxies={"http": None, "https": None})
-            response.raise_for_status()
-            data = response.json()
-
-            self.access_token = data["access_token"]
-            # Set expiration time (default 1 hour, with 5 min buffer)
-            expires_in = data.get("expires_in", 3600)
-            self.token_expires_at = datetime.now() + timedelta(seconds=expires_in - 300)
-
-            logger.info("CRM access token refreshed successfully")
-
-        except requests.exceptions.RequestException as e:
-            logger.error(f"Failed to refresh CRM access token: {e}")
-            raise
+        Returns:
+            Tuple of (client_id, client_secret, refresh_token, accounts_url)
+        """
+        return (
+            self._crm_client_id,
+            self._crm_client_secret,
+            self._crm_refresh_token,
+            settings.zoho_accounts_url
+        )
 
     def get_record(self, module: str, record_id: str) -> Dict[str, Any]:
         """Get a specific record by module name and ID."""
