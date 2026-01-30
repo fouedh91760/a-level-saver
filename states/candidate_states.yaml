@@ -419,7 +419,7 @@ states:
     id: "U-D"
     priority: 203
     severity: "WARNING"  # Continue le workflow mais ajoute alerte
-    description: "Compte Uber Driver non vérifié après J+1"
+    description: "Compte Uber Driver non vérifié après J+2"
     category: "uber_eligibility"
 
     detection:

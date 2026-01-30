@@ -518,11 +518,11 @@ class StateDetector:
         if not date_dossier:
             return False
 
-        # Vérification faite si J+1 passé
+        # Vérification faite si J+2 passé (Zoho met 24-48h pour mettre à jour les champs)
         try:
             from datetime import timedelta
             dossier_date = datetime.strptime(str(date_dossier)[:10], '%Y-%m-%d').date()
-            verification_date = dossier_date + timedelta(days=1)
+            verification_date = dossier_date + timedelta(days=2)
             today = date.today()
 
             if today < verification_date:
@@ -544,11 +544,11 @@ class StateDetector:
         if not date_dossier:
             return False
 
-        # Vérification faite si J+1 passé
+        # Vérification faite si J+2 passé (Zoho met 24-48h pour mettre à jour les champs)
         try:
             from datetime import timedelta
             dossier_date = datetime.strptime(str(date_dossier)[:10], '%Y-%m-%d').date()
-            verification_date = dossier_date + timedelta(days=1)
+            verification_date = dossier_date + timedelta(days=2)
             today = date.today()
 
             if today < verification_date:
