@@ -745,13 +745,18 @@ states:
       continue_detection: true
 
   # ---------------------------------------------------------------------------
-  # PHASE 4: STATUT DOSSIER EVALBOX (10 CAS)
+  # PHASE 4: STATUT DOSSIER EVALBOX (10 CAS) - LEGACY DEFINITIONS
+  # ---------------------------------------------------------------------------
+  # ATTENTION: Ces définitions sont OBSOLÈTES. Les états réels sont définis
+  # dans candidate_states.yaml. Cette section est conservée pour référence
+  # mais n'est PAS utilisée par le code.
+  # Mapping: DATE_EXAMEN_VIDE → EXAM_DATE_EMPTY (candidate_states.yaml)
   # ---------------------------------------------------------------------------
 
-  DATE_EXAMEN_VIDE:
+  EXAM_DATE_EMPTY_LEGACY:
     id: "E01"
     priority: 75
-    description: "CAS 1 - Pas de date d'examen assignée"
+    description: "DEPRECATED - Utiliser EXAM_DATE_EMPTY de candidate_states.yaml"
     detection:
       method: "crm"
       condition: "Date_examen_VTC is null"
@@ -1143,6 +1148,23 @@ matrix:
       show_statut_section: true
       show_sessions_section: true
       action_choisir_date: true
+
+  # Candidat confirme une date d'examen (Date_examen_VTC était vide)
+  # → Accusé de réception + mise à jour CRM
+  "EXAM_DATE_EMPTY:CONFIRMATION_DATE_EXAMEN":
+    template: "response_master.html"
+    description: "Confirmation date examen + mise à jour CRM"
+    crm_updates:
+      method: "extract_date_choice"
+      fields:
+        - field: "Date_examen_VTC"
+          source: "detected_date_id"
+    context_flags:
+      intention_confirmation_date: true
+      show_confirmation_section: true
+      show_statut_section: true
+      # Ne pas reproposer les dates - le candidat a déjà confirmé
+      action_choisir_date: false
 
   "EXAM_DATE_EMPTY:DEMANDE_DATE_EXAMEN":
     template: "response_master.html"
@@ -1553,23 +1575,17 @@ matrix:
       intention_demande_identifiants: true
       show_statut_section: true
 
-  # --- DATE_EXAMEN_VIDE × Intentions ---
-  "DATE_EXAMEN_VIDE:DEMANDE_DATE_EXAMEN":
+  # --- EXAM_DATE_EMPTY × Intentions ---
+  "EXAM_DATE_EMPTY:DEMANDE_DATE_EXAMEN":
     template: "propose_dates.html"
     dynamic_blocks:
       - prochaines_dates
       - sessions_formation
 
-  "DATE_EXAMEN_VIDE:CONFIRMATION_DATE_EXAMEN":
-    template: "confirmation_date.html"
-    crm_update:
-      - field: Date_examen_VTC
-        value: "{{confirmed_date}}"
-    blocks:
-      - confirmation_enregistrement
-      - prochaines_etapes
+  # NOTE: EXAM_DATE_EMPTY:CONFIRMATION_DATE_EXAMEN est défini à la ligne ~1149
+  # avec crm_updates correct (method: extract_date_choice)
 
-  "DATE_EXAMEN_VIDE:DEMANDE_AUTRES_DATES":
+  "EXAM_DATE_EMPTY:DEMANDE_AUTRES_DATES":
     template: "propose_dates_elargies.html"
     dynamic_blocks:
       - toutes_dates_disponibles:
@@ -1714,17 +1730,7 @@ matrix:
   # Note: On enregistre la préférence (jour/soir) mais PAS Session_choisie
   # tant que le candidat n'a pas confirmé une session spécifique
   # Utilise response_master.html pour avoir les 3 sections
-  "DATE_EXAMEN_VIDE:CONFIRMATION_SESSION":
-    template: "response_master.html"
-    crm_update:
-      - field: Preference_horaire
-        value: "{{session_preference}}"
-        condition: "session_preference != null"
-    context_flags:
-      intention_confirmation_session: true
-      show_statut_section: true
-      show_sessions_section: true
-      action_choisir_date: true
+  # NOTE: EXAM_DATE_EMPTY:CONFIRMATION_SESSION est défini à la ligne ~1138
 
   "EXAM_DATE_ASSIGNED_WAITING:CONFIRMATION_SESSION":
     template: "response_master.html"

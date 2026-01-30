@@ -2469,6 +2469,31 @@ L'équipe CAB Formations"""
         # ================================================================
         logger.info("  📊 STATE ENGINE: Détermination des mises à jour CRM...")
 
+        # Check for CRM updates defined in STATE:INTENTION matrix
+        # These have priority over state-level crm_updates
+        matrix_crm_updates = template_result.get('crm_updates_from_matrix')
+        if matrix_crm_updates:
+            # Matrix provides config in correct format: {'method': '...', 'fields': [...]}
+            # or list format: [{'field': '...', 'value': '...'}]
+            if isinstance(matrix_crm_updates, dict) and 'method' in matrix_crm_updates:
+                # New format with method: {'method': 'extract_date_choice', 'fields': [...]}
+                detected_state.crm_updates_config = matrix_crm_updates
+                method = matrix_crm_updates.get('method', 'unknown')
+                fields = [f.get('field') for f in matrix_crm_updates.get('fields', [])]
+            else:
+                # Legacy list format: [{'field': '...', 'value': '...'}]
+                fields_list = matrix_crm_updates if isinstance(matrix_crm_updates, list) else [matrix_crm_updates]
+                detected_state.crm_updates_config = {
+                    'method': 'direct',
+                    'fields': fields_list
+                }
+                method = 'direct'
+                fields = [f.get('field') for f in fields_list if isinstance(f, dict)]
+
+            logger.info(f"  📋 CRM updates depuis matrice STATE:INTENTION")
+            logger.info(f"     Méthode: {method}")
+            logger.info(f"     Champs: {fields}")
+
         # Get proposed sessions/dates for CRM updates
         proposed_sessions = []
         session_data = analysis_result.get('session_data', {})

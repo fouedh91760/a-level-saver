@@ -276,7 +276,10 @@ class TemplateEngine:
             'placeholders_replaced': replaced,
             'ai_sections_generated': ai_sections,
             'alerts_included': alerts_included,
-            'blocks_included': blocks_included
+            'blocks_included': blocks_included,
+            # CRM updates définis dans la matrice STATE:INTENTION
+            # Ces updates spécifiques à la combinaison ont priorité sur ceux de l'état
+            'crm_updates_from_matrix': template_config.get('crm_update', []) if template_config else []
         }
 
     def _select_base_template(
@@ -340,10 +343,12 @@ class TemplateEngine:
                 else:
                     file_path = f'templates/base/{template_file}'
 
+                # Support both 'crm_update' and 'crm_updates' keys for flexibility
+                crm_update_config = config.get('crm_updates') or config.get('crm_update', [])
                 return template_key, {
                     'file': file_path,
                     'blocks': config.get('blocks', []),
-                    'crm_update': config.get('crm_update', []),
+                    'crm_update': crm_update_config,
                     'context_flags': context_flags,
                 }
 
@@ -1999,5 +2004,6 @@ L'équipe CAB Formations</p>"""
             'placeholders_replaced': ['prenom'],
             'ai_sections_generated': ai_sections,
             'alerts_included': [],
-            'blocks_included': []
+            'blocks_included': [],
+            'crm_updates_from_matrix': []  # Pas de CRM updates pour fallback
         }
