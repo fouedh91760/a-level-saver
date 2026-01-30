@@ -4,12 +4,15 @@
 {{#if session_confirmed}}
 Nous avons bien enregistré votre choix : <b>{{matched_session_name}}</b>.<br>
 Votre inscription à cette session est en cours de traitement.<br>
+Vous recevrez prochainement un email séparé avec le lien d'invitation à la visioconférence.<br>
 {{else}}
 {{#if session_choisie}}
 Votre session est confirmée : <b>{{session_choisie}}</b>.<br>
+Vous recevrez prochainement un email séparé avec le lien d'invitation à la visioconférence.<br>
 {{else}}
 {{#if preference_horaire_text}}
 Nous avons bien noté votre préférence pour les <b>{{preference_horaire_text}}</b>.<br>
+Dès que votre session sera confirmée, vous recevrez un email avec le lien d'invitation à la visioconférence.<br>
 {{/if}}
 {{#if date_examen}}
 Votre examen est prévu le <b>{{date_examen}}</b>.<br>
