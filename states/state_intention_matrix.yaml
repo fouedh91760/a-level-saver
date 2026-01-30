@@ -1390,6 +1390,27 @@ matrix:
       examen_probablement_passe: true
       show_statut_section: true
 
+  # --- EXAM_DATE_PAST_VALIDATED × DEMANDE_REINSCRIPTION ---
+  # Candidat qui a MANQUÉ son examen et demande à se réinscrire
+  "EXAM_DATE_PAST_VALIDATED:DEMANDE_REINSCRIPTION":
+    template: "reinscription_examen_manque.html"
+    description: "Date passée + validé, candidat a manqué l'examen et veut se réinscrire"
+    context_flags:
+      intention_demande_reinscription: true
+      examen_manque: true
+      show_next_dates: true
+
+  # --- EXAM_DATE_PAST_VALIDATED × DEMANDE_EXCEPTION ---
+  # Candidat qui demande une exception mais la date est passée depuis trop longtemps
+  # → Rediriger vers réinscription (pas d'exception possible > 14 jours après examen)
+  "EXAM_DATE_PAST_VALIDATED:DEMANDE_EXCEPTION":
+    template: "reinscription_examen_manque.html"
+    description: "Date passée + validé, candidat demande exception mais réinscription nécessaire"
+    context_flags:
+      intention_demande_exception: true
+      examen_manque: true
+      show_next_dates: true
+
   # --- REFUS_PARTAGE_CREDENTIALS (priorité maximale, s'applique à tout état) ---
   "*:REFUS_PARTAGE_CREDENTIALS":
     priority: 95

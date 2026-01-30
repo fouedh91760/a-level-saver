@@ -894,14 +894,45 @@ RÉSUMÉ (2-3 phrases):"""
             except Exception as e:
                 logger.warning(f"  ⚠️ Impossible de générer le résumé: {e}")
 
-        logger.info("🤖 Triage IA en cours...")
-        ai_triage = self.triage_agent.triage_ticket(
-            ticket_subject=subject,
-            thread_content=last_thread_content,
-            deal_data=selected_deal,
-            current_department='DOC',
-            conversation_summary=conversation_summary  # Nouveau: contexte historique
-        )
+        # Règle déterministe: Pièces jointes + sujet document → Refus CMA (TRANSMET_DOCUMENTS)
+        # Cette règle s'exécute AVANT l'appel IA pour économiser un appel API
+        has_attachments = False
+        attachment_count = 0
+        if threads:
+            for t in reversed(threads):
+                if t.get('direction') == 'in':
+                    thread_attachments = t.get('attachments', [])
+                    if thread_attachments:
+                        has_attachments = True
+                        attachment_count = len(thread_attachments)
+                    break
+
+        subject_lower = subject.lower() if subject else ''
+        document_keywords = ['document', 'pièce', 'piece', 'justificatif', 'passeport', 'permis', 'identité', 'identite', 'domicile', 'fournir']
+        subject_has_doc_keyword = any(kw in subject_lower for kw in document_keywords)
+
+        if has_attachments and subject_has_doc_keyword:
+            logger.info(f"  🔍 Pièces jointes détectées ({attachment_count}) + sujet document → Route vers Refus CMA")
+            ai_triage = {
+                'action': 'ROUTE',
+                'target_department': 'Refus CMA',
+                'reason': f"Candidat envoie {attachment_count} document(s) en pièce jointe - à uploader sur ExamT3P",
+                'confidence': 1.0,
+                'method': 'rule_transmet_documents',
+                'primary_intent': 'TRANSMET_DOCUMENTS',
+                'secondary_intents': [],
+                'detected_intent': 'TRANSMET_DOCUMENTS',
+                'intent_context': {'has_attachments': True, 'attachment_count': attachment_count}
+            }
+        else:
+            logger.info("🤖 Triage IA en cours...")
+            ai_triage = self.triage_agent.triage_ticket(
+                ticket_subject=subject,
+                thread_content=last_thread_content,
+                deal_data=selected_deal,
+                current_department='DOC',
+                conversation_summary=conversation_summary  # Nouveau: contexte historique
+            )
 
         logger.info(f"  🤖 Résultat IA: {ai_triage['action']} → {ai_triage['target_department']} ({ai_triage['reason']})")
         logger.info(f"  🤖 Confiance: {ai_triage['confidence']:.0%} | Méthode: {ai_triage['method']}")
@@ -1673,7 +1704,13 @@ Deux comptes ExamenT3P fonctionnels ont été détectés pour ce candidat, et le
                 logger.warning(f"  📚 REPORT_DATE: département non trouvé, pas de dates chargées")
         elif next_dates:
             # CAS 3: Nouvelles dates proposées (changement de date ou première attribution)
-            exam_dates_for_session = next_dates
+            # Si deadline_passed_reschedule, on ne propose que la nouvelle date (pas toutes les next_dates)
+            if date_examen_vtc_result.get('deadline_passed_reschedule') and date_examen_vtc_result.get('new_exam_date'):
+                new_date = date_examen_vtc_result['new_exam_date']
+                exam_dates_for_session = [d for d in next_dates if d.get('Date_Examen') == new_date]
+                logger.info(f"  📚 DEADLINE PASSÉE → sessions uniquement pour la nouvelle date: {new_date}")
+            else:
+                exam_dates_for_session = next_dates
         elif has_assigned_date and session_is_empty:
             # CAS 4: Pas de nouvelles dates, mais date existante et session vide
             exam_dates_for_session = [date_examen_info]
@@ -2241,6 +2278,10 @@ L'équipe CAB Formations"""
             'new_exam_date': date_examen_vtc_result.get('new_exam_date'),
             'new_exam_date_cloture': date_examen_vtc_result.get('new_exam_date_cloture'),
 
+            # Force majeure (examen manqué)
+            'force_majeure_possible': date_examen_vtc_result.get('force_majeure_possible', True),  # Default True pour backward compat
+            'days_since_exam': date_examen_vtc_result.get('days_since_exam'),
+
             # Données de recherche par mois/lieu (REPORT_DATE intelligent)
             'no_date_for_requested_month': date_examen_vtc_result.get('no_date_for_requested_month', False),
             'requested_month_name': date_examen_vtc_result.get('requested_month_name', ''),
@@ -2304,17 +2345,19 @@ L'équipe CAB Formations"""
             except Exception as e:
                 logger.warning(f"  ⚠️ Erreur parsing date_cloture: {e}")
 
-        # LOAD next_dates si intention REPORT_DATE mais dates vides
-        # (CAS 9 et autres cas ne chargent pas next_dates par défaut)
+        # LOAD next_dates si intention REPORT_DATE ou DEMANDE_REINSCRIPTION mais dates vides
+        # (CAS 7, 9 et autres cas ne chargent pas next_dates par défaut)
         detected_intent = detected_state.context_data.get('detected_intent', '')
         next_dates = detected_state.context_data.get('next_dates', [])
-        if detected_intent == 'REPORT_DATE' and not next_dates:
+        needs_next_dates = detected_intent in ['REPORT_DATE', 'DEMANDE_REINSCRIPTION']
+        if needs_next_dates and not next_dates:
             from src.utils.date_examen_vtc_helper import get_next_exam_dates
             departement = detected_state.context_data.get('departement')
             if departement and self.crm_client:
-                logger.info(f"  📅 Chargement next_dates pour REPORT_DATE (dept {departement})...")
+                logger.info(f"  📅 Chargement next_dates pour {detected_intent} (dept {departement})...")
                 next_dates = get_next_exam_dates(self.crm_client, departement, limit=5)
                 detected_state.context_data['next_dates'] = next_dates
+                detected_state.context_data['has_next_dates'] = bool(next_dates)
                 logger.info(f"  ✅ {len(next_dates)} date(s) chargées")
 
         # FILTRER next_dates selon le mois demandé par le candidat

@@ -77,7 +77,9 @@
 
 <!-- =====================================================================
      SECTION 1: RÉPONDRE À L'INTENTION DU CANDIDAT
+     (Masqué pour Uber CAS A - tout est déjà dans le partial cas_a_docs_manquants)
      ===================================================================== -->
+{{#unless uber_cas_a}}
 {{#if intention_statut_dossier}}
 {{> partials/intentions/statut_dossier}}
 {{/if}}
@@ -141,6 +143,7 @@
 {{#if intention_question_examen_pratique}}
 {{> partials/intentions/question_examen_pratique}}
 {{/if}}
+{{/unless}}
 
 <!-- SECTION PROSPECT : Rappel inscription (seulement si prospect NON uber) -->
 {{#if show_prospect_rappel}}
@@ -150,8 +153,9 @@
 <!-- =====================================================================
      SECTION 2: STATUT ACTUEL DU DOSSIER
      (Toujours affiché pour que le candidat sache où il en est)
-     (Masqué pour les prospects Uber - tout est dans prospect_paiement)
+     (Masqué pour Uber CAS A et prospects Uber)
      ===================================================================== -->
+{{#unless uber_cas_a}}
 {{#unless uber_prospect}}
 {{#if show_statut_section}}
 <b>Statut de votre dossier</b><br>
@@ -179,12 +183,14 @@
 <br>
 {{/if}}
 {{/unless}}
+{{/unless}}
 
 <!-- =====================================================================
      SECTION 3: ACTION REQUISE POUR AVANCER
      (Ce que le candidat doit faire pour progresser)
-     (Masqué pour les prospects Uber - tout est dans prospect_paiement)
+     (Masqué pour Uber CAS A et prospects Uber)
      ===================================================================== -->
+{{#unless uber_cas_a}}
 {{#unless uber_prospect}}
 {{#if has_required_action}}
 <b style="color: #d35400;">Prochaine étape pour avancer</b><br>
@@ -220,6 +226,7 @@
 {{/if}}
 <br>
 {{/if}}
+{{/unless}}
 {{/unless}}
 
 <!-- =====================================================================

@@ -1,0 +1,39 @@
+<!-- TEMPLATE: reinscription_examen_manque -->
+<!-- État: EXAM_DATE_PAST_VALIDATED + Intention: DEMANDE_REINSCRIPTION -->
+<!-- Cas: Candidat qui a MANQUÉ son examen et souhaite se réinscrire -->
+
+{{> salutation_personnalisee}}
+
+<b>Concernant votre demande de réinscription</b><br>
+Nous comprenons que vous n'avez pas pu vous présenter à l'examen du <b>{{date_examen}}</b>. Pas d'inquiétude, il est tout à fait possible de vous réinscrire.<br>
+<br>
+{{#if uber_20}}
+<b>Information importante :</b> Dans le cadre de l'offre Uber, les frais de votre première inscription avaient été pris en charge par CAB Formations. Cette offre n'est valable qu'<b>une seule fois</b>.<br>
+<br>
+{{/if}}
+<b>Deux options s'offrent à vous :</b><br>
+<br>
+<b>Option 1 - Inscription autonome (241€)</b><br>
+<ol>
+<li>Connectez-vous sur <a href="https://www.exament3p.fr">www.exament3p.fr</a></li>
+<li>Sélectionnez une nouvelle date d'examen</li>
+<li>Procédez au paiement des frais d'inscription (241€)</li>
+</ol>
+<b>Option 2 - Formation CPF (frais d'examen INCLUS)</b><br>
+Saviez-vous que vous pouvez utiliser votre <b>Compte Personnel de Formation (CPF)</b> pour financer une nouvelle formation VTC ? Cette option présente de nombreux avantages :<br>
+<ul>
+<li><b>Frais d'examen inclus</b> : les 241€ sont pris en charge, vous n'avez rien à avancer</li>
+<li><b>Formation complète</b> : accès illimité à notre plateforme e-learning pour vous préparer sereinement</li>
+<li><b>Accompagnement personnalisé</b> : un formateur dédié pour maximiser vos chances de réussite</li>
+<li><b>Financé par vos droits CPF</b> : aucun frais de votre poche si vous avez suffisamment de droits</li>
+</ul>
+<b>Intéressé(e) ?</b> Répondez simplement à ce mail et nous transmettrons votre dossier à l'un de nos conseillers formation qui vous contactera rapidement pour vous présenter les offres disponibles et vérifier vos droits CPF.<br>
+<br>
+{{#if has_next_dates}}
+<b>Prochaines dates d'examen disponibles :</b><br>
+{{#each next_dates}}
+&nbsp;&nbsp;→ <b>{{this.date_examen_formatted}}</b> (CMA {{this.Departement}}) - clôture le {{this.date_cloture_formatted}}<br>
+{{/each}}
+<br>
+{{/if}}
+{{> signature}}

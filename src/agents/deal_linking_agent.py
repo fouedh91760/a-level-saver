@@ -204,6 +204,152 @@ Always respond in JSON format with the following structure:
             logger.error(f"Failed to search contacts by email {email}: {e}")
             return []
 
+    def _normalize_phone(self, phone: str) -> Optional[str]:
+        """
+        Normalize phone number for search.
+
+        Removes spaces, dashes, dots, and country code prefix.
+        Returns None if phone is invalid.
+        """
+        if not phone:
+            return None
+
+        # Remove all non-digit characters
+        digits = re.sub(r'\D', '', phone)
+
+        # Remove leading country code (33 for France)
+        if digits.startswith('33') and len(digits) > 10:
+            digits = '0' + digits[2:]
+
+        # French mobile numbers should be 10 digits starting with 0
+        if len(digits) == 10 and digits.startswith('0'):
+            return digits
+
+        # Accept 9 digits (missing leading 0) - add it back
+        if len(digits) == 9 and digits.startswith(('6', '7')):
+            return '0' + digits
+
+        return digits if len(digits) >= 9 else None
+
+    def _extract_phone_from_ticket(self, ticket: Dict[str, Any], threads: List[Dict[str, Any]]) -> Optional[str]:
+        """
+        Extract phone number from ticket or threads.
+
+        Priority:
+        1. Ticket contact phone
+        2. Ticket custom fields
+        3. Thread content (regex search)
+
+        Returns:
+            Normalized phone number or None
+        """
+        # 1. From ticket contact
+        contact = ticket.get("contact", {})
+        if contact:
+            phone = contact.get("phone") or contact.get("mobile")
+            if phone:
+                normalized = self._normalize_phone(phone)
+                if normalized:
+                    logger.info(f"  📱 Phone from ticket contact: {normalized}")
+                    return normalized
+
+        # 2. From ticket custom fields
+        cf = ticket.get("cf", {})
+        if cf:
+            for field in ['cf_telephone', 'cf_phone', 'cf_mobile', 'cf_tel']:
+                phone = cf.get(field)
+                if phone:
+                    normalized = self._normalize_phone(phone)
+                    if normalized:
+                        logger.info(f"  📱 Phone from ticket cf.{field}: {normalized}")
+                        return normalized
+
+        # 3. From threads - search for phone patterns in customer messages
+        phone_pattern = re.compile(r'(?:(?:\+33|0033|33)|0)[67][\s.-]?\d{2}[\s.-]?\d{2}[\s.-]?\d{2}[\s.-]?\d{2}')
+
+        for thread in reversed(threads):
+            direction = thread.get("direction", "").lower()
+            if direction == "in":  # Only customer messages
+                content = thread.get("content") or thread.get("plainText") or ""
+                # Strip HTML tags
+                content_clean = re.sub(r'<[^>]+>', ' ', content)
+
+                matches = phone_pattern.findall(content_clean)
+                for match in matches:
+                    normalized = self._normalize_phone(match)
+                    if normalized:
+                        logger.info(f"  📱 Phone from thread content: {normalized}")
+                        return normalized
+
+        return None
+
+    def _search_contacts_by_phone(self, phone: str) -> List[Dict[str, Any]]:
+        """
+        Search for ALL contacts in CRM with the given phone number.
+
+        Searches both Phone and Mobile fields.
+
+        Args:
+            phone: Normalized phone number (e.g., "0612345678")
+
+        Returns:
+            List of contact records
+        """
+        crm_client = self._get_crm_client()
+        all_contacts = []
+
+        try:
+            from config import settings
+
+            # Search variations of the phone number
+            phone_variations = [phone]
+
+            # Add version with spaces
+            if len(phone) == 10:
+                spaced = f"{phone[:2]} {phone[2:4]} {phone[4:6]} {phone[6:8]} {phone[8:10]}"
+                phone_variations.append(spaced)
+
+            # Add version with +33
+            if phone.startswith('0'):
+                intl = '+33' + phone[1:]
+                phone_variations.append(intl)
+                intl_spaced = '+33 ' + phone[1:2] + ' ' + phone[2:4] + ' ' + phone[4:6] + ' ' + phone[6:8] + ' ' + phone[8:10]
+                phone_variations.append(intl_spaced)
+
+            for phone_var in phone_variations:
+                # Search by Phone field
+                try:
+                    criteria = f"(Phone:equals:{phone_var})"
+                    url = f"{settings.zoho_crm_api_url}/Contacts/search"
+                    params = {"criteria": criteria, "per_page": 200}
+                    response = crm_client._make_request("GET", url, params=params)
+                    contacts = response.get("data", [])
+                    for c in contacts:
+                        if c.get("id") not in [x.get("id") for x in all_contacts]:
+                            all_contacts.append(c)
+                except Exception:
+                    pass
+
+                # Search by Mobile field
+                try:
+                    criteria = f"(Mobile:equals:{phone_var})"
+                    url = f"{settings.zoho_crm_api_url}/Contacts/search"
+                    params = {"criteria": criteria, "per_page": 200}
+                    response = crm_client._make_request("GET", url, params=params)
+                    contacts = response.get("data", [])
+                    for c in contacts:
+                        if c.get("id") not in [x.get("id") for x in all_contacts]:
+                            all_contacts.append(c)
+                except Exception:
+                    pass
+
+            logger.info(f"Found {len(all_contacts)} contacts with phone {phone}")
+            return all_contacts
+
+        except Exception as e:
+            logger.error(f"Failed to search contacts by phone {phone}: {e}")
+            return []
+
     def _extract_alternative_emails_from_threads(
         self,
         threads: List[Dict[str, Any]],
@@ -539,6 +685,75 @@ Emails alternatifs trouvés:"""
         all_deals = self._get_deals_for_contacts(contact_ids)
         result["deals_found"] = len(all_deals)
         result["all_deals"] = all_deals
+
+        # Step 5b: PHONE FALLBACK - Si pas de deal 20€ GAGNÉ trouvé, chercher par téléphone
+        deals_20_won_initial = [d for d in all_deals if d.get("Amount") == 20 and d.get("Stage") == "GAGNÉ"]
+        phone_fallback_used = False
+
+        if not deals_20_won_initial:
+            logger.info(f"  📱 Aucun deal 20€ GAGNÉ trouvé par email - tentative fallback téléphone")
+
+            # Extraire le numéro de téléphone:
+            # 1. D'abord depuis le contact CRM trouvé (plus fiable)
+            # 2. Sinon depuis le ticket Desk
+            phone = None
+
+            # 1. Depuis le contact CRM
+            for contact in contacts:
+                contact_phone = contact.get('Phone') or contact.get('Mobile')
+                if contact_phone:
+                    phone = self._normalize_phone(contact_phone)
+                    if phone:
+                        logger.info(f"  📱 Phone from CRM contact: {phone}")
+                        break
+
+            # 2. Fallback: depuis le ticket Desk
+            if not phone:
+                phone = self._extract_phone_from_ticket(ticket, threads)
+
+            if phone:
+                logger.info(f"  📱 Téléphone extrait: {phone} - recherche de contacts...")
+
+                # Chercher des contacts par téléphone
+                phone_contacts = self._search_contacts_by_phone(phone)
+
+                if phone_contacts:
+                    # Filtrer les contacts déjà trouvés par email
+                    new_contact_ids = [
+                        c.get("id") for c in phone_contacts
+                        if c.get("id") and c.get("id") not in contact_ids
+                    ]
+
+                    if new_contact_ids:
+                        logger.info(f"  📱 {len(new_contact_ids)} nouveau(x) contact(s) trouvé(s) par téléphone")
+
+                        # Récupérer les deals de ces nouveaux contacts
+                        phone_deals = self._get_deals_for_contacts(new_contact_ids)
+
+                        # Vérifier s'il y a des deals 20€ GAGNÉ parmi eux
+                        phone_deals_20_won = [d for d in phone_deals if d.get("Amount") == 20 and d.get("Stage") == "GAGNÉ"]
+
+                        if phone_deals_20_won:
+                            # Fusionner avec les deals existants (éviter doublons)
+                            existing_ids = {d.get("id") for d in all_deals}
+                            for deal in phone_deals:
+                                if deal.get("id") not in existing_ids:
+                                    all_deals.append(deal)
+
+                            phone_fallback_used = True
+                            result["phone_fallback_used"] = True
+                            result["phone_used"] = phone
+                            result["deals_found"] = len(all_deals)
+                            result["all_deals"] = all_deals
+                            logger.info(f"  ✅ PHONE FALLBACK SUCCESS: {len(phone_deals_20_won)} deal(s) 20€ GAGNÉ trouvé(s) par téléphone")
+                        else:
+                            logger.info(f"  📱 Deals trouvés par téléphone mais aucun 20€ GAGNÉ")
+                    else:
+                        logger.info(f"  📱 Contacts téléphone = mêmes que contacts email")
+                else:
+                    logger.info(f"  📱 Aucun contact trouvé par téléphone")
+            else:
+                logger.info(f"  📱 Aucun téléphone extractible du ticket")
 
         # Si pas de deals trouvés → TOUJOURS demander clarification
         # Contact existe mais pas d'opportunité = situation anormale

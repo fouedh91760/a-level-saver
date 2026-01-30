@@ -43,7 +43,9 @@ DÉPARTEMENTS DISPONIBLES:
 - DOC: Questions sur formation, examen, dates, sessions, identifiants ExamT3P (département par défaut pour candidats Uber 20€)
 - Refus CMA: Si la CMA a REFUSÉ un document OU si le candidat nous TRANSMET des documents (pièces jointes, justificatifs)
 - Contact: Demandes commerciales, autres formations (NON Uber 20€), RGPD
-- Comptabilité: UNIQUEMENT si le candidat DEMANDE EXPLICITEMENT sa facture pour la formation/offre souscrite
+- Comptabilité:
+  * Candidat DEMANDE EXPLICITEMENT sa facture pour la formation/offre souscrite
+  * Demande d'attestation/certificat de formation pour France Travail ou Pôle Emploi
 
 RÈGLES DE TRIAGE:
 
@@ -117,8 +119,9 @@ INTENTIONS POSSIBLES (par ordre de spécificité - préfère les intentions spé
   Exemples: "quand est ma formation ?", "date de la visio", "horaires de la formation"
 - DEMANDE_LIEN_VISIO: Demande le lien Zoom/Teams pour rejoindre la formation
   Exemples: "lien zoom", "lien de la formation", "comment rejoindre la visio"
-- DEMANDE_CERTIFICAT_FORMATION: Demande son certificat/attestation de formation
-  Exemples: "certificat de formation", "attestation", "justificatif de formation"
+- DEMANDE_CERTIFICAT_FORMATION: Demande son certificat/attestation de formation (souvent pour France Travail/Pôle Emploi)
+  Exemples: "certificat de formation", "attestation", "justificatif de formation", "France Travail me demande", "Pôle Emploi"
+  ⚠️ Action: ROUTE vers Comptabilité - c'est eux qui génèrent les attestations
 
 **Intentions liées au DOSSIER:**
 - STATUT_DOSSIER: Question sur l'avancement
@@ -425,19 +428,68 @@ Pour CONFIRMATION_SESSION, extraire dans intent_context:
             context_parts.append("\n".join(deal_info))
 
             # Règle automatique: Si Evalbox indique un refus → Refus CMA
+            # SAUF si le candidat vient de fournir ses identifiants ExamT3P (il a peut-être rechargé ses docs)
             evalbox = deal_data.get('Evalbox', '')
             if evalbox in ['Refusé CMA', 'Documents manquants', 'Documents refusés']:
-                logger.info(f"  🔍 Evalbox = '{evalbox}' → Route automatique vers Refus CMA")
+                # Vérifier si le dernier message contient des identifiants ExamT3P
+                thread_lower = thread_content.lower() if thread_content else ''
+                has_credentials = (
+                    ('mot de passe' in thread_lower or 'password' in thread_lower or 'mdp' in thread_lower)
+                    and ('@' in thread_content)  # Présence d'un email
+                )
+
+                if has_credentials:
+                    # Le candidat a fourni ses identifiants → on traite le ticket normalement
+                    # pour vérifier son compte ExamT3P (peut-être qu'il a rechargé ses documents)
+                    logger.info(f"  🔍 Evalbox = '{evalbox}' MAIS identifiants détectés → GO (vérification compte)")
+                    return {
+                        'action': 'GO',
+                        'target_department': current_department,
+                        'reason': f"Evalbox = '{evalbox}' mais le candidat fournit des identifiants - vérification du compte ExamT3P nécessaire",
+                        'confidence': 1.0,
+                        'method': 'rule_credentials_override',
+                        'primary_intent': 'ENVOIE_IDENTIFIANTS',
+                        'secondary_intents': [],
+                        'detected_intent': 'ENVOIE_IDENTIFIANTS',
+                        'intent_context': {'has_credentials': True, 'evalbox_status': evalbox}
+                    }
+                else:
+                    logger.info(f"  🔍 Evalbox = '{evalbox}' → Route automatique vers Refus CMA")
+                    return {
+                        'action': 'ROUTE',
+                        'target_department': 'Refus CMA',
+                        'reason': f"Evalbox indique: {evalbox}",
+                        'confidence': 1.0,
+                        'method': 'rule_evalbox',
+                        'primary_intent': None,
+                        'secondary_intents': [],
+                        'detected_intent': None,
+                        'intent_context': {}
+                    }
+
+            # Règle automatique: Demande d'attestation France Travail / Pôle Emploi → Comptabilité
+            thread_lower = thread_content.lower() if thread_content else ''
+            subject_lower = ticket_subject.lower() if ticket_subject else ''
+            combined_text = f"{subject_lower} {thread_lower}"
+
+            attestation_keywords = ['attestation', 'certificat de formation', 'justificatif de formation']
+            france_travail_keywords = ['france travail', 'pôle emploi', 'pole emploi', 'francetravail']
+
+            has_attestation = any(kw in combined_text for kw in attestation_keywords)
+            has_france_travail = any(kw in combined_text for kw in france_travail_keywords)
+
+            if has_attestation and has_france_travail:
+                logger.info(f"  🔍 Demande d'attestation France Travail détectée → Route vers Comptabilité")
                 return {
                     'action': 'ROUTE',
-                    'target_department': 'Refus CMA',
-                    'reason': f"Evalbox indique: {evalbox}",
+                    'target_department': 'Comptabilité',
+                    'reason': "Demande d'attestation/certificat de formation pour France Travail - Comptabilité génère les attestations",
                     'confidence': 1.0,
-                    'method': 'rule_evalbox',
-                    'primary_intent': None,
+                    'method': 'rule_attestation_france_travail',
+                    'primary_intent': 'DEMANDE_CERTIFICAT_FORMATION',
                     'secondary_intents': [],
-                    'detected_intent': None,
-                    'intent_context': {}
+                    'detected_intent': 'DEMANDE_CERTIFICAT_FORMATION',
+                    'intent_context': {'for_france_travail': True}
                 }
 
         context = "\n\n".join(context_parts)

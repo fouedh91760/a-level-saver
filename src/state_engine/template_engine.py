@@ -1017,6 +1017,7 @@ class TemplateEngine:
         'DOCUMENT_QUESTION': 'intention_probleme_documents',
         'SIGNALE_PROBLEME_DOCS': 'intention_probleme_documents',
         'ENVOIE_DOCUMENTS': 'intention_probleme_documents',
+        'PROBLEME_CONNEXION_EXAMT3P': 'intention_probleme_documents',  # Problème upload/connexion plateforme
         'QUESTION_PROCESSUS': 'intention_question_processus',
         'DEMANDE_AUTRES_DEPARTEMENTS': 'intention_autres_departements',
         # Intentions fréquentes
@@ -1685,22 +1686,32 @@ class TemplateEngine:
 
     def _flatten_session_options_filtered(self, context: Dict[str, Any]) -> list:
         """
-        Retourne les sessions aplaties, FILTRÉES selon la préférence si:
-        - L'intention est CONFIRMATION_SESSION
-        - ET une préférence (jour/soir) a été détectée
-
-        Si le client dit "je veux le matin", on ne lui montre QUE les sessions du jour.
+        Retourne les sessions aplaties, FILTRÉES selon:
+        1. deadline_passed_reschedule → uniquement sessions pour new_exam_date
+        2. CONFIRMATION_SESSION + préférence → uniquement jour/soir selon préférence
         """
         session_data = context.get('session_data', {})
         all_sessions = self._flatten_session_options(session_data)
 
-        # Vérifier si on doit filtrer
-        # Utiliser primary_intent avec fallback sur detected_intent (rétrocompat)
+        # FILTRE 1: Si deadline passée et report automatique, ne montrer que les sessions
+        # pour la nouvelle date d'examen (pas toutes les dates alternatives)
+        if context.get('deadline_passed_reschedule') and context.get('new_exam_date'):
+            new_exam_date = context['new_exam_date']
+            # Formater pour comparaison (new_exam_date peut être "2026-03-31" ou "31/03/2026")
+            new_exam_formatted = self._format_date(new_exam_date) if new_exam_date else ''
+            filtered_by_date = [
+                s for s in all_sessions
+                if s.get('date_examen_formatted') == new_exam_formatted or s.get('date_examen_raw') == new_exam_date
+            ]
+            if filtered_by_date:
+                logger.info(f"📅 Sessions filtrées pour report (deadline passée) - date {new_exam_formatted}: {len(filtered_by_date)}/{len(all_sessions)}")
+                all_sessions = filtered_by_date
+
+        # FILTRE 2: Préférence jour/soir pour CONFIRMATION_SESSION
         primary_intent = context.get('primary_intent') or context.get('detected_intent', '')
         secondary_intents = context.get('secondary_intents', [])
         session_preference = self._get_session_preference(context)
 
-        # Si CONFIRMATION_SESSION (primary OU secondary) et préférence claire, filtrer
         is_confirmation_session = (
             primary_intent == 'CONFIRMATION_SESSION' or
             'CONFIRMATION_SESSION' in secondary_intents
@@ -1711,7 +1722,6 @@ class TemplateEngine:
             if filtered:
                 logger.info(f"✅ Sessions filtrées selon préférence '{session_preference}': {len(filtered)}/{len(all_sessions)}")
                 return filtered
-            # Si aucune session ne correspond, retourner toutes (fallback)
             logger.warning(f"⚠️ Aucune session '{session_preference}' trouvée, affichage de toutes les sessions")
 
         return all_sessions
