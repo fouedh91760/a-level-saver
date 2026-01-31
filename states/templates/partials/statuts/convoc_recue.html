@@ -1,3 +1,7 @@
 <!-- Partial: Statut CONVOCATION REÇUE -->
+{{#if examen_passe}}
+<b style="color: #27ae60;">Votre examen a eu lieu le {{date_examen_formatted}}.</b> Vos resultats seront disponibles sous 2 a 4 semaines sur <a href="https://www.exament3p.fr">exament3p.fr</a>.<br>
+{{else}}
 <b style="color: #27ae60;">Votre convocation est disponible !</b> Vous pouvez la télécharger sur <a href="https://www.exament3p.fr">exament3p.fr</a>.<br>
 Votre examen est prévu le <b>{{date_examen_formatted}}</b>.<br>
+{{/if}}

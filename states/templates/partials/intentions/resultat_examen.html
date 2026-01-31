@@ -16,17 +16,36 @@
 {{#if examen_pas_encore_passe}}
 Votre examen est prevu le <b>{{date_examen}}</b>. Les resultats ne seront disponibles qu'apres avoir passe l'examen.<br>
 <br>
-Vous recevrez vos resultats par email dans les 48 a 72 heures suivant l'examen. Ils seront egalement consultables sur votre espace <a href="https://www.exament3p.fr">exament3p.fr</a>.<br>
+Vous recevrez vos resultats par email sous <b>2 a 4 semaines</b> suivant l'examen. Ils seront egalement consultables sur votre espace <a href="https://www.exament3p.fr">exament3p.fr</a>.<br>
 <br>
 En attendant, n'hesitez pas a reviser sur votre <a href="https://cab-formations.fr/user">espace e-learning</a>.<br>
 {{/if}}
 
+{{#if examen_passe}}
+<!-- Cas D-11: Examen passe, attente resultats (2-4 semaines) -->
+Votre examen ayant eu lieu le <b>{{date_examen}}</b>, vos resultats seront disponibles sous <b>2 a 4 semaines</b>. Vous recevrez une notification par email des leur publication et pourrez les consulter sur <a href="https://www.exament3p.fr">exament3p.fr</a>.<br>
+<br>
+<b>Et apres ? Preparez des maintenant la suite !</b><br>
+<br>
+Si vous reussissez cette epreuve d'admissibilite, vous serez ensuite convoque a un <b>examen pratique de conduite</b>. Bonne nouvelle : vous devrez vous presenter avec un vehicule double commande, et nous pouvons vous accompagner !<br>
+<br>
+Nous proposons des <b>formations de preparation a l'examen pratique</b> (2h ou 4h) incluant la mise a disposition du vehicule double commande le jour de l'examen. Ces formations sont <b>financables via votre CPF</b>.<br>
+<br>
+<b>Conseil :</b> Anticipez ! Il existe un delai incompressible de 11 jours entre la souscription a une offre CPF et le debut de la formation. Plus tot vous vous inscrivez, plus vous aurez de flexibilite pour choisir votre creneau.<br>
+<br>
+N'hesitez pas a nous contacter pour en savoir plus sur nos offres de formation pratique.<br>
+<br>
+Nous croisons les doigts pour vos resultats !<br>
+{{/if}}
+
+{{#unless examen_passe}}
 {{#unless resultat_admis}}
 {{#unless resultat_non_admis}}
 {{#unless resultat_absent}}
 {{#unless examen_pas_encore_passe}}
-Les resultats sont generalement disponibles sous 48 a 72 heures apres l'examen.<br>
+Les resultats sont generalement disponibles sous <b>2 a 4 semaines</b> apres l'examen.<br>
 Vous recevrez une notification par email des que votre resultat sera publie. Vous pourrez egalement le consulter sur <a href="https://www.exament3p.fr">exament3p.fr</a>.<br>
+{{/unless}}
 {{/unless}}
 {{/unless}}
 {{/unless}}

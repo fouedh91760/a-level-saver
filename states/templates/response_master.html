@@ -280,9 +280,12 @@ Pour l'examen du {{this.date_examen_formatted}} :<br>
 
 <!-- =====================================================================
      SECTION 5: RESSOURCES
+     (Masquer e-learning si examen passé - plus besoin de réviser)
      ===================================================================== -->
 {{#unless uber_prospect}}
+{{#unless examen_passe}}
 {{> acces_elearning_rappel}}
+{{/unless}}
 {{/unless}}
 {{> verifier_spams}}
 {{> signature}}

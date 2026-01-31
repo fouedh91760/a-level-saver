@@ -1226,7 +1226,7 @@ matrix:
   # EXAM_PASSED_AWAITING_RESULTS (D-11: convoc reçue + date passée = examen passé) × Intentions
   "EXAM_PASSED_AWAITING_RESULTS:RESULTAT_EXAMEN":
     template: "response_master.html"
-    description: "Examen passé, demande résultats - expliquer délai 48-72h"
+    description: "Examen passé, demande résultats - délai 2-4 semaines + upsell formation pratique"
     context_flags:
       intention_resultat_examen: true
       examen_passe: true

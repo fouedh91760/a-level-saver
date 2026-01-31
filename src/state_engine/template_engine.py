@@ -775,6 +775,7 @@ class TemplateEngine:
             'exam_within_7_days': context.get('exam_within_7_days', False),
             'exam_within_10_days': context.get('exam_within_10_days', False),
             'examen_pas_encore_passe': context.get('examen_pas_encore_passe', False),
+            'examen_passe': context.get('examen_passe', False) or context.get('date_examen_passed', False),
             'examen_imminent': context.get('examen_imminent', False),
             'convocation_anormale': context.get('convocation_anormale', False),
             'days_until_exam': context.get('days_until_exam'),
