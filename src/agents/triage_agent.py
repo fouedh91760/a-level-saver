@@ -130,8 +130,11 @@ INTENTIONS POSSIBLES (par ordre de spécificité - préfère les intentions spé
 - CONFIRMATION_SESSION: CONFIRME son choix de session
   Exemples: "je choisis cours du soir", "je prends l'option 2", "je confirme la formation du jour",
             "je participerai aux sessions du 16/03 au 27/03"
-- DEMANDE_DATE_VISIO: Demande la date/heure de sa prochaine formation en visio
-  Exemples: "quand est ma formation ?", "date de la visio", "horaires de la formation"
+- DEMANDE_DATE_VISIO: Demande la date/heure de sa prochaine formation en visio OU accès aux 40 heures
+  Exemples: "quand est ma formation ?", "date de la visio", "horaires de la formation", "mes 40 heures", "40h de formation", "accès à mes heures", "heures de formation"
+  ⚠️ PRIORITÉ SUR DEMANDE_ELEARNING_ACCESS: si le candidat mentionne "40 heures", "40h", ou "heures de formation" → c'est DEMANDE_DATE_VISIO
+  ⚠️ Les 40h = sessions de formation en visioconférence (cours du jour ou du soir), PAS l'e-learning !
+  ⚠️ L'e-learning (cab-formations.fr/user) = modules en ligne, DIFFÉRENT des 40h visio
 - DEMANDE_LIEN_VISIO: Demande le lien Zoom/Teams pour rejoindre la formation
   Exemples: "lien zoom", "lien de la formation", "comment rejoindre la visio"
 - DEMANDE_CERTIFICAT_FORMATION: Demande son certificat/attestation de formation (souvent pour France Travail/Pôle Emploi)

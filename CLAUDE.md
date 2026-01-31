@@ -85,10 +85,21 @@ Le workflow traite les tickets DOC en utilisant plusieurs agents spécialisés e
 **CRITIQUE : Si l'intention n'est pas dans YAML ET TriageAgent → jamais détectée !**
 
 ```bash
-# Vérification obligatoire
+# Vérification obligatoire AVANT de coder
 grep "NOM_INTENTION" states/state_intention_matrix.yaml
 grep "NOM_INTENTION" src/agents/triage_agent.py
+grep '"\*:NOM_INTENTION"' states/state_intention_matrix.yaml  # Wildcard obligatoire !
 ```
+
+**RÈGLE 13 : Wildcard obligatoire pour architecture moderne**
+
+| Vérification | Commande | Si absent |
+|--------------|----------|-----------|
+| Intention définie | `grep "^  NOM:" states/state_intention_matrix.yaml` | Ajouter dans section `intentions:` |
+| Wildcard existe | `grep '"\*:NOM"' states/state_intention_matrix.yaml` | Ajouter entrée `"*:NOM_INTENTION"` |
+| Triage détecte | `grep "NOM" src/agents/triage_agent.py` | Ajouter dans SYSTEM_PROMPT |
+
+**Si le wildcard `*:INTENTION` n'existe pas → l'intention sera détectée par le triage mais JAMAIS rendue par le template engine !**
 
 **Détails complets :** `docs/STATE_ENGINE.md`
 

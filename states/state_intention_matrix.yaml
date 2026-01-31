@@ -49,13 +49,22 @@ intentions:
 
   DEMANDE_DATE_VISIO:
     id: "I03"
-    description: "Quand est ma prochaine visio/formation ?"
+    description: "Quand est ma prochaine visio/formation ? Accès aux 40h de formation"
     triggers:
       - "date visio"
       - "quand visio"
       - "prochaine formation"
       - "quand commence"
       - "date de la formation"
+      - "40 heures"
+      - "40h"
+      - "mes heures"
+      - "heures de formation"
+      - "accès formation visio"
+    notes: |
+      PRIORITÉ SUR DEMANDE_ELEARNING_ACCESS si "40 heures" ou "heures de formation" mentionné.
+      Les 40h = sessions de formation en visioconférence (cours du jour ou du soir).
+      L'e-learning (cab-formations.fr) est DIFFÉRENT des 40h visio.
 
   DEMANDE_LIEN_VISIO:
     id: "I04"
@@ -1958,6 +1967,15 @@ matrix:
       intention_demande_elearning: true
       show_elearning_section: true
       show_statut_section: true
+
+  "*:DEMANDE_DATE_VISIO":
+    template: "response_master.html"
+    description: "Demande accès 40h de formation visio - afficher sessions disponibles"
+    context_flags:
+      intention_demande_date_visio: true
+      show_sessions_section: false  # Le partial gère l'affichage des sessions avec contexte 40h
+      show_statut_section: true
+      # Les 40h sont les sessions visio, pas l'e-learning
 
   "*:DEMANDE_LIEN_VISIO":
     template: "lien_visio.html"

@@ -4,4 +4,4 @@
 <li>Vérifiez que vous êtes bien disponible aux dates prévues</li>
 </ul>
 {{#if session_format_visio}}
-<i>Vous recevrez le lien Zoom par email la veille du premier jour.</i><br>{{/if}}
+<i>Vous recevrez le lien de connexion par email avant le début de la formation.</i><br>{{/if}}
