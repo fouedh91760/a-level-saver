@@ -32,6 +32,7 @@ PRÉSERVER OBLIGATOIREMENT (structure et contenu) :
 - Les listes de dates alternatives dans d'autres départements
 - Les sections "Dans votre région" et "Dans d'autres régions"
 - Toute mention de dates disponibles ailleurs (même si le candidat n'a pas de date dans son département)
+- TOUTES les options de session (cours du jour ET cours du soir) pour CHAQUE date d'examen
 
 CE QUE TU FAIS :
 1. Fusionner les sections redondantes en un texte fluide
@@ -40,6 +41,24 @@ CE QUE TU FAIS :
 4. Rendre le ton chaleureux mais professionnel
 5. Répondre dans l'ordre logique aux questions du candidat
 6. Garder le HTML (<b>, <br>, <a href>)
+
+FUSION DATES + SESSIONS (CRITIQUE) :
+Si l'email contient à la fois une section "dates d'examen" et une section "sessions de formation" :
+- FUSIONNE-LES en UNE SEULE section claire
+- Pour chaque date d'examen, liste les deux options (jour + soir) avec leurs dates de formation
+- UN SEUL appel à l'action à la fin : "Merci de nous confirmer la date et le type de session souhaités"
+- SUPPRIME les explications génériques redondantes si les sessions sont déjà listées en détail
+
+Exemple de fusion correcte :
+<b>Dates d'examen et sessions disponibles</b><br>
+<b>Examen du 31/03/2026</b> (clôture : 27/02/2026)<br>
+&nbsp;&nbsp;→ Cours du jour : du 23/03 au 27/03<br>
+&nbsp;&nbsp;→ Cours du soir : du 16/03 au 27/03<br>
+<b>Examen du 28/04/2026</b> (clôture : 27/03/2026)<br>
+&nbsp;&nbsp;→ Cours du jour : du 20/04 au 24/04<br>
+&nbsp;&nbsp;→ Cours du soir : du 13/04 au 24/04<br>
+<br>
+<b>Merci de nous confirmer la date et le type de session souhaités.</b>
 
 NOMS DE SESSION INTERNES (à remplacer) :
 - Les noms techniques comme "cds-montreuil-thu2", "cdj-paris-wed1", "CDS Montreuil", etc. sont des codes INTERNES
@@ -52,13 +71,16 @@ CE QUE TU NE FAIS PAS :
 - Ajouter des promesses ou engagements ("nous vous tiendrons informé", "en cas de désistement", etc.)
 - Inventer des raisons quand une date n'est pas disponible (si pas mentionné = ne pas expliquer)
 - Ajouter des explications métier qui ne sont pas dans l'original
-- Supprimer des informations importantes
+- Supprimer des informations importantes (dates, sessions, options)
 - Supprimer les dates alternatives d'autres départements
 - Afficher des noms de session internes (cds-*, cdj-*, CDS, CDJ)
+- Garder des sections redondantes (dates ET sessions séparées = à fusionner)
 
 EXEMPLES D'ERREURS À ÉVITER :
 - ❌ "nous vous tiendrons informé en cas de désistement" (promesse inventée)
 - ❌ "si une place se libère" (hypothèse inventée)
+- ❌ Garder deux sections séparées pour dates et sessions (doit être fusionné)
+- ❌ Garder deux CTAs ("confirmer la date" + "confirmer la session") → UN SEUL CTA
 - ✅ Si le candidat demande une date qui n'est pas proposée, ne PAS expliquer pourquoi - ignorer simplement
 
 FORMAT : Retourne UNIQUEMENT l'email reformulé en HTML."""
@@ -216,13 +238,37 @@ def _validate_humanized_response(original: str, humanized: str) -> Dict[str, Any
 
 def _cleanup_line_breaks(html: str) -> str:
     """
-    Nettoie les sauts de ligne excessifs dans le HTML.
+    Nettoie les sauts de ligne excessifs et les listes HTML.
 
+    - Convertit <ul><li> en → bullets
+    - Convertit <ol><li> en 1. 2. 3. numérotation
     - Remplace 3+ <br> consécutifs par 2
     - Supprime les <br> en début de texte
     - Supprime les <br> multiples avant la signature
     """
     result = html
+
+    # Convertir <ul><li>...</li></ul> en → bullets
+    # Pattern pour capturer le contenu de chaque <li>
+    def replace_ul(match):
+        content = match.group(1)
+        items = re.findall(r'<li>(.*?)</li>', content, re.DOTALL | re.IGNORECASE)
+        if items:
+            return '<br>'.join(f'→ {item.strip()}' for item in items) + '<br>'
+        return match.group(0)
+
+    result = re.sub(r'<ul[^>]*>(.*?)</ul>', replace_ul, result, flags=re.DOTALL | re.IGNORECASE)
+
+    # Convertir <ol><li>...</li></ol> en 1. 2. 3. numérotation
+    def replace_ol(match):
+        content = match.group(1)
+        items = re.findall(r'<li>(.*?)</li>', content, re.DOTALL | re.IGNORECASE)
+        if items:
+            numbered = [f'{i+1}. {item.strip()}' for i, item in enumerate(items)]
+            return '<br>'.join(numbered) + '<br>'
+        return match.group(0)
+
+    result = re.sub(r'<ol[^>]*>(.*?)</ol>', replace_ol, result, flags=re.DOTALL | re.IGNORECASE)
 
     # Supprimer <br> en début (après strip)
     result = re.sub(r'^(\s*<br>\s*)+', '', result)

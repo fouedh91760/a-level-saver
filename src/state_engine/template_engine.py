@@ -969,10 +969,16 @@ class TemplateEngine:
             result['show_sessions_section'] = False
             logger.info("📚 show_sessions_section=False (session déjà confirmée par le candidat)")
         elif not is_report_intention:
+            # Afficher les sessions si:
+            # 1. Date existe + session pas choisie + sessions disponibles (cas standard)
+            # 2. OU date vide mais proposed_options contient des sessions (CAS 1 - EXAM_DATE_EMPTY)
+            has_sessions = bool(self._flatten_session_options_filtered(context))
+            has_proposed_options = bool(context.get('session_data', {}).get('proposed_options'))
+
             result['show_sessions_section'] = (
-                bool(date_examen) and
+                has_sessions and
                 not deal_data.get('Session') and
-                bool(self._flatten_session_options_filtered(context))
+                (bool(date_examen) or has_proposed_options)  # Date existe OU proposed_options avec sessions
             )
 
         return result
