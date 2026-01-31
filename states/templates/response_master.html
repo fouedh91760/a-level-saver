@@ -123,7 +123,9 @@
 {{> partials/intentions/autres_departements}}
 {{/if}}
 {{#if intention_confirmation_paiement}}
+{{#unless is_prospect}}
 {{> partials/intentions/confirmation_paiement}}
+{{/unless}}
 {{/if}}
 {{#if intention_refus_credentials}}
 {{> partials/intentions/refus_credentials}}

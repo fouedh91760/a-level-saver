@@ -828,6 +828,32 @@ Le candidat demande sa convocation mais la date d'examen dans Zoho CRM est dans 
             logger.info("❓ CLARIFICATION → Demander coordonnées au candidat")
             return triage_result
 
+        # Rule #2.7: ROUTAGE AUTOMATIQUE SI DÉPARTEMENT DIFFÉRENT DE DOC
+        # BusinessRules a déterminé que ce ticket devrait aller ailleurs (ex: "examen pratique" → Contact)
+        suggested_department = linking_result.get('recommended_department') or linking_result.get('department', 'DOC')
+        if suggested_department and suggested_department.upper() not in ['DOC', 'DOCUMENTS']:
+            logger.warning(f"⚠️ ROUTAGE AUTOMATIQUE → {suggested_department} (règle métier)")
+            triage_result['action'] = 'ROUTE'
+            triage_result['target_department'] = suggested_department
+            triage_result['reason'] = f"Routage automatique via BusinessRules: {linking_result.get('routing_reason', 'département différent de DOC')}"
+            triage_result['method'] = 'business_rules_routing'
+            triage_result['selected_deal'] = selected_deal
+
+            # Auto-transfer if enabled
+            if auto_transfer:
+                try:
+                    logger.info(f"🔄 Transfert automatique vers {suggested_department}...")
+                    transfer_success = self.dispatcher._reassign_ticket(ticket_id, suggested_department)
+                    if transfer_success:
+                        logger.info(f"✅ Ticket transféré vers {suggested_department}")
+                        triage_result['transferred'] = True
+                    else:
+                        logger.warning(f"⚠️ Échec transfert vers {suggested_department}")
+                except Exception as e:
+                    logger.error(f"Erreur transfert: {e}")
+
+            return triage_result
+
         # If no deals found, also check by email directly
         if not all_deals:
             email = ticket.get('email', '')

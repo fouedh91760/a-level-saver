@@ -8,6 +8,15 @@ from src.zoho_client import ZohoDeskClient, ZohoCRMClient
 
 logger = logging.getLogger(__name__)
 
+# Emails système à ignorer lors de l'extraction de l'email candidat
+SYSTEM_EMAILS_TO_IGNORE = [
+    'contact@evalbox.com',
+    'noreply@evalbox.com',
+    'doc@cab-formations.fr',
+    'contact@cab-formations.fr',
+    'admin@cab-formations.fr',
+]
+
 try:
     from business_rules import BusinessRules
     logger.info("Loaded custom business rules")
@@ -150,8 +159,9 @@ Always respond in JSON format with the following structure:
         if not threads:
             return None
 
-        # Try to get email from last thread (most recent)
-        for thread in reversed(threads):
+        # Try to get email from most recent thread first (threads are ordered oldest to newest)
+        # So we iterate in reverse to get newest first
+        for thread in threads:
             # Skip internal notes and agent responses
             channel = thread.get("channel", "").lower()
             direction = thread.get("direction", "").lower()
@@ -160,13 +170,19 @@ Always respond in JSON format with the following structure:
             if direction == "in" or channel in ["email", "web", "phone"]:
                 email = self._extract_email_from_thread(thread)
                 if email:
+                    # Ignorer les emails système (Evalbox, CAB Formations, etc.)
+                    if email.lower() in [e.lower() for e in SYSTEM_EMAILS_TO_IGNORE]:
+                        logger.info(f"Skipping system email: {email}")
+                        continue
                     logger.info(f"Extracted email from thread: {email}")
                     return email
 
-        # Fallback: try any thread
-        for thread in reversed(threads):
+        # Fallback: try any thread (but still skip system emails)
+        for thread in threads:
             email = self._extract_email_from_thread(thread)
             if email:
+                if email.lower() in [e.lower() for e in SYSTEM_EMAILS_TO_IGNORE]:
+                    continue
                 logger.info(f"Extracted email from thread (fallback): {email}")
                 return email
 
@@ -610,6 +626,17 @@ Emails alternatifs trouvés:"""
                                 result["has_duplicate_uber_offer"] = True
                                 result["duplicate_deals"] = deals_20_won
                                 logger.warning(f"  ⚠️ DOUBLON UBER détecté: {len(deals_20_won)} opportunités 20€ GAGNÉ")
+
+                            # Calculer le département recommandé même pour les tickets déjà liés
+                            # (pour gérer les cas comme "examen pratique" qui doivent aller vers Contact)
+                            try:
+                                recommended_department = BusinessRules.determine_department_from_deals_and_ticket(
+                                    all_deals, ticket
+                                )
+                                result["recommended_department"] = recommended_department
+                                logger.info(f"  📍 Département recommandé: {recommended_department}")
+                            except Exception as e:
+                                logger.warning(f"  ⚠️ Erreur calcul département: {e}")
 
                         return result
                 except Exception as e:
