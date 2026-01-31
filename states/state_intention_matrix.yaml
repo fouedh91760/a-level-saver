@@ -19,7 +19,7 @@
 # =============================================================================
 
 version: "2.0"
-last_updated: "2026-01-27"
+last_updated: "2026-01-31"
 
 # =============================================================================
 # SECTION 1: DÉFINITION DES INTENTIONS
@@ -1699,17 +1699,26 @@ matrix:
       - convoc_a_venir:
           condition: "days_until_exam > 10"
 
-  "DATE_FUTURE_VALIDE_CMA:REPORT_DATE":
-    template: "report_valide_cma.html"
-    conditional_blocks:
-      - report_possible:
-          condition: "Date_Cloture_Inscription >= today"
-          blocks:
-            - procedure_report
-            - avertissement_frais
-      - report_bloque:
-          condition: "Date_Cloture_Inscription < today"
-          template: "report_bloque.html"
+  # VALIDE_CMA_WAITING_CONVOC (D-4) × REPORT_DATE
+  # Candidat validé CMA qui demande un report (examen futur, clôture passée)
+  "VALIDE_CMA_WAITING_CONVOC:REPORT_DATE":
+    template: "response_master.html"
+    description: "Examen futur mais clôture passée - options limitées"
+    context_flags:
+      intention_report_date: true
+      report_bloque: true
+      show_statut_section: false
+      show_elearning_section: false
+
+  # VALIDE_CMA_WAITING_CONVOC (D-4) × DEMANDE_CONVOCATION
+  # Candidat validé CMA qui demande sa convocation (examen futur)
+  "VALIDE_CMA_WAITING_CONVOC:DEMANDE_CONVOCATION":
+    template: "response_master.html"
+    description: "Dossier validé CMA, convocation à venir"
+    context_flags:
+      intention_demande_convocation: true
+      show_statut_section: true
+      show_elearning_section: true
 
   # --- CONVOCATION_RECEIVED × Intentions ---
   "CONVOCATION_RECEIVED:DEMANDE_IDENTIFIANTS":
@@ -1963,6 +1972,76 @@ matrix:
     context_flags:
       intention_demande_elearning: true
       show_statut_section: true
+
+  # ===========================================================================
+  # WILDCARDS UNIVERSELS - Architecture Wildcard-First
+  # ===========================================================================
+  # Ces wildcards attrapent toute combinaison STATE:INTENTION non couverte
+  # par une entrée spécifique. Cela élimine le fallback vers les templates
+  # legacy et passe de O(n×m) à O(n+m).
+  #
+  # Priorité de sélection:
+  #   PASS 0a: Entrée spécifique STATE:INTENTION (ex: READY_TO_PAY:CONFIRMATION_SESSION)
+  #   PASS 0b: Wildcard *:INTENTION (ces entrées)
+  #   PASS 5:  Legacy (backup, ne devrait plus être atteint)
+  # ===========================================================================
+
+  "*:QUESTION_GENERALE":
+    template: "response_master.html"
+    description: "Question générale - répondre selon le contexte de l'état"
+    context_flags:
+      intention_question_generale: true
+      show_statut_section: true
+
+  "*:DEMANDE_IDENTIFIANTS":
+    template: "response_master.html"
+    description: "Demande d'identifiants ExamT3P - tous états"
+    context_flags:
+      intention_demande_identifiants: true
+      show_statut_section: true
+
+  "*:STATUT_DOSSIER":
+    template: "response_master.html"
+    description: "Question sur le statut du dossier - tous états"
+    context_flags:
+      intention_statut_dossier: true
+      show_statut_section: true
+
+  "*:RESULTAT_EXAMEN":
+    template: "response_master.html"
+    description: "Question sur les résultats d'examen - tous états"
+    context_flags:
+      intention_resultat_examen: true
+      show_statut_section: true
+
+  "*:CONFIRMATION_SESSION":
+    template: "response_master.html"
+    description: "Choix/confirmation de session de formation - tous états"
+    context_flags:
+      intention_confirmation_session: true
+      show_statut_section: true
+      show_sessions_section: true
+
+  "*:DEMANDE_CONVOCATION":
+    template: "response_master.html"
+    description: "Demande de convocation - tous états"
+    context_flags:
+      intention_demande_convocation: true
+      show_statut_section: true
+
+  "*:REPORT_DATE":
+    template: "response_master.html"
+    description: "Demande de report de date d'examen - tous états"
+    context_flags:
+      intention_report_date: true
+      show_statut_section: true
+
+  "*:DEMANDE_DATES_FUTURES":
+    template: "response_master.html"
+    description: "Demande de dates d'examen futures - tous états"
+    context_flags:
+      intention_demande_date: true
+      show_dates_section: true
 
 # =============================================================================
 # SECTION 4: CONFIGURATION GLOBALE
