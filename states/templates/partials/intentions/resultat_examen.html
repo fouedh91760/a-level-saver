@@ -18,11 +18,11 @@ En attendant, n'hesitez pas a reviser sur votre <a href="https://cab-formations.
 Votre examen ayant eu lieu le <b>{{date_examen}}</b>, vos resultats seront disponibles sous <b>2 a 4 semaines</b>. Vous recevrez une notification par email des leur publication et pourrez les consulter sur <a href="https://www.exament3p.fr">exament3p.fr</a>.<br>
 <br>
 <b>Et apres ? Preparez des maintenant la suite !</b><br>
-Si vous reussissez cette epreuve d'admissibilite, vous serez ensuite convoque a un <b>examen pratique de conduite</b>. Bonne nouvelle : vous devrez vous presenter avec un vehicule double commande, et nous pouvons vous accompagner !<br>
+Si vous reussissez cette epreuve d'admissibilite, vous serez ensuite {{#if is_female}}convoquee{{else}}convoque{{/if}} a un <b>examen pratique de conduite</b>. Bonne nouvelle : vous devrez vous presenter avec un vehicule double commande, et nous pouvons vous accompagner !<br>
 Nous proposons des <b>formations de preparation a l'examen pratique</b> (2h ou 4h) incluant la mise a disposition du vehicule double commande le jour de l'examen. Ces formations sont <b>financables via votre CPF</b>.<br>
 <b>Conseil :</b> Anticipez ! Il existe un delai incompressible de 11 jours entre la souscription a une offre CPF et le debut de la formation. Plus tot vous vous inscrivez, plus vous aurez de flexibilite pour choisir votre creneau.<br>
 <br>
-Interesse(e) ? Repondez simplement a ce mail en indiquant "<b>Je suis interesse(e) par la formation pratique</b>" et un conseiller vous rappellera pour vous presenter nos offres.<br>
+{{#if is_female}}Interessee{{else}}Interesse{{/if}} ? Repondez simplement a ce mail en indiquant "<b>Je suis {{#if is_female}}interessee{{else}}interesse{{/if}} par la formation pratique</b>" et un conseiller vous rappellera pour vous presenter nos offres.<br>
 <br>
 Nous croisons les doigts pour vos resultats !<br>
 {{/if}}

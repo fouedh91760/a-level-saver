@@ -24,7 +24,12 @@ from pathlib import Path
 from typing import Dict, Any, Optional, List, Tuple
 from datetime import datetime
 
+import gender_guesser.detector as gender_detector
+
 from .state_detector import DetectedState, DetectedStates
+
+# Détecteur de genre par prénom (singleton)
+_gender_detector = gender_detector.Detector()
 
 logger = logging.getLogger(__name__)
 
@@ -685,11 +690,17 @@ class TemplateEngine:
             except Exception as e:
                 pass
 
+        # Détection du genre via le prénom
+        is_female = self._detect_gender_from_name(prenom) == 'female'
+        is_male = not is_female  # Par défaut masculin si inconnu
+
         result = {
             # Infos candidat (depuis Contact, pas Deal)
             'prenom': prenom or 'Bonjour',
             'nom': nom,
             'email': contact_data.get('Email') or deal_data.get('Email', ''),
+            'is_female': is_female,
+            'is_male': is_male,
 
             # Identifiants ExamT3P
             'identifiant_examt3p': examt3p_data.get('identifiant', ''),
@@ -1468,6 +1479,36 @@ class TemplateEngine:
             return parts[0].capitalize()
 
         return ''
+
+    def _detect_gender_from_name(self, prenom: str) -> str:
+        """
+        Détecte le genre à partir du prénom.
+
+        Utilise gender-guesser pour deviner le genre.
+        Prend le premier mot du prénom pour éviter les cas comme "Mohamed Amine".
+
+        Returns:
+            'female', 'male', ou 'unknown'
+        """
+        if not prenom:
+            return 'unknown'
+
+        # Prendre le premier mot du prénom
+        first_word = prenom.split()[0].strip()
+        if not first_word:
+            return 'unknown'
+
+        try:
+            result = _gender_detector.get_gender(first_word)
+            # gender-guesser retourne: male, female, mostly_male, mostly_female, andy, unknown
+            if result in ['female', 'mostly_female']:
+                return 'female'
+            elif result in ['male', 'mostly_male']:
+                return 'male'
+            else:
+                return 'unknown'
+        except Exception:
+            return 'unknown'
 
     def _check_date_changed(self, current_date: str, previous_date: str) -> bool:
         """
