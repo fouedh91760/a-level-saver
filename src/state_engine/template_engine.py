@@ -1255,8 +1255,10 @@ class TemplateEngine:
             actions['action_corriger_documents'] = True
             actions['has_required_action'] = True
         elif evalbox == 'Convoc CMA reçue':
-            actions['action_preparer_examen'] = True
-            actions['has_required_action'] = True
+            # Ne pas afficher "préparer examen" si l'examen est déjà passé
+            if not context.get('date_examen_passed', False) and not context.get('examen_passe', False):
+                actions['action_preparer_examen'] = True
+                actions['has_required_action'] = True
         else:
             # Pas de statut Evalbox - vérifier si date/session manquantes
             date_examen = context.get('date_examen')

@@ -664,9 +664,25 @@ def analyze_exam_date_situation(
     # CAS avec date dans le passé
     if date_is_past:
         # CAS 7: Date passée + VALIDE CMA ou Dossier Synchronisé
-        if evalbox_status in ['VALIDE CMA', 'Dossier Synchronisé']:
+        if evalbox_status in ['VALIDE CMA', 'Dossier Synchronisé', 'Convoc CMA reçue']:
             result['case'] = 7
             result['case_description'] = "Date passée + dossier validé - Examen probablement passé"
+
+            # Calculer le nombre de jours depuis l'examen
+            days_since_exam = None
+            if date_examen_str:
+                try:
+                    date_obj = datetime.strptime(str(date_examen_str), "%Y-%m-%d")
+                    today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+                    days_since_exam = (today - date_obj).days
+                    result['days_since_exam'] = days_since_exam
+                    # Force majeure possible uniquement si < 14 jours après l'examen
+                    result['force_majeure_possible'] = days_since_exam <= 14
+                    logger.info(f"  📅 Jours depuis l'examen: {days_since_exam} → force majeure {'possible' if result['force_majeure_possible'] else 'NON possible (> 14 jours)'}")
+                except Exception as e:
+                    logger.warning(f"  ⚠️ Erreur calcul jours depuis examen: {e}")
+                    result['days_since_exam'] = None
+                    result['force_majeure_possible'] = False
 
             # Vérifier s'il y a des indices dans les threads que l'examen n'a pas été passé
             has_indices_not_passed = check_threads_for_exam_not_passed(threads) if threads else False

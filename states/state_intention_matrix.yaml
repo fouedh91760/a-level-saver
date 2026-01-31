@@ -1223,6 +1223,31 @@ matrix:
       intention_statut_dossier: true
       show_statut_section: true
 
+  # EXAM_PASSED_AWAITING_RESULTS (D-11: convoc reçue + date passée = examen passé) × Intentions
+  "EXAM_PASSED_AWAITING_RESULTS:RESULTAT_EXAMEN":
+    template: "response_master.html"
+    description: "Examen passé, demande résultats - expliquer délai 48-72h"
+    context_flags:
+      intention_resultat_examen: true
+      examen_passe: true
+      show_statut_section: true
+
+  "EXAM_PASSED_AWAITING_RESULTS:STATUT_DOSSIER":
+    template: "response_master.html"
+    description: "Examen passé, demande statut - résultats à venir"
+    context_flags:
+      intention_statut_dossier: true
+      examen_passe: true
+      show_statut_section: true
+
+  "EXAM_PASSED_AWAITING_RESULTS:QUESTION_GENERALE":
+    template: "response_master.html"
+    description: "Examen passé, question générale"
+    context_flags:
+      intention_question_generale: true
+      examen_passe: true
+      show_statut_section: true
+
   # EXAM_DATE_PAST_VALIDATED (examen passé) × Intentions
   "EXAM_DATE_PAST_VALIDATED:STATUT_DOSSIER":
     template: "response_master.html"
@@ -1319,11 +1344,10 @@ matrix:
 
   "CONVOCATION_RECEIVED:RESULTAT_EXAMEN":
     template: "response_master.html"
-    description: "A la convocation, demande résultat - examen pas encore passé"
+    description: "A la convocation, demande résultat - examen_pas_encore_passe calculé dynamiquement"
     context_flags:
       intention_resultat_examen: true
       evalbox_convoc_recue: true
-      examen_pas_encore_passe: true
       show_statut_section: true
 
   # --- EVALBOX_REFUSE_CMA × Intentions ---

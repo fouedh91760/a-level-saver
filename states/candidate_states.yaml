@@ -828,6 +828,41 @@ states:
 
     crm_updates: null
 
+  # ---------------------------------------------------------------------------
+  # D-11: Examen passé - Attente résultats
+  # ---------------------------------------------------------------------------
+  EXAM_PASSED_AWAITING_RESULTS:
+    id: "D-11"
+    priority: 310
+    severity: "INFO"  # Combinable avec intentions
+    description: "Examen passé (convoc reçue + date passée) - en attente des résultats"
+    category: "date_examen"
+
+    detection:
+      method: "date_examen_helper"
+      condition: "case == 11"
+
+    workflow:
+      action: "RESPOND"
+
+    response:
+      template: "response_master.html"
+      blocks_required:
+        - "salutation"
+        - "info_resultats"
+        - "signature"
+      blocks_forbidden:
+        - "rappel_jour_j"
+        - "souhait_bonne_chance"
+        - "annonce_convocation"
+      ai_section: "personnalisation"
+      ai_instructions: "Rassurer sur les résultats à venir. 1 phrase max."
+
+      data_injections:
+        - "date_examen"
+
+    crm_updates: null
+
 # =============================================================================
 # ÉTATS INTENTION CANDIDAT (Priorité 400-499)
 # Ces états modifient le comportement selon l'intention détectée

@@ -806,9 +806,13 @@ class StateDetector:
         if evalbox == 'Refusé CMA':
             return 3
 
-        # CAS 9: Convoc reçue
-        if evalbox == 'Convoc CMA reçue':
+        # CAS 9: Convoc reçue (seulement si examen pas encore passé)
+        if evalbox == 'Convoc CMA reçue' and not date_examen_passed:
             return 9
+
+        # CAS 11: Convoc reçue + examen passé = examen passé, attente résultats
+        if evalbox == 'Convoc CMA reçue' and date_examen_passed:
+            return 11
 
         # CAS 10: Prêt à payer
         if evalbox in ['Pret a payer', 'Pret a payer par cheque']:
@@ -822,7 +826,7 @@ class StateDetector:
         if evalbox == 'Dossier Synchronisé' and date_examen_future:
             return 5
 
-        # CAS 7: Date passée + validé
+        # CAS 7: Date passée + validé (sans convoc = report d'office probable)
         if date_examen_passed and evalbox in ['VALIDE CMA', 'Dossier Synchronisé']:
             return 7
 
