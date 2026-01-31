@@ -1,9 +1,14 @@
 {{> salutation_personnalisee}}
-<b>Acces a la formation en ligne</b><br>
-Pour acceder a votre formation e-learning :<br>
+
+{{#if uber_prospect}}
+{{> partials/uber/prospect_paiement}}
+{{else}}
+<b>Accès à la formation en ligne</b><br>
+Pour accéder à votre formation e-learning :<br>
 <br>
 <b>Lien :</b> <a href="https://cab-formations.fr/user">cab-formations.fr/user</a><br>
 <b>Identifiant :</b> votre adresse email d'inscription<br>
-<b>Mot de passe :</b> si vous l'avez oublie, cliquez sur "Mot de passe oublie"<br>
-<br>
+<b>Mot de passe :</b> si vous l'avez oublié, cliquez sur "Mot de passe oublié"<br>
+{{/if}}
+
 {{> signature}}
