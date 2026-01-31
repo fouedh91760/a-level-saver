@@ -1,0 +1,51 @@
+<!-- Partial: Alternatives cross-departement avec priorite regionale -->
+
+{{#if has_same_region_options}}
+<b>Dates plus proches dans votre region ({{current_region}})</b><br>
+{{#each same_region_options}}
+&nbsp;&nbsp;&rarr; <b>{{this.date_examen_formatted}}</b> &mdash; CMA {{this.Departement}} ({{this.comparison_text}})
+{{#if this.is_urgent}}<span style="color:#c0392b;"> &mdash; Cloture dans {{this.days_until_cloture}} jours !</span>{{/if}}<br>
+{{/each}}
+<br>
+{{/if}}
+
+{{#if has_other_region_options}}
+<b>Dates dans d'autres regions</b><br>
+<i>Note : Ces departements sont plus eloignes geographiquement.</i><br>
+{{#each other_region_options}}
+&nbsp;&nbsp;&rarr; <b>{{this.date_examen_formatted}}</b> &mdash; CMA {{this.Departement}} ({{this.region}}, {{this.comparison_text}})
+{{#if this.is_urgent}}<span style="color:#c0392b;"> &mdash; Cloture dans {{this.days_until_cloture}} jours !</span>{{/if}}<br>
+{{/each}}
+<br>
+{{/if}}
+
+{{#if requires_department_change_process}}
+<b>Procedure de changement de departement</b><br>
+Votre compte ExamT3P etant cree sur la CMA {{cma_departement}}, un changement necessite l'accord de la CMA.<br>
+<br>
+{{> partials/cma/contact_cma}}
+{{else}}
+{{#if has_earlier_options}}
+<i>Vous n'avez pas encore de compte ExamT3P, vous pouvez choisir librement le departement de votre choix.</i><br>
+<br>
+{{/if}}
+{{/if}}
+
+<!-- Fallback: anciennes donnees (compatibilite arriere) -->
+{{#unless has_same_region_options}}
+{{#unless has_other_region_options}}
+{{#if has_earlier_options}}
+<b>Options plus rapides dans d'autres departements</b><br>
+{{#if compte_existe}}
+<i>Note : Votre compte ExamT3P etant cree sur la CMA {{cma_departement}}, un changement de departement necessite une nouvelle procedure.</i><br>
+{{else}}
+<i>Comme vous n'avez pas encore de compte ExamT3P, vous pouvez choisir le departement de votre choix.</i><br>
+{{/if}}
+<br>
+{{#each earlier_options}}
+&nbsp;&nbsp;&rarr; <b>{{this.date_examen_formatted}}</b> &mdash; CMA {{this.dept}} ({{this.comparison_text}})<br>
+{{/each}}
+<br>
+{{/if}}
+{{/unless}}
+{{/unless}}

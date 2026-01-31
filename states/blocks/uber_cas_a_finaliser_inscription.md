@@ -14,13 +14,8 @@ Voici quelques vérifications à effectuer :<br><br>
 Nous avons bien reçu votre paiement. Pour que nous puissions procéder à votre inscription à l'examen VTC, il vous reste à compléter votre dossier.<br><br>
 <b>Étape 1 — Compléter votre dossier</b><br>
 Rendez-vous sur notre <a href="https://cab-formations.fr/uberxcab_welcome">plateforme d'inscription</a> et téléchargez les documents suivants :<br>
-<ul>
-<li>Pièce d'identité : recto/verso, en cours de validité</li>
-<li>Permis de conduire : recto/verso, en cours de validité depuis au moins 3 ans</li>
-<li>Justificatif de domicile : de moins de 6 mois (facture, avis d'imposition...)</li>
-<li>Photo d'identité : format officiel, fond clair</li>
-</ul>
-<i>Formats acceptés : PDF, PNG, JPEG — Taille max : 4 Mo par fichier</i><br><br>
+{{> partials/common/liste_documents_requis}}
+<br>
 <b>Étape 2 — Passer le test de sélection</b><br>
 Une fois vos documents envoyés, vous recevrez par email un lien vers un test de sélection rapide (10 min, aucune révision nécessaire).<br><br>
 <b>Ce qui est inclus dans votre offre :</b><br>

@@ -72,6 +72,8 @@ RÈGLES DE TRIAGE:
    - OU deal_data.Evalbox == "Refusé CMA" ou "Documents manquants"
    - OU le candidat nous ENVOIE des documents en pièce jointe (intention TRANSMET_DOCUMENTS)
      → On doit uploader ces documents sur son compte ExamT3P manuellement
+   ⚠️ EXCEPTION: Si Date_Dossier_reçu est VIDE → GO + TRANSMET_DOCUMENTS (pas de route)
+     → C'est un envoi initial de documents, on traite dans DOC
 
 4. **ROUTE vers Contact** si:
    - Demande d'information sur une formation NON Uber (formation classique, TAXI, etc.)
@@ -81,9 +83,11 @@ RÈGLES DE TRIAGE:
 IMPORTANT - DISTINCTION DOCUMENTS:
 - "J'ai téléchargé mes documents SUR EXAMT3P" = GO (ENVOIE_DOCUMENTS - il l'a fait lui-même)
 - "Voici mon passeport en pièce jointe" = ROUTE Refus CMA (TRANSMET_DOCUMENTS - on doit uploader pour lui)
+  ⚠️ SAUF si Date_Dossier_reçu est VIDE → GO (envoi initial, on gère dans DOC)
 - "Mon document a été refusé" = ROUTE Refus CMA (problème de refus CMA)
 - Comprends le CONTEXTE, pas juste les mots-clés
 - **PROSPECT UBER 20€ = TOUJOURS DOC** pour les pousser à payer et avancer
+- **Date_Dossier_reçu VIDE = TOUJOURS DOC** même pour TRANSMET_DOCUMENTS (envoi initial)
 
 IMPORTANT - DISTINCTION "FACTURE":
 - Sujet "Facture" SANS demande explicite = candidat TRANSMET un justificatif de domicile (facture EDF, téléphone...)
@@ -167,8 +171,9 @@ INTENTIONS POSSIBLES (par ordre de spécificité - préfère les intentions spé
   Exemples: "j'ai téléchargé mes documents sur ExamT3P", "j'ai mis mes pièces sur le site", "documents ajoutés sur mon espace"
   ⚠️ Action: GO - le candidat a fait l'upload lui-même, on accuse réception
 - TRANSMET_DOCUMENTS: Candidat nous ENVOIE des documents en pièce jointe (passeport, permis, etc.)
-  Exemples: "voici mon passeport", "ci-joint mes documents", "je vous envoie mon permis"
-  ⚠️ Action: ROUTE vers Refus CMA - on doit uploader les documents sur son compte ExamT3P
+  Exemples: "voici mon passeport", "ci-joint mes documents", "je vous envoie mon permis", "je vous ai envoyé les photos"
+  ⚠️ Action: Si Date_Dossier_reçu remplie → ROUTE Refus CMA (correction/ajout de docs)
+  ⚠️ Action: Si Date_Dossier_reçu VIDE → GO + intention TRANSMET_DOCUMENTS (envoi initial, on gère dans DOC)
 - SIGNALE_PROBLEME_DOCS: Problème technique lors de l'upload des documents
   Exemples: "erreur lors de l'envoi", "impossible de télécharger", "bug sur le site"
 - CONFIRMATION_PAIEMENT: Confirmation ou question sur le paiement
