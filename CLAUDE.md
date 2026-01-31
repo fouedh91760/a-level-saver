@@ -237,6 +237,129 @@ dept = str(date_info.get('Departement', ''))
 
 ---
 
+## DEBUGGING : Pistes d'Investigation
+
+### 7. Template non affiché / Partial manquant
+
+**Symptôme:** Une section (ex: confirmation_session) n'apparaît pas dans la réponse.
+
+**Ordre de priorité de sélection du template:**
+```
+1. MATRICE STATE:INTENTION (state_intention_matrix.yaml)
+   Ex: "READY_TO_PAY:CONFIRMATION_SESSION" → response_master.html
+   ✅ Architecture moderne avec intentions
+
+2. TEMPLATE_STATE_MAP (template_engine.py ligne ~1007)
+   Ex: 'READY_TO_PAY': 'pret_a_payer'
+   ❌ Legacy (base_legacy/) - PAS d'intentions !
+
+3. candidate_states.yaml → response.template
+   Ex: template: "ready_to_pay.html"
+
+4. Fallback générique
+```
+
+**Investigation:**
+```bash
+# 1. Vérifier si entrée STATE:INTENTION existe
+grep "READY_TO_PAY:CONFIRMATION_SESSION" states/state_intention_matrix.yaml
+
+# 2. Vérifier le log "Template sélectionné via matrice"
+# Si absent → fallback sur legacy
+
+# 3. Vérifier TEMPLATE_STATE_MAP dans template_engine.py
+grep "READY_TO_PAY" src/state_engine/template_engine.py
+```
+
+**Solution:** Ajouter l'entrée dans `state_intention_matrix.yaml`:
+```yaml
+"ETAT:INTENTION":
+  template: "response_master.html"
+  context_flags:
+    intention_xxx: true
+```
+
+### 8. Noms d'états incohérents
+
+**Piège:** Le nom d'état diffère entre les fichiers.
+
+| Fichier | Peut utiliser |
+|---------|---------------|
+| `candidate_states.yaml` | `READY_TO_PAY` |
+| `state_intention_matrix.yaml` | `PRET_A_PAYER` (ancien) |
+| `TEMPLATE_STATE_MAP` | `'READY_TO_PAY': 'pret_a_payer'` |
+
+**Vérification:**
+```bash
+# Trouver le vrai nom de l'état
+grep -E "^  [A-Z_]+:" states/candidate_states.yaml | grep -i "pay"
+```
+
+### 9. Champs CRM Sessions1
+
+**Module Sessions1 - Noms de champs corrects:**
+```python
+# CORRECT
+session_record.get('Date_d_but')   # Date début
+session_record.get('Date_fin')      # Date fin (PAS Date_de_fin !)
+session_record.get('session_type')  # 'jour' ou 'soir'
+session_record.get('Name')          # Nom complet
+```
+
+**Fichier:** `src/utils/crm_lookup_helper.py`
+
+### 10. Variables session dans le contexte
+
+**Priorité des données session (fallback chain):**
+```python
+# 1. Matching nouveau (si CONFIRMATION_SESSION + proposed_options)
+matched_session_start = context.get('matched_session_start')
+matched_session_end = context.get('matched_session_end')
+
+# 2. Session déjà assignée dans CRM (fallback)
+enriched_lookups.get('session_date_debut')
+enriched_lookups.get('session_date_fin')
+```
+
+**Template Engine (ligne ~725):**
+```python
+'matched_session_start': context.get('matched_session_start') or enriched_lookups.get('session_date_debut')
+```
+
+### 11. Session déjà assignée - Changement bloqué
+
+**Symptôme:** Le candidat veut changer de session (jour→soir) mais le système ne propose rien.
+
+**Cause:** `session_helper.py` retourne immédiatement si session assignée.
+
+**Solution:** Paramètre `allow_change=True` pour bypasser:
+```python
+session_data = analyze_session_situation(
+    ...,
+    allow_change=(detected_intent == 'CONFIRMATION_SESSION'),
+    enriched_lookups=enriched_lookups
+)
+```
+
+**Condition de bypass:**
+- `allow_change=True` ET
+- Préférence exprimée (jour/soir) ET
+- Préférence ≠ session actuelle
+
+### 12. Statut "validé" vs "complet"
+
+**Attention au vocabulaire métier:**
+
+| Evalbox | Signification | Terme correct |
+|---------|---------------|---------------|
+| `Pret a payer` | Documents transmis, en attente paiement | "complet" |
+| `Dossier Synchronisé` | CMA a reçu, vérifie | "en cours de vérification" |
+| `VALIDE CMA` | CMA a validé après paiement | "validé" |
+
+**Fichier:** `states/templates/partials/statuts/pret_a_payer.html`
+
+---
+
 ## Fichiers de Référence
 
 | Fichier | Description | Mise à jour |
