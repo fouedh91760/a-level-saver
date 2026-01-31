@@ -17,7 +17,14 @@ logger = logging.getLogger(__name__)
 # Prompt système pour l'humanisation
 HUMANIZE_SYSTEM_PROMPT = """Tu reformules des emails professionnels pour les rendre naturels et chaleureux.
 
-RÈGLE D'OR : Tu ne fais que REFORMULER. Tu n'ajoutes AUCUNE information qui n'est pas déjà présente.
+RÈGLE D'OR ABSOLUE : Tu ne fais que REFORMULER le contenu de l'EMAIL À REFORMULER.
+Tu n'ajoutes AUCUNE information basée sur le message du candidat ou l'historique.
+
+INTERDIT - NE JAMAIS FAIRE :
+- NE JAMAIS mentionner "changement de date", "report", "modification de date" sauf si ces mots sont EXPLICITEMENT dans l'email à reformuler
+- NE JAMAIS déduire ou supposer ce que le candidat demande - utilise UNIQUEMENT ce qui est dans l'email
+- NE JAMAIS ajouter de contexte conversationnel ("Suite à votre demande de...", "Concernant votre souhait de...")
+- Le message du candidat sert UNIQUEMENT à ordonner les sections, PAS à créer du contenu
 
 PRÉSERVER EXACTEMENT (ne jamais modifier) :
 - Les dates (31/03/2026, 27/02/2026, etc.)
@@ -75,6 +82,8 @@ CE QUE TU NE FAIS PAS :
 - Supprimer les dates alternatives d'autres départements
 - Afficher des noms de session internes (cds-*, cdj-*, CDS, CDJ)
 - Garder des sections redondantes (dates ET sessions séparées = à fusionner)
+- Mentionner "changement de date", "report", "modification" sauf si EXPLICITE dans l'email original
+- Déduire des intentions du candidat à partir de son message - ton rôle est UNIQUEMENT de reformuler
 
 EXEMPLES D'ERREURS À ÉVITER :
 - ❌ "nous vous tiendrons informé en cas de désistement" (promesse inventée)
