@@ -1,5 +1,46 @@
 <!-- Partial: Réponse à l'intention DEMANDE_CHANGEMENT_SESSION -->
-<!-- Gère 2 cas: avec dates spécifiques (matching) ou sans (demande préférences) -->
+<!-- Gère 3 cas: erreur CAB (plainte), dates spécifiques (matching), sans dates (demande préférences) -->
+
+{{#if is_complaint}}
+<!-- ================================================================ -->
+<!-- CAS PLAINTE: Le candidat signale une erreur d'inscription        -->
+<!-- ================================================================ -->
+{{#if is_cab_error}}
+<!-- ERREUR CAB CONFIRMÉE - Excuses + correction immédiate -->
+<b>Concernant votre inscription</b><br>
+Nous vous prions de nous excuser pour cette erreur. Vous aviez bien demandé une formation en <b>cours du {{claimed_session_info.type}}</b>{{#if claimed_session_info.dates_raw}} aux dates {{claimed_session_info.dates_raw}}{{/if}}, et nous avons fait une erreur en vous inscrivant en cours du {{assigned_session_info.type}}.<br>
+<br>
+{{#if corrected_session}}
+<b>Correction effectuée :</b><br>
+Nous corrigeons immédiatement votre inscription sur la session suivante :<br>
+→ <b>{{corrected_session.session_type_label}}</b> : du {{corrected_session.date_debut}} au {{corrected_session.date_fin}}<br>
+<br>
+Vous recevrez une confirmation par email dans les prochaines heures.<br>
+{{else}}
+Nous allons corriger votre inscription dans les plus brefs délais. Un conseiller vous contactera pour confirmer votre nouvelle session.<br>
+{{/if}}
+{{else}}
+<!-- PAS D'ERREUR CAB - La session demandée n'existe pas ou correspond -->
+<b>Concernant votre demande</b><br>
+{{#if complaint_verification}}
+{{complaint_verification}}<br>
+<br>
+{{/if}}
+{{#if has_complaint_alternatives}}
+Voici les sessions disponibles qui pourraient vous convenir :<br>
+{{#each complaint_alternatives}}
+→ <b>{{this.session_type_label}}</b> : du {{this.date_debut}} au {{this.date_fin}}<br>
+{{/each}}
+<br>
+<b>Merci de nous confirmer si l'une de ces sessions vous convient.</b><br>
+{{else}}
+Pour modifier votre session, merci de nous préciser vos disponibilités et nous vous proposerons les options disponibles.<br>
+{{/if}}
+{{/if}}
+{{else}}
+<!-- ================================================================ -->
+<!-- CAS STANDARD: Changement volontaire de session                   -->
+<!-- ================================================================ -->
 <b>Concernant votre demande de changement de session</b><br>
 {{#if has_date_range_request}}
 <!-- CAS 1: Dates spécifiques demandées - Matching intelligent -->
@@ -64,5 +105,6 @@ Pour choisir votre session, merci de nous indiquer :<br>
 <li>Vos dates de disponibilité</li>
 <li>Préférence pour les cours du <b>jour</b> ou du <b>soir</b></li>
 </ul>
+{{/if}}
 {{/if}}
 {{/if}}

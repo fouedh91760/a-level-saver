@@ -161,6 +161,33 @@ class IntentParser:
         return None
 
     @property
+    def is_complaint(self) -> bool:
+        """True si le candidat signale une erreur d'inscription (plainte)."""
+        return bool(self._intent_context.get('is_complaint'))
+
+    @property
+    def claimed_session(self) -> Optional[Dict[str, Any]]:
+        """
+        Session que le candidat affirme avoir demandée initialement.
+
+        Returns:
+            Dict avec claimed_type, claimed_dates, claimed_dates_raw
+            ou None si non spécifié.
+        """
+        return self._intent_context.get('claimed_session')
+
+    @property
+    def assigned_session_wrong(self) -> Optional[Dict[str, Any]]:
+        """
+        Session erronée que le candidat a reçue (si mentionnée).
+
+        Returns:
+            Dict avec wrong_type, wrong_dates, wrong_dates_raw
+            ou None si non spécifié.
+        """
+        return self._intent_context.get('assigned_session_wrong')
+
+    @property
     def raw_context(self) -> Dict[str, Any]:
         """Accès direct au intent_context complet (pour cas non couverts)."""
         return self._intent_context

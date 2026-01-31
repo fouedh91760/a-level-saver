@@ -150,6 +150,17 @@ INTENTIONS POSSIBLES (par ordre de spécificité - préfère les intentions spé
   ⚠️ DIFFÉRENT de CONFIRMATION_SESSION: le candidat a DÉJÀ une session et veut en CHANGER
   ⚠️ DIFFÉRENT de QUESTION_SESSION: le candidat ne pose pas de question, il veut MODIFIER
   ⚠️ Indicateurs: session déjà assignée + demande de modification/changement
+
+  ⚠️ IMPORTANT - Détecter si c'est une PLAINTE (erreur CAB) ou un changement volontaire:
+  - is_complaint: true si le candidat signale une ERREUR d'inscription (on lui a assigné la mauvaise session)
+    Indicateurs: "ne correspond pas", "j'avais indiqué", "j'avais choisi", "erreur", "pas mon choix",
+                 "contrairement à", "pourtant j'avais demandé", "ce n'est pas ce que j'ai demandé"
+  - claimed_session: extraire la session que le candidat AFFIRME avoir demandée initialement
+    → claimed_type: "jour" ou "soir" (ce qu'il dit avoir demandé)
+    → claimed_dates: dates mentionnées comme demandées initialement (format YYYY-MM-DD)
+  - assigned_session_wrong: ce qu'il a reçu par erreur (si mentionné)
+    → wrong_type: "jour" ou "soir"
+    → wrong_dates: dates de la mauvaise session
 - DEMANDE_DATE_VISIO: Demande la date/heure de sa prochaine formation en visio OU accès aux 40 heures
   Exemples: "quand est ma formation ?", "date de la visio", "horaires de la formation", "mes 40 heures", "40h de formation", "accès à mes heures", "heures de formation"
   ⚠️ PRIORITÉ SUR DEMANDE_ELEARNING_ACCESS: si le candidat mentionne "40 heures", "40h", ou "heures de formation" → c'est DEMANDE_DATE_VISIO
@@ -402,6 +413,17 @@ Réponds UNIQUEMENT en JSON valide:
             "raw_text": "texte original des dates" | null,
             "is_range": true | false,
             "inferred_preference": "jour" | "soir" | null
+        } | null,
+        "is_complaint": true | false,
+        "claimed_session": {
+            "claimed_type": "jour" | "soir" | null,
+            "claimed_dates": "YYYY-MM-DD - YYYY-MM-DD" | null,
+            "claimed_dates_raw": "texte original" | null
+        } | null,
+        "assigned_session_wrong": {
+            "wrong_type": "jour" | "soir" | null,
+            "wrong_dates": "YYYY-MM-DD - YYYY-MM-DD" | null,
+            "wrong_dates_raw": "texte original" | null
         } | null
     }
 }
@@ -429,6 +451,14 @@ EXEMPLE - Message: "Je serai en congés du 21 au 28 février, disponible de 9h �
 → primary_intent: "DEMANDE_CHANGEMENT_SESSION"
 → session_preference: "jour"
 → requested_training_dates: {start_date: "2026-02-21", end_date: "2026-02-28", month: 2, raw_text: "du 21 au 28 février", is_range: true, inferred_preference: "jour"}
+→ is_complaint: false (changement volontaire)
+
+EXEMPLE PLAINTE - Message: "J'avais clairement indiqué mon choix pour une formation en cours du jour du 16/02 au 20/02, mais je reçois une confirmation pour cours du soir du 16/03 au 27/03, cela ne correspond pas à ma demande"
+→ primary_intent: "DEMANDE_CHANGEMENT_SESSION"
+→ is_complaint: true (signale une erreur)
+→ claimed_session: {claimed_type: "jour", claimed_dates: "2026-02-16 - 2026-02-20", claimed_dates_raw: "du 16/02 au 20/02"}
+→ assigned_session_wrong: {wrong_type: "soir", wrong_dates: "2026-03-16 - 2026-03-27", wrong_dates_raw: "du 16/03 au 27/03"}
+→ session_preference: "jour" (ce qu'il veut vraiment)
 """
 
     def __init__(self):
@@ -689,6 +719,12 @@ EXEMPLE - Message: "Je serai en congés du 21 au 28 février, disponible de 9h �
                 logger.info(f"  📅 Dates demandées: {intent_context.get('requested_training_dates')}")
             if intent_context.get('session_preference'):
                 logger.info(f"  ⏰ Préférence session: {intent_context.get('session_preference')}")
+            if intent_context.get('is_complaint'):
+                logger.info(f"  ⚠️ PLAINTE détectée: candidat signale une erreur d'inscription")
+                if intent_context.get('claimed_session'):
+                    logger.info(f"  📋 Session réclamée: {intent_context.get('claimed_session')}")
+                if intent_context.get('assigned_session_wrong'):
+                    logger.info(f"  ❌ Session erronée reçue: {intent_context.get('assigned_session_wrong')}")
 
             return {
                 'action': action,

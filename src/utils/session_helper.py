@@ -893,3 +893,193 @@ def match_sessions_by_date_range(
         logger.info("  🎯 Match type: NO_MATCH")
 
     return result
+
+
+def verify_session_complaint(
+    crm_client,
+    claimed_session: Dict[str, Any],
+    assigned_session: Dict[str, Any],
+    enriched_lookups: Dict[str, Any],
+    session_preference: Optional[str] = None
+) -> Dict[str, Any]:
+    """
+    Vérifie si la plainte du candidat concernant une erreur d'inscription est justifiée.
+
+    Compare la session réclamée (extraite du message) avec la session assignée (CRM)
+    et vérifie si la session demandée existe vraiment.
+
+    Args:
+        crm_client: Client Zoho CRM
+        claimed_session: Session que le candidat affirme avoir demandée
+            {claimed_type: "jour"|"soir", claimed_dates: "YYYY-MM-DD - YYYY-MM-DD", claimed_dates_raw: str}
+        assigned_session: Session actuellement assignée dans le CRM (deal_data.Session)
+        enriched_lookups: Lookups enrichis (contient session_type, session_date_debut, etc.)
+        session_preference: Préférence de session du candidat (backup si claimed_type absent)
+
+    Returns:
+        {
+            'is_cab_error': bool,           # True si erreur CAB confirmée
+            'error_type': str,              # 'TYPE_MISMATCH', 'DATE_MISMATCH', 'BOTH', 'NO_ERROR'
+            'matched_session': dict|None,   # Session correspondant à la demande (si existe)
+            'alternatives': list,           # Sessions alternatives si demande impossible
+            'verification_details': str,    # Explication de la vérification
+            'assigned_session_info': dict,  # Infos sur la session actuellement assignée
+            'claimed_session_info': dict    # Infos sur ce que le candidat a demandé
+        }
+    """
+    result = {
+        'is_cab_error': False,
+        'error_type': 'NO_ERROR',
+        'matched_session': None,
+        'alternatives': [],
+        'verification_details': '',
+        'assigned_session_info': {},
+        'claimed_session_info': {}
+    }
+
+    logger.info("🔍 Vérification de la plainte session...")
+
+    # 1. Extraire les infos de la session assignée depuis enriched_lookups
+    assigned_type = enriched_lookups.get('session_type')  # 'jour' ou 'soir'
+    assigned_start = enriched_lookups.get('session_date_debut')
+    assigned_end = enriched_lookups.get('session_date_fin')
+    assigned_name = enriched_lookups.get('session_name', '')
+
+    # Inférer le type depuis le nom si non défini (cds = soir, cdj = jour)
+    if not assigned_type and assigned_name:
+        name_lower = assigned_name.lower()
+        if name_lower.startswith('cds'):
+            assigned_type = 'soir'
+        elif name_lower.startswith('cdj'):
+            assigned_type = 'jour'
+
+    result['assigned_session_info'] = {
+        'type': assigned_type,
+        'start': assigned_start,
+        'end': assigned_end,
+        'name': assigned_name
+    }
+
+    logger.info(f"  📋 Session assignée: {assigned_type} du {assigned_start} au {assigned_end}")
+
+    if not assigned_type:
+        logger.warning("  ⚠️ Pas de session assignée dans le CRM - impossible de vérifier")
+        result['verification_details'] = "Aucune session assignée dans le CRM"
+        return result
+
+    # 2. Extraire les infos réclamées par le candidat
+    claimed_type = claimed_session.get('claimed_type') if claimed_session else None
+    claimed_dates_raw = claimed_session.get('claimed_dates_raw', '') if claimed_session else ''
+    claimed_dates = claimed_session.get('claimed_dates', '') if claimed_session else ''
+
+    # Fallback sur session_preference si claimed_type non spécifié
+    if not claimed_type and session_preference:
+        claimed_type = session_preference
+        logger.info(f"  ℹ️ Utilisation session_preference comme claimed_type: {claimed_type}")
+
+    result['claimed_session_info'] = {
+        'type': claimed_type,
+        'dates': claimed_dates,
+        'dates_raw': claimed_dates_raw
+    }
+
+    logger.info(f"  📋 Session réclamée: {claimed_type} - {claimed_dates_raw or claimed_dates or 'dates non spécifiées'}")
+
+    # 3. Comparer type (jour/soir)
+    type_mismatch = False
+    if claimed_type and assigned_type and claimed_type != assigned_type:
+        type_mismatch = True
+        logger.info(f"  ❌ TYPE MISMATCH: réclamé={claimed_type}, assigné={assigned_type}")
+
+    # 4. Comparer dates si spécifiées
+    date_mismatch = False
+    if claimed_dates:
+        # Parser les dates réclamées
+        try:
+            parts = claimed_dates.split(' - ')
+            if len(parts) == 2:
+                claimed_start = parts[0].strip()
+                claimed_end = parts[1].strip()
+
+                # Comparer avec les dates assignées
+                if assigned_start and assigned_end:
+                    if claimed_start != assigned_start or claimed_end != assigned_end:
+                        date_mismatch = True
+                        logger.info(f"  ❌ DATE MISMATCH: réclamé={claimed_start}-{claimed_end}, assigné={assigned_start}-{assigned_end}")
+        except Exception as e:
+            logger.warning(f"  ⚠️ Erreur parsing dates réclamées: {e}")
+
+    # 5. Déterminer le type d'erreur
+    if type_mismatch and date_mismatch:
+        result['error_type'] = 'BOTH'
+    elif type_mismatch:
+        result['error_type'] = 'TYPE_MISMATCH'
+    elif date_mismatch:
+        result['error_type'] = 'DATE_MISMATCH'
+    else:
+        result['error_type'] = 'NO_ERROR'
+        result['verification_details'] = "La session assignée correspond à la demande"
+        logger.info("  ✅ Pas de différence détectée - session assignée semble correcte")
+        return result
+
+    # 6. Vérifier si la session réclamée EXISTE dans les sessions disponibles
+    if crm_client and claimed_type:
+        logger.info(f"  🔍 Recherche de la session réclamée ({claimed_type})...")
+
+        # Construire les dates pour la recherche
+        search_dates = None
+        if claimed_dates:
+            try:
+                parts = claimed_dates.split(' - ')
+                if len(parts) == 2:
+                    search_dates = {
+                        'start_date': parts[0].strip(),
+                        'end_date': parts[1].strip()
+                    }
+            except:
+                pass
+
+        if search_dates:
+            # Recherche par dates spécifiques
+            match_result = match_sessions_by_date_range(
+                crm_client=crm_client,
+                requested_dates=search_dates,
+                session_type=claimed_type
+            )
+
+            if match_result.get('exact_matches'):
+                # Session réclamée EXISTE → erreur CAB confirmée
+                result['is_cab_error'] = True
+                result['matched_session'] = match_result['exact_matches'][0]
+                result['verification_details'] = f"Erreur confirmée: la session {claimed_type} du {claimed_dates_raw or claimed_dates} existe"
+                logger.info(f"  ✅ ERREUR CAB CONFIRMÉE: session réclamée existe!")
+
+            elif match_result.get('overlap_matches'):
+                # Session avec chevauchement → probablement erreur CAB
+                result['is_cab_error'] = True
+                result['matched_session'] = match_result['overlap_matches'][0]
+                result['alternatives'] = match_result['overlap_matches']
+                result['verification_details'] = f"Erreur probable: session similaire trouvée (dates légèrement différentes)"
+                logger.info(f"  ⚠️ ERREUR CAB PROBABLE: session similaire trouvée")
+
+            else:
+                # Session réclamée N'EXISTE PAS
+                result['is_cab_error'] = False
+                result['verification_details'] = f"La session {claimed_type} aux dates {claimed_dates_raw or claimed_dates} n'existe pas"
+                logger.info(f"  ❌ Session réclamée n'existe pas - pas d'erreur CAB")
+
+                # Proposer des alternatives
+                if match_result.get('closest_before'):
+                    result['alternatives'].append(match_result['closest_before'])
+                if match_result.get('closest_after'):
+                    result['alternatives'].append(match_result['closest_after'])
+
+        else:
+            # Pas de dates spécifiques, vérifier juste le type
+            if type_mismatch:
+                # Le type est différent, c'est probablement une erreur
+                result['is_cab_error'] = True
+                result['verification_details'] = f"Type de session différent: réclamé {claimed_type}, assigné {assigned_type}"
+                logger.info(f"  ⚠️ ERREUR CAB (type): {claimed_type} ≠ {assigned_type}")
+
+    return result

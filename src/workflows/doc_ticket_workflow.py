@@ -1794,11 +1794,12 @@ Deux comptes ExamenT3P fonctionnels ont été détectés pour ce candidat, et le
         # Pour REPORT_DATE, toujours chercher les sessions des dates alternatives
         is_report_date = detected_intent == 'REPORT_DATE'
         is_session_change_request = detected_intent == 'DEMANDE_CHANGEMENT_SESSION'
+        is_session_complaint = is_session_change_request and intent.is_complaint
         # Pour DEMANDE_CHANGEMENT_SESSION avec dates spécifiques, on n'a pas besoin de exam_dates_for_session
         has_specific_dates = intent.has_date_range_request if is_session_change_request else False
         should_analyze_sessions = (
             not skip_date_session_analysis
-            and (exam_dates_for_session or has_specific_dates)  # Permettre le matching même sans dates d'examen
+            and (exam_dates_for_session or has_specific_dates or is_session_complaint)  # Permettre le matching même sans dates d'examen, ou sur plainte
             and (date_examen_vtc_result.get('should_include_in_response') or session_is_empty or is_report_date or is_session_change_request)
         )
 
@@ -1865,6 +1866,37 @@ Deux comptes ExamenT3P fonctionnels ont été détectés pour ce candidat, et le
                 logger.info(f"  ➡️ Préférence détectée: {session_data['session_preference']}")
             if session_data.get('proposed_options'):
                 logger.info(f"  ✅ {len(session_data['proposed_options'])} option(s) de session proposée(s)")
+
+            # ================================================================
+            # VÉRIFICATION PLAINTE SESSION (erreur CAB)
+            # ================================================================
+            if is_session_change_request and intent.is_complaint:
+                logger.info("  ⚠️ PLAINTE SESSION détectée - vérification de l'erreur...")
+                from src.utils.session_helper import verify_session_complaint
+
+                complaint_verification = verify_session_complaint(
+                    crm_client=self.crm_client,
+                    claimed_session=intent.claimed_session,
+                    assigned_session=deal_data.get('Session'),
+                    enriched_lookups=enriched_lookups,
+                    session_preference=intent.session_preference
+                )
+
+                # Stocker les résultats dans session_data
+                session_data['is_complaint'] = True
+                session_data['is_cab_error'] = complaint_verification.get('is_cab_error', False)
+                session_data['complaint_error_type'] = complaint_verification.get('error_type', 'NO_ERROR')
+                session_data['complaint_verification'] = complaint_verification.get('verification_details', '')
+                session_data['corrected_session'] = complaint_verification.get('matched_session')
+                session_data['complaint_alternatives'] = complaint_verification.get('alternatives', [])
+                session_data['assigned_session_info'] = complaint_verification.get('assigned_session_info', {})
+                session_data['claimed_session_info'] = complaint_verification.get('claimed_session_info', {})
+
+                if complaint_verification.get('is_cab_error'):
+                    logger.info(f"  ✅ ERREUR CAB CONFIRMÉE: {complaint_verification.get('verification_details')}")
+                else:
+                    logger.info(f"  ❌ Pas d'erreur CAB: {complaint_verification.get('verification_details')}")
+
         elif skip_date_session_analysis:
             logger.info(f"  📚 Recherche sessions... SKIPPED (raison: {skip_reason})")
 
@@ -2444,6 +2476,17 @@ L'équipe CAB Formations"""
             'is_exact_match': session_data.get('match_type') == 'EXACT',
             'is_overlap_match': session_data.get('match_type') == 'OVERLAP',
             'is_no_match': session_data.get('match_type') in ('NO_MATCH', 'CLOSEST'),
+
+            # Vérification plainte session (erreur CAB)
+            'is_complaint': session_data.get('is_complaint', False),
+            'is_cab_error': session_data.get('is_cab_error', False),
+            'complaint_error_type': session_data.get('complaint_error_type', ''),
+            'complaint_verification': session_data.get('complaint_verification', ''),
+            'corrected_session': session_data.get('corrected_session'),
+            'complaint_alternatives': session_data.get('complaint_alternatives', []),
+            'has_complaint_alternatives': len(session_data.get('complaint_alternatives', [])) > 0,
+            'assigned_session_info': session_data.get('assigned_session_info', {}),
+            'claimed_session_info': session_data.get('claimed_session_info', {}),
 
             # Session confirmée par le candidat (CONFIRMATION_SESSION avec dates)
             'session_confirmed': analysis_result.get('session_confirmed', False),

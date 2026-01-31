@@ -945,6 +945,18 @@ class TemplateEngine:
             'session_date_debut': self._format_date(enriched_lookups.get('session_date_debut', '')),
             'session_date_fin': self._format_date(enriched_lookups.get('session_date_fin', '')),
 
+            # ===== PLAINTE SESSION (erreur CAB) =====
+            # Variables pour gérer les réclamations d'erreur d'inscription
+            'is_complaint': context.get('is_complaint', False),
+            'is_cab_error': context.get('is_cab_error', False),
+            'complaint_error_type': context.get('complaint_error_type', ''),
+            'complaint_verification': context.get('complaint_verification', ''),
+            'corrected_session': self._format_session_for_template(context.get('corrected_session')),
+            'complaint_alternatives': [self._format_session_for_template(s) for s in context.get('complaint_alternatives', [])],
+            'has_complaint_alternatives': len(context.get('complaint_alternatives', [])) > 0,
+            'assigned_session_info': context.get('assigned_session_info', {}),
+            'claimed_session_info': context.get('claimed_session_info', {}),
+
             # Flags pour le template master (architecture modulaire)
             # Sections à afficher (peuvent être désactivées via context_flags de la matrice)
             'show_statut_section': context.get('show_statut_section', True),  # Par défaut True, sauf si désactivé
