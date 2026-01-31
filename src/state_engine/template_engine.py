@@ -893,6 +893,12 @@ class TemplateEngine:
 
             # Cross-department data enrichie (si disponible via cross_department_helper)
             **self._extract_cross_department_data(context),
+            'cross_department_data': context.get('cross_department_data', {}),
+
+            # Early date request flags (DEMANDE_DATE_PLUS_TOT)
+            'has_earlier_options': context.get('has_earlier_options', False),
+            'no_earlier_dates_available': context.get('no_earlier_dates_available', False),
+            'suppress_next_dates': context.get('suppress_next_dates', False),
 
             # Month-based cross-department data (mode clarification - mois demandé sans date locale)
             'month_cross_department': context.get('month_cross_department', {}),
@@ -960,41 +966,57 @@ class TemplateEngine:
         # - ET il y a des dates disponibles
         # - ET on n'est pas dans un cas de report (géré par Section 0)
         # - Le candidat n'a PAS déjà confirmé (date OU session)
-        if context.get('intention_confirmation_date') or context.get('intention_confirmation_session'):
-            # Le candidat confirme → NE PAS redemander les dates
+        # - PAS de suppression explicite (DEMANDE_DATE_PLUS_TOT sans options)
+        # ================================================================
+        # RÈGLE 11 : MATRICE = SOURCE DE VÉRITÉ
+        # Si la matrice a défini un flag, NE PAS le recalculer
+        # ================================================================
+
+        # show_dates_section - Matrice prioritaire
+        if 'show_dates_section' in context:
+            # La matrice a explicitement défini ce flag → le respecter
+            result['show_dates_section'] = context['show_dates_section']
+            logger.info(f"📅 show_dates_section={context['show_dates_section']} (défini par matrice)")
+        elif context.get('suppress_next_dates'):
+            result['show_dates_section'] = False
+            logger.info("📅 show_dates_section=False (suppress_next_dates)")
+        elif context.get('intention_confirmation_date') or context.get('intention_confirmation_session'):
             result['show_dates_section'] = False
             logger.info("📅 show_dates_section=False (confirmation détectée)")
         elif not is_report_intention:
             result['show_dates_section'] = not date_examen and bool(context.get('next_dates', []))
 
-        # Calculer show_sessions_section (CENTRALISÉ - Section 4)
-        # Afficher les sessions si:
-        # - Date d'examen existe
-        # - Session pas encore choisie
-        # - On a des sessions à proposer
-        # - Pas dans un cas de report (géré par Section 0)
-        # - Le candidat n'a PAS déjà confirmé sa session (CONFIRMATION_SESSION)
-        if context.get('intention_confirmation_session'):
-            # BUG FIX: Le candidat confirme sa session → NE PAS redemander
-            # Que ce soit avec des dates précises ou juste une préférence (jour/soir)
-            result['show_sessions_section'] = False
-            logger.info("📚 show_sessions_section=False (intention CONFIRMATION_SESSION)")
-        elif context.get('session_confirmed'):
-            # Cas redondant mais gardé pour compatibilité
-            result['show_sessions_section'] = False
-            logger.info("📚 show_sessions_section=False (session déjà confirmée par le candidat)")
-        elif not is_report_intention:
-            # Afficher les sessions si:
-            # 1. Date existe + session pas choisie + sessions disponibles (cas standard)
-            # 2. OU date vide mais proposed_options contient des sessions (CAS 1 - EXAM_DATE_EMPTY)
-            has_sessions = bool(self._flatten_session_options_filtered(context))
-            has_proposed_options = bool(context.get('session_data', {}).get('proposed_options'))
+        # show_sessions_section - Matrice prioritaire
+        if 'show_sessions_section' in context:
+            # La matrice a explicitement défini ce flag → le respecter
+            result['show_sessions_section'] = context['show_sessions_section']
+            logger.info(f"📚 show_sessions_section={context['show_sessions_section']} (défini par matrice)")
+        else:
+            # Calcul dynamique (comportement par défaut)
+            primary_intent_for_sessions = context.get('primary_intent') or context.get('detected_intent', '')
+            is_early_date_intent = primary_intent_for_sessions == 'DEMANDE_DATE_PLUS_TOT'
+            sessions_already_proposed = context.get('sessions_proposed_recently', False)
 
-            result['show_sessions_section'] = (
-                has_sessions and
-                not deal_data.get('Session') and
-                (bool(date_examen) or has_proposed_options)  # Date existe OU proposed_options avec sessions
-            )
+            if context.get('suppress_next_dates'):
+                result['show_sessions_section'] = False
+                logger.info("📚 show_sessions_section=False (suppress_next_dates)")
+            elif is_early_date_intent and sessions_already_proposed:
+                result['show_sessions_section'] = False
+                logger.info("📚 show_sessions_section=False (sessions déjà proposées + DEMANDE_DATE_PLUS_TOT)")
+            elif context.get('intention_confirmation_session'):
+                result['show_sessions_section'] = False
+                logger.info("📚 show_sessions_section=False (CONFIRMATION_SESSION)")
+            elif context.get('session_confirmed'):
+                result['show_sessions_section'] = False
+                logger.info("📚 show_sessions_section=False (session déjà confirmée)")
+            elif not is_report_intention:
+                has_sessions = bool(self._flatten_session_options_filtered(context))
+                has_proposed_options = bool(context.get('session_data', {}).get('proposed_options'))
+                result['show_sessions_section'] = (
+                    has_sessions and
+                    not deal_data.get('Session') and
+                    (bool(date_examen) or has_proposed_options)
+                )
 
         return result
 
@@ -1045,6 +1067,7 @@ class TemplateEngine:
         'DEMANDE_ELEARNING_ACCESS': 'intention_demande_elearning',
         'REPORT_DATE': 'intention_report_date',
         'FORCE_MAJEURE_REPORT': 'intention_report_date',
+        'DEMANDE_DATE_PLUS_TOT': 'intention_demande_date_plus_tot',
         'DOCUMENT_QUESTION': 'intention_probleme_documents',
         'SIGNALE_PROBLEME_DOCS': 'intention_probleme_documents',
         'ENVOIE_DOCUMENTS': 'intention_probleme_documents',
@@ -1091,6 +1114,7 @@ class TemplateEngine:
             'intention_demande_convocation': False,
             'intention_demande_elearning': False,
             'intention_report_date': False,
+            'intention_demande_date_plus_tot': False,
             'intention_probleme_documents': False,
             'intention_question_processus': False,
             'intention_autres_departements': False,
@@ -1695,7 +1719,10 @@ class TemplateEngine:
                 report_bloque = True
 
         # show_session_info: afficher les infos session (pas pour REPORT_DATE car sessions dans report template)
-        show_session_info = primary_intent != 'REPORT_DATE'
+        # Ni pour DEMANDE_DATE_PLUS_TOT si sessions déjà proposées récemment
+        sessions_already_proposed = context.get('sessions_proposed_recently', False)
+        is_early_date_with_sessions = primary_intent == 'DEMANDE_DATE_PLUS_TOT' and sessions_already_proposed
+        show_session_info = primary_intent != 'REPORT_DATE' and not is_early_date_with_sessions
 
         return {
             'report_bloque': report_bloque,

@@ -410,6 +410,7 @@ def extract_cab_proposals_from_threads(threads: List[Dict]) -> Dict[str, Any]:
     result = {
         'dates_already_proposed': [],
         'dates_proposed_recently': False,
+        'sessions_proposed_recently': False,
         'proposal_count': 0
     }
 
@@ -482,6 +483,48 @@ def extract_cab_proposals_from_threads(threads: List[Dict]) -> Dict[str, Any]:
         logger.info(f"  📋 {len(result['dates_already_proposed'])} date(s) deja proposee(s)")
         if result['dates_proposed_recently']:
             logger.info(f"  ⏰ Dates proposees recemment (< 48h)")
+
+    # Detection des sessions deja proposees
+    session_markers = [
+        "cours du jour",
+        "cours du soir",
+        "session de formation",
+        "sessions disponibles",
+        "merci de nous confirmer votre choix de session",
+        "confirmer la session",
+    ]
+
+    for thread in threads:
+        if thread.get('direction') != 'out':
+            continue
+        if thread.get('status') == 'DRAFT':
+            continue
+
+        content = get_clean_thread_content(thread).lower()
+        thread_date_str = thread.get('createdTime', '')
+
+        # Verifier si sessions proposees
+        has_sessions = any(marker in content for marker in session_markers)
+        if not has_sessions:
+            continue
+
+        # Parser la date du thread
+        thread_date = None
+        if thread_date_str:
+            try:
+                if 'T' in str(thread_date_str):
+                    thread_date = datetime.fromisoformat(thread_date_str.replace('Z', '+00:00'))
+                    thread_date = thread_date.replace(tzinfo=None)
+                else:
+                    thread_date = datetime.strptime(thread_date_str[:10], '%Y-%m-%d')
+            except Exception:
+                pass
+
+        # Verifier si recent (< 48h)
+        if thread_date and thread_date > recent_threshold:
+            result['sessions_proposed_recently'] = True
+            logger.info("  📚 Sessions proposees recemment (< 48h)")
+            break
 
     # NOUVEAU: Extraire la derniere date d'examen mentionnee par CAB
     for thread in reversed(threads):

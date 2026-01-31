@@ -118,7 +118,7 @@ intentions:
   # --- Actions / Confirmations ---
   REPORT_DATE:
     id: "I10"
-    description: "Demande de changement/report de date d'examen"
+    description: "Demande de changement/report de date d'examen (générique ou vers date ultérieure)"
     triggers:
       - "reporter"
       - "décaler"
@@ -129,6 +129,25 @@ intentions:
       - is_urgent
       - mentions_force_majeure
       - force_majeure_type
+
+  DEMANDE_DATE_PLUS_TOT:
+    id: "I10b"
+    description: "Demande d'une date PLUS TÔT que la date actuelle"
+    triggers:
+      - "plus tôt"
+      - "plus tot"
+      - "plus proche"
+      - "plus rapide"
+      - "avancer"
+      - "au plus vite"
+      - "rapidement"
+      - "urgent"
+    notes: |
+      DIFFÉRENT de REPORT_DATE: ici le candidat veut passer AVANT sa date actuelle.
+      Logique:
+      1. Vérifier cross-department pour dates plus tôt
+      2. Si aucune (clôtures passées) → expliquer et garder date actuelle
+      3. NE PAS proposer de dates ultérieures
 
   FORCE_MAJEURE_REPORT:
     id: "I11"
@@ -2036,6 +2055,15 @@ matrix:
     context_flags:
       intention_report_date: true
       show_statut_section: true
+
+  "*:DEMANDE_DATE_PLUS_TOT":
+    template: "response_master.html"
+    description: "Demande de date plus tôt - check cross-département puis garder date actuelle si impossible"
+    context_flags:
+      intention_demande_date_plus_tot: true
+      show_statut_section: false
+      show_dates_section: false
+      # NE PAS afficher les dates ultérieures - seulement les dates plus tôt ou rien
 
   "*:DEMANDE_DATES_FUTURES":
     template: "response_master.html"

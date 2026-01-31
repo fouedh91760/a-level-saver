@@ -105,13 +105,19 @@ INTENTIONS POSSIBLES (par ordre de spécificité - préfère les intentions spé
 - DEMANDE_DATES_FUTURES: Demande de dates d'examen disponibles (candidat SANS date assignée)
   Exemples: "Quelles sont les prochaines dates ?", "dates disponibles"
   ⚠️ Utiliser SEULEMENT si "Date examen actuelle" = "Aucune date assignée"
-- REPORT_DATE: Veut CHANGER sa date d'examen actuelle (candidat AVEC date assignée)
-  Exemples: "Je voudrais reporter", "changer ma date", "décaler mon examen"
+- REPORT_DATE: Veut CHANGER sa date d'examen actuelle vers une date ULTÉRIEURE (candidat AVEC date assignée)
+  Exemples: "Je voudrais reporter", "changer ma date", "décaler mon examen", "repousser"
   ⚠️ Si "Date examen actuelle" contient une date ET que le candidat demande une autre date/mois/département → c'est REPORT_DATE !
   ⚠️ PRIORITÉ MAXIMALE: Si le candidat indique qu'il sera ABSENT/INDISPONIBLE à sa date actuelle (voyage, hospitalisation, travail...) → c'est REPORT_DATE même s'il pose aussi une question sur la convocation !
   Exemples avec date existante: "je voudrais juillet au lieu de mars", "dates à Montpellier" (si sa date actuelle est ailleurs), "je ne peux pas en mars"
   Exemples d'indisponibilité: "je serai en voyage le jour de l'examen", "je pars le 15 et l'examen est le 24", "je ne serai pas disponible à cette date"
   ⚠️ CAS PIÈGE: "je n'ai pas reçu ma convocation et je suis en voyage à partir du 15" → Le vrai problème est l'ABSENCE, pas la convocation. primary_intent = REPORT_DATE
+- DEMANDE_DATE_PLUS_TOT: Veut une date PLUS TÔT que sa date actuelle
+  Exemples: "date plus tôt", "plus proche", "plus rapide", "au plus vite", "avancer mon examen", "passer avant", "février au lieu de mars"
+  ⚠️ DIFFÉRENT de REPORT_DATE: le candidat demande un mois/date AVANT sa date actuelle (pas après)
+  ⚠️ Vérifier si le mois demandé < mois de la date actuelle → DEMANDE_DATE_PLUS_TOT
+  ⚠️ IMPORTANT: Si le candidat demande "février" et sa date est en "mars" → c'est DEMANDE_DATE_PLUS_TOT
+  ⚠️ Réponse attendue: vérifier cross-département, si aucune option → expliquer que c'est impossible et garder date actuelle
 - CONFIRMATION_DATE_EXAMEN: Candidat CONFIRME son choix de date d'examen
   Exemples: "je confirme la date du 15 mars", "je choisis le 31/03", "ok pour cette date"
   ⚠️ Important pour mise à jour CRM (crm_update: true)

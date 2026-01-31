@@ -49,6 +49,8 @@ from knowledge_base.scenarios_mapping import (
 from src.state_engine import StateDetector, TemplateEngine, ResponseValidator, CRMUpdater
 from src.utils.crm_lookup_helper import enrich_deal_lookups
 from src.utils.response_humanizer import humanize_response
+from src.utils.intent_parser import IntentParser
+from src.utils.date_filter import DateFilter, apply_final_filter
 import anthropic
 
 logger = logging.getLogger(__name__)
@@ -1327,11 +1329,14 @@ Deux comptes ExamenT3P fonctionnels ont été détectés pour ce candidat, et le
         cab_proposals = extract_cab_proposals_from_threads(threads_data) if threads_data else {}
         dates_already_communicated = cab_proposals.get('proposal_count', 0) > 0
         dates_proposed_recently = cab_proposals.get('dates_proposed_recently', False)
+        sessions_proposed_recently = cab_proposals.get('sessions_proposed_recently', False)
 
         if dates_already_communicated:
             logger.info(f"  📋 Dates deja proposees: {len(cab_proposals.get('dates_already_proposed', []))} date(s)")
             if dates_proposed_recently:
                 logger.info("  ⏰ Proposees recemment (< 48h)")
+        if sessions_proposed_recently:
+            logger.info("  📚 Sessions deja proposees recemment (< 48h)")
 
         # ================================================================
         # DETECTION MODE COMMUNICATION CANDIDAT
@@ -1538,10 +1543,10 @@ Deux comptes ExamenT3P fonctionnels ont été détectés pour ce candidat, et le
             # Inclut REPORT_DATE, DEMANDE_DATES_FUTURES, DEMANDE_AUTRES_DATES
             DATE_RELATED_INTENTS = ['REPORT_DATE', 'DEMANDE_DATES_FUTURES', 'DEMANDE_AUTRES_DATES', 'DEMANDE_AUTRES_DEPARTEMENTS']
             if triage_result.get('primary_intent') in DATE_RELATED_INTENTS:
-                intent_context = triage_result.get('intent_context', {})
-                requested_month = intent_context.get('requested_month')
-                requested_location = intent_context.get('requested_location')  # Nom original (ex: "Montpellier")
-                requested_dept_code = intent_context.get('requested_dept_code')  # Code département (ex: "34")
+                intent = IntentParser(triage_result)
+                requested_month = intent.requested_month
+                requested_location = intent.requested_location  # Nom original (ex: "Montpellier")
+                requested_dept_code = intent.requested_dept_code  # Code département (ex: "34")
 
                 if requested_month or requested_location or requested_dept_code:
                     from src.utils.date_examen_vtc_helper import search_dates_for_month_and_location
@@ -1576,15 +1581,18 @@ Deux comptes ExamenT3P fonctionnels ont été détectés pour ce candidat, et le
             # ================================================================
             # ENRICHISSEMENT: Dates alternatives si candidat demande date plus tôt
             # ================================================================
-            # Si le candidat demande explicitement une date plus proche ET peut changer de département
+            # Si le candidat demande explicitement une date plus proche
             # → Charger les dates alternatives d'autres départements
-            intent_context = triage_result.get('intent_context', {}) if triage_result else {}
-            wants_earlier_date = intent_context.get('wants_earlier_date', False)
+            # → TOUJOURS vérifier, même si compte ExamT3P existe (on signalera le process)
+            intent = IntentParser(triage_result)
+            wants_earlier_date = intent.wants_earlier_date
+            is_early_date_intent = intent.is_early_date_intent
             can_choose_other_dept = date_examen_vtc_result.get('can_choose_other_department', False)
             current_dept = date_examen_vtc_result.get('departement')
 
-            if wants_earlier_date and can_choose_other_dept and current_dept:
-                logger.info("  🚀 Candidat demande date plus tôt + peut changer de département")
+            # Déclencher si intention explicite OU flag wants_earlier_date
+            if (is_early_date_intent or wants_earlier_date) and current_dept:
+                logger.info(f"  🚀 Candidat demande date plus tôt (intent={intent.detected_intent}, wants_earlier={wants_earlier_date})")
                 from src.utils.date_examen_vtc_helper import get_earlier_dates_other_departments
 
                 # Trouver la date de référence (date actuelle assignée ou première date du dept)
@@ -1613,10 +1621,26 @@ Deux comptes ExamenT3P fonctionnels ont été détectés pour ce candidat, et le
 
                     # Retrocompatibilite: populer alternative_department_dates avec toutes les options
                     all_options = cross_dept_data.get('same_region_options', []) + cross_dept_data.get('other_region_options', [])
+
+                    # Flag pour le template: y a-t-il des options plus tôt ?
+                    date_examen_vtc_result['has_earlier_options'] = bool(all_options)
+
                     if all_options:
                         date_examen_vtc_result['alternative_department_dates'] = all_options
                         date_examen_vtc_result['should_include_in_response'] = True
                         logger.info(f"  📅 {len(all_options)} date(s) plus tôt (region: {len(cross_dept_data.get('same_region_options', []))}, autres: {len(cross_dept_data.get('other_region_options', []))})")
+                    else:
+                        # Aucune date plus tôt disponible - garder date actuelle
+                        logger.info("  ⚠️ Aucune date plus tôt disponible (clôtures passées) - garder date actuelle")
+                        date_examen_vtc_result['no_earlier_dates_available'] = True
+                        # NE PAS afficher les dates ultérieures pour cette intention
+                        if is_early_date_intent:
+                            date_examen_vtc_result['suppress_next_dates'] = True
+                else:
+                    # Pas de date de référence - impossible de chercher plus tôt
+                    date_examen_vtc_result['has_earlier_options'] = False
+                    if is_early_date_intent:
+                        date_examen_vtc_result['suppress_next_dates'] = True
 
             # ================================================================
             # ENRICHISSEMENT: Cross-département pour clarification/discordance
@@ -1624,11 +1648,13 @@ Deux comptes ExamenT3P fonctionnels ont été détectés pour ce candidat, et le
             # Si le candidat mentionne un mois en mode clarification OU avec discordance
             # ET est dans un état pré-convocation → proposer alternatives de ce mois
             if not date_examen_vtc_result.get('month_cross_department'):
-                intent_context = triage_result.get('intent_context', {}) if triage_result else {}
+                # Réutilise l'IntentParser créé plus haut (ou en crée un si pas encore fait)
+                if 'intent' not in dir() or intent is None:
+                    intent = IntentParser(triage_result)
 
-                mentioned_month = intent_context.get('mentioned_month')
-                mentions_discrepancy = intent_context.get('mentions_discrepancy', False)
-                communication_mode = intent_context.get('communication_mode', 'request')
+                mentioned_month = intent.mentioned_month
+                mentions_discrepancy = intent.mentions_discrepancy
+                communication_mode = intent.communication_mode
                 can_choose_other_dept = date_examen_vtc_result.get('can_choose_other_department', False)
                 current_dept = date_examen_vtc_result.get('departement')
 
@@ -1725,7 +1751,9 @@ Deux comptes ExamenT3P fonctionnels ont été détectés pour ce candidat, et le
         # 3. Sinon si next_dates existe → utiliser next_dates
         # 4. Sinon si date assignée + session vide → utiliser date assignée
         # ================================================================
-        detected_intent = triage_result.get('detected_intent', '') if triage_result else ''
+        # IntentParser centralisé pour cette section
+        intent = IntentParser(triage_result)
+        detected_intent = intent.detected_intent  # Rétrocompatibilité
         has_assigned_date = date_examen_info and isinstance(date_examen_info, dict) and date_examen_info.get('Date_Examen')
 
         if has_assigned_date and detected_intent == 'CONFIRMATION_SESSION':
@@ -1773,9 +1801,8 @@ Deux comptes ExamenT3P fonctionnels ont été détectés pour ce candidat, et le
 
         if should_analyze_sessions:
             logger.info("  📚 Recherche des sessions de formation associées...")
-            # Récupérer la préférence du TriageAgent si disponible
-            intent_context = triage_result.get('intent_context', {}) if triage_result else {}
-            triage_session_pref = intent_context.get('session_preference')
+            # Récupérer la préférence du TriageAgent via IntentParser
+            triage_session_pref = intent.session_preference
 
             session_data = analyze_session_situation(
                 deal_data=deal_data,
@@ -1826,9 +1853,8 @@ Deux comptes ExamenT3P fonctionnels ont été détectés pour ce candidat, et le
         matched_session_end = None
 
         if detected_intent == 'CONFIRMATION_SESSION':
-            intent_context = triage_result.get('intent_context', {}) if triage_result else {}
-            confirmed_dates = intent_context.get('confirmed_session_dates')
-            session_preference = intent_context.get('session_preference')  # 'jour' ou 'soir'
+            confirmed_dates = intent.confirmed_session_dates
+            session_preference = intent.session_preference  # 'jour' ou 'soir'
 
             matched = None
 
@@ -1894,6 +1920,7 @@ Deux comptes ExamenT3P fonctionnels ont été détectés pour ce candidat, et le
             # Dates deja communiquees (anti-repetition)
             'dates_already_communicated': dates_already_communicated,
             'dates_proposed_recently': dates_proposed_recently,
+            'sessions_proposed_recently': sessions_proposed_recently,
             'cab_proposals': cab_proposals,
             # Mode de communication du candidat (request/clarification/verification/follow_up)
             'communication_mode': communication_mode,
@@ -2369,6 +2396,7 @@ L'équipe CAB Formations"""
             # Dates deja communiquees (anti-repetition)
             'dates_already_communicated': analysis_result.get('dates_already_communicated', False),
             'dates_proposed_recently': analysis_result.get('dates_proposed_recently', False),
+            'sessions_proposed_recently': analysis_result.get('sessions_proposed_recently', False),
             # Mode de communication du candidat
             'communication_mode': analysis_result.get('communication_mode', 'request'),
             'references_previous_communication': analysis_result.get('references_previous_communication', False),
@@ -2428,9 +2456,9 @@ L'équipe CAB Formations"""
                 logger.info(f"  ✅ {len(next_dates)} date(s) chargées")
 
         # FILTRER next_dates selon le mois demandé par le candidat
-        intent_context = triage_result.get('intent_context', {})
-        requested_month = intent_context.get('requested_month')
-        requested_location = intent_context.get('requested_location')
+        intent = IntentParser(triage_result)
+        requested_month = intent.requested_month
+        requested_location = intent.requested_location
 
         # Validation: requested_month doit être entre 1 et 12
         if requested_month and isinstance(requested_month, int) and 1 <= requested_month <= 12 and next_dates:
@@ -2495,18 +2523,13 @@ L'équipe CAB Formations"""
         detected_states.primary_state = detected_state  # Avec le context_data enrichi
 
         # FILTRE FINAL: Exclure la date actuelle et limiter à 1 date alternative
+        # Utilise DateFilter centralisé
         current_exam_date = detected_state.context_data.get('date_examen_vtc_data', {}).get('date_examen_info', {})
-        if current_exam_date:
-            current_date_str = current_exam_date.get('Date_Examen', '')[:10] if current_exam_date.get('Date_Examen') else ''
-        else:
-            current_date_str = ''
+        current_date_str = current_exam_date.get('Date_Examen', '')[:10] if current_exam_date and current_exam_date.get('Date_Examen') else ''
 
         raw_next_dates = detected_state.context_data.get('next_dates', [])
         if raw_next_dates and current_date_str:
-            filtered_next_dates = [
-                d for d in raw_next_dates
-                if str(d.get('Date_Examen', ''))[:10] != current_date_str
-            ][:1]  # Limiter à 1 date
+            filtered_next_dates = apply_final_filter(raw_next_dates, current_date_str, limit=1)
             detected_state.context_data['next_dates'] = filtered_next_dates
             logger.info(f"  📅 Filtre final next_dates: {len(raw_next_dates)} → {len(filtered_next_dates)} (exclu {current_date_str})")
 

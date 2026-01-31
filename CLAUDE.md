@@ -39,7 +39,7 @@ Le workflow traite les tickets DOC en utilisant plusieurs agents spécialisés e
 
 ---
 
-## 10 RÈGLES CRITIQUES - Ne Jamais Oublier
+## 12 RÈGLES CRITIQUES - Ne Jamais Oublier
 
 | # | Règle | Piège à éviter | Détails |
 |---|-------|----------------|---------|
@@ -53,6 +53,8 @@ Le workflow traite les tickets DOC en utilisant plusieurs agents spécialisés e
 | 8 | **Date_test_selection READ-ONLY** | Modifier via workflow | `docs/BUSINESS_RULES.md` §5 |
 | 9 | **Session preference priority** | Ignorer préférence TriageAgent | `docs/BUSINESS_RULES.md` §6 |
 | 10 | **Partials = .html** | Créer partial en .md | `docs/TEMPLATES.md` |
+| 11 | **MATRICE = Source de vérité** | Le code Python recalcule les flags de la matrice | Voir §11 ci-dessous |
+| 12 | **Anti-répétition = context flags** | Ajouter logique anti-répétition dans Humanizer | Voir §12 ci-dessous |
 
 ---
 
@@ -257,6 +259,111 @@ Contenu section 1.<br>
 Contenu section 2.<br>
 ```
 **Règle :** Un `<br>` = retour à la ligne. Deux `<br><br>` = nouveau paragraphe/section. Ne JAMAIS mettre `<br>` suivi d'une ligne vide dans le template.
+
+---
+
+## RÈGLE 11 : MATRICE = Source de Vérité pour les Context Flags
+
+### Le Problème (Bug découvert 2026-01-31)
+
+```
+CONFLIT DE SOURCES DE VÉRITÉ :
+
+   MATRICE (YAML)                    CODE (Python)
+   ─────────────────                 ─────────────────
+   context_flags:                    # _prepare_template_variables()
+     show_dates_section: false  ──►  result['show_dates_section'] =
+                                        not date_examen and bool(next_dates)
+                                     # LE CODE ÉCRASE LA MATRICE !
+```
+
+### La Règle
+
+**Si la matrice définit un flag → le code NE DOIT PAS le recalculer.**
+
+```python
+# ❌ FAUX - Recalcule toujours, ignore la matrice
+result['show_dates_section'] = not date_examen and bool(next_dates)
+
+# ✅ CORRECT - Respecte la matrice si définie, sinon calcul dynamique
+if 'show_dates_section' in context:
+    result['show_dates_section'] = context['show_dates_section']
+else:
+    result['show_dates_section'] = not date_examen and bool(next_dates)
+```
+
+### Flags concernés
+
+Ces flags peuvent être overridés par la matrice :
+- `show_dates_section` - Afficher section dates
+- `show_sessions_section` - Afficher section sessions
+- `show_statut_section` - Afficher section statut dossier
+- `show_session_info` - Afficher infos générales sessions
+
+### Ajouter une nouvelle intention
+
+Quand tu ajoutes une intention qui doit SUPPRIMER une section :
+
+```yaml
+# Dans state_intention_matrix.yaml
+"*:MA_NOUVELLE_INTENTION":
+  template: "response_master.html"
+  context_flags:
+    intention_ma_nouvelle_intention: true
+    show_dates_section: false      # ← Sera respecté par le code
+    show_sessions_section: false   # ← Sera respecté par le code
+```
+
+---
+
+## RÈGLE 12 : Anti-Répétition = Context Flags, PAS Humanizer
+
+### Le Problème
+
+Le Humanizer ne peut pas fiablement supprimer du contenu redondant car :
+1. Il peut échouer la validation (dates manquantes)
+2. Il ajoute de la latence et du coût
+3. Le résultat est non-déterministe
+
+### La Solution
+
+Détecter la répétition EN AMONT et poser des flags dans le contexte :
+
+```python
+# Dans ticket_info_extractor.py
+result['sessions_proposed_recently'] = True  # Si sessions déjà envoyées < 48h
+result['dates_proposed_recently'] = True     # Si dates déjà envoyées < 48h
+result['elearning_shared_recently'] = True   # Si e-learning déjà partagé < 48h
+
+# Dans template_engine.py - respecter ces flags
+if context.get('sessions_proposed_recently'):
+    result['show_sessions_section'] = False
+```
+
+### Flags anti-répétition existants
+
+| Flag | Description | Fichier source |
+|------|-------------|----------------|
+| `dates_proposed_recently` | Dates proposées < 48h | `ticket_info_extractor.py` |
+| `sessions_proposed_recently` | Sessions proposées < 48h | `ticket_info_extractor.py` |
+| `dates_already_communicated` | Dates déjà envoyées (any) | `ticket_info_extractor.py` |
+
+### Pattern d'implémentation
+
+```python
+# 1. Détection dans ticket_info_extractor.py
+session_markers = ["cours du jour", "cours du soir", "session de formation"]
+if any(marker in content for marker in session_markers):
+    if thread_date > recent_threshold:  # < 48h
+        result['sessions_proposed_recently'] = True
+
+# 2. Passage au contexte template dans doc_ticket_workflow.py
+'sessions_proposed_recently': analysis_result.get('sessions_proposed_recently', False),
+
+# 3. Utilisation dans template_engine.py
+if context.get('sessions_proposed_recently') and is_follow_up_intent:
+    result['show_sessions_section'] = False
+```
 
 ---
 
