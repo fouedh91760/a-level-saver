@@ -1793,10 +1793,13 @@ Deux comptes ExamenT3P fonctionnels ont été détectés pour ce candidat, et le
 
         # Pour REPORT_DATE, toujours chercher les sessions des dates alternatives
         is_report_date = detected_intent == 'REPORT_DATE'
+        is_session_change_request = detected_intent == 'DEMANDE_CHANGEMENT_SESSION'
+        # Pour DEMANDE_CHANGEMENT_SESSION avec dates spécifiques, on n'a pas besoin de exam_dates_for_session
+        has_specific_dates = intent.has_date_range_request if is_session_change_request else False
         should_analyze_sessions = (
             not skip_date_session_analysis
-            and exam_dates_for_session
-            and (date_examen_vtc_result.get('should_include_in_response') or session_is_empty or is_report_date)
+            and (exam_dates_for_session or has_specific_dates)  # Permettre le matching même sans dates d'examen
+            and (date_examen_vtc_result.get('should_include_in_response') or session_is_empty or is_report_date or is_session_change_request)
         )
 
         if should_analyze_sessions:
@@ -1804,15 +1807,60 @@ Deux comptes ExamenT3P fonctionnels ont été détectés pour ce candidat, et le
             # Récupérer la préférence du TriageAgent via IntentParser
             triage_session_pref = intent.session_preference
 
-            session_data = analyze_session_situation(
-                deal_data=deal_data,
-                exam_dates=exam_dates_for_session,
-                threads=threads_data,
-                crm_client=self.crm_client,
-                triage_session_preference=triage_session_pref,
-                allow_change=(detected_intent == 'CONFIRMATION_SESSION'),
-                enriched_lookups=enriched_lookups
-            )
+            # ================================================================
+            # NOUVEAU: Matching par dates spécifiques demandées
+            # ================================================================
+            if intent.has_date_range_request:
+                from src.utils.session_helper import match_sessions_by_date_range
+
+                requested_dates = intent.requested_training_dates
+                logger.info(f"  📅 Dates spécifiques demandées: {requested_dates.get('raw_text', 'N/A')}")
+
+                # Utiliser la préférence effective (explicite ou inférée des dates)
+                effective_pref = intent.effective_session_preference
+                if effective_pref:
+                    logger.info(f"  ➡️ Préférence effective: {effective_pref}")
+
+                # Matching des sessions par dates demandées
+                match_result = match_sessions_by_date_range(
+                    crm_client=self.crm_client,
+                    requested_dates=requested_dates,
+                    session_type=effective_pref
+                )
+
+                # Construire session_data avec les résultats du matching
+                session_data = {
+                    'session_preference': effective_pref,
+                    'has_date_range_request': True,
+                    'requested_dates_raw': requested_dates.get('raw_text', ''),
+                    'match_type': match_result.get('match_type'),
+                    'date_range_match': match_result,
+                    'proposed_options': [],  # Format standard pour compatibilité
+                    'sessions_proposees': match_result.get('sessions_proposees', []),
+                    'closest_before': match_result.get('closest_before'),
+                    'closest_after': match_result.get('closest_after'),
+                }
+
+                logger.info(f"  🎯 Résultat matching: {match_result.get('match_type')} ({len(match_result.get('sessions_proposees', []))} session(s))")
+                if match_result.get('closest_before'):
+                    cb = match_result.get('closest_before')
+                    logger.info(f"  📅 Closest before: {cb.get('Name')} ({cb.get('date_debut')} - {cb.get('date_fin')})")
+                if match_result.get('closest_after'):
+                    ca = match_result.get('closest_after')
+                    logger.info(f"  📅 Closest after: {ca.get('Name')} ({ca.get('date_debut')} - {ca.get('date_fin')})")
+
+            else:
+                # Flux standard: analyze_session_situation
+                session_data = analyze_session_situation(
+                    deal_data=deal_data,
+                    exam_dates=exam_dates_for_session,
+                    threads=threads_data,
+                    crm_client=self.crm_client,
+                    triage_session_preference=triage_session_pref,
+                    allow_change=(detected_intent == 'CONFIRMATION_SESSION'),
+                    enriched_lookups=enriched_lookups
+                )
+
             if session_data.get('session_preference'):
                 logger.info(f"  ➡️ Préférence détectée: {session_data['session_preference']}")
             if session_data.get('proposed_options'):
@@ -2331,6 +2379,9 @@ L'équipe CAB Formations"""
         contact_data = analysis_result.get('contact_data', {})
         date_examen_vtc_value = analysis_result.get('date_examen_vtc_value')
 
+        # DEBUG: Vérifier session_data avant l'injection dans le contexte
+        logger.info(f"  🔍 DEBUG session_data: has_date_range={session_data.get('has_date_range_request')}, match_type={session_data.get('match_type')}, closest_before={session_data.get('closest_before') is not None}")
+
         detected_state.context_data.update({
             # Données brutes
             'deal_data': deal_data,
@@ -2380,6 +2431,19 @@ L'équipe CAB Formations"""
             # Session
             'proposed_sessions': session_data.get('proposed_options', []),
             'session_preference': session_data.get('session_preference'),
+
+            # Matching par dates spécifiques (DEMANDE_CHANGEMENT_SESSION avec dates)
+            'has_date_range_request': session_data.get('has_date_range_request', False),
+            'requested_dates_raw': session_data.get('requested_dates_raw', ''),
+            'session_match_type': session_data.get('match_type', ''),
+            'sessions_proposees': session_data.get('sessions_proposees', []),
+            'has_sessions_proposees': len(session_data.get('sessions_proposees', [])) > 0,
+            'closest_session_before': session_data.get('closest_before'),
+            'closest_session_after': session_data.get('closest_after'),
+            # Flags booléens pour conditions template (pybars3 ne supporte pas eq)
+            'is_exact_match': session_data.get('match_type') == 'EXACT',
+            'is_overlap_match': session_data.get('match_type') == 'OVERLAP',
+            'is_no_match': session_data.get('match_type') in ('NO_MATCH', 'CLOSEST'),
 
             # Session confirmée par le candidat (CONFIRMATION_SESSION avec dates)
             'session_confirmed': analysis_result.get('session_confirmed', False),
@@ -2551,6 +2615,12 @@ L'équipe CAB Formations"""
         # ================================================================
         # STEP 3a: Humanize Response (Optional AI polish)
         # ================================================================
+        # DEBUG: Afficher la réponse avant humanisation pour vérifier le contenu
+        if 'Alternatives disponibles' in response_text or 'closest' in response_text.lower():
+            logger.info(f"  📋 AVANT HUMANISATION - Alternatives détectées dans la réponse")
+        else:
+            logger.info(f"  ⚠️ AVANT HUMANISATION - Pas d'alternatives dans la réponse. First 500 chars: {response_text[:500]}")
+
         logger.info("  🤖 STATE ENGINE: Humanisation de la réponse...")
 
         # Get candidate name for personalization

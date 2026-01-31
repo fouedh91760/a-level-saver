@@ -720,3 +720,176 @@ C'est pourquoi nous vous proposons, **sans aucun coût additionnel**, de rejoind
 Si vous souhaitez bénéficier de ce rafraîchissement gratuit, merci de nous le confirmer et nous vous ajouterons à cette session."""
 
     return message
+
+
+def match_sessions_by_date_range(
+    crm_client,
+    requested_dates: Dict[str, Any],
+    session_type: Optional[str] = None
+) -> Dict[str, Any]:
+    """
+    Trouve les sessions correspondant à une plage de dates demandée par le candidat.
+
+    Args:
+        crm_client: Client Zoho CRM
+        requested_dates: Dict avec start_date, end_date, month (depuis intent_context)
+        session_type: 'jour' ou 'soir' (optionnel, pour filtrer)
+
+    Returns:
+        {
+            'match_type': 'EXACT' | 'OVERLAP' | 'CLOSEST' | 'NO_MATCH',
+            'exact_matches': [sessions avec dates exactes],
+            'overlap_matches': [sessions qui chevauchent],
+            'closest_before': session la plus proche avant | None,
+            'closest_after': session la plus proche après | None,
+            'all_in_month': [toutes les sessions du mois],
+            'sessions_proposees': [sessions formatées pour template]
+        }
+    """
+    from config import settings
+
+    result = {
+        'match_type': 'NO_MATCH',
+        'exact_matches': [],
+        'overlap_matches': [],
+        'closest_before': None,
+        'closest_after': None,
+        'all_in_month': [],
+        'sessions_proposees': []
+    }
+
+    if not requested_dates:
+        logger.warning("match_sessions_by_date_range: pas de dates demandées")
+        return result
+
+    start_date_str = requested_dates.get('start_date')
+    end_date_str = requested_dates.get('end_date')
+    month = requested_dates.get('month')
+
+    if not start_date_str:
+        logger.warning("match_sessions_by_date_range: start_date manquant")
+        return result
+
+    try:
+        start_date = datetime.strptime(start_date_str, "%Y-%m-%d")
+        end_date = datetime.strptime(end_date_str, "%Y-%m-%d") if end_date_str else start_date
+    except ValueError as e:
+        logger.error(f"Erreur parsing dates demandées: {e}")
+        return result
+
+    logger.info(f"🔍 Recherche sessions pour dates demandées: {start_date_str} à {end_date_str}")
+
+    # Rechercher toutes les sessions du mois (ou période étendue)
+    today = datetime.now()
+    today_str = today.strftime('%Y-%m-%d')
+
+    # Recherche sur une période élargie autour des dates demandées
+    search_start = (start_date - timedelta(days=30)).strftime('%Y-%m-%d')
+    search_end = (end_date + timedelta(days=30)).strftime('%Y-%m-%d')
+
+    try:
+        url = f"{settings.zoho_crm_api_url}/Sessions1/search"
+
+        # Critères: sessions planifiées, dans la période de recherche
+        criteria = (
+            f"(((Statut:equals:PLANIFIÉ)or(Statut:equals:null))"
+            f"and(Date_d_but:greater_equal:{today_str})"
+            f"and(Date_d_but:less_equal:{search_end})"
+            f"and(Date_fin:greater_equal:{search_start}))"
+        )
+
+        params = {
+            "criteria": criteria,
+            "page": 1,
+            "per_page": 200
+        }
+
+        response = crm_client._make_request("GET", url, params=params)
+        all_sessions = response.get("data", [])
+
+        logger.info(f"  {len(all_sessions)} session(s) trouvée(s) dans la période")
+
+    except Exception as e:
+        logger.error(f"Erreur API sessions: {e}")
+        return result
+
+    if not all_sessions:
+        return result
+
+    # Filtrer par lieu (VISIO uniquement pour Uber)
+    visio_sessions = []
+    for s in all_sessions:
+        lieu = s.get('Lieu_de_formation', {})
+        lieu_name = lieu.get('name', '') if isinstance(lieu, dict) else str(lieu)
+        if 'visio' in lieu_name.lower() or 'zoom' in lieu_name.lower():
+            visio_sessions.append(s)
+
+    logger.info(f"  {len(visio_sessions)} session(s) VISIO après filtrage lieu")
+
+    # Filtrer par type si demandé
+    if session_type:
+        type_prefix = 'cdj' if session_type == 'jour' else 'cds'
+        visio_sessions = [s for s in visio_sessions if s.get('Name', '').lower().startswith(type_prefix)]
+        logger.info(f"  {len(visio_sessions)} session(s) après filtrage type '{session_type}'")
+
+    # Catégoriser les sessions par type de correspondance
+    for session in visio_sessions:
+        session_start_str = session.get('Date_d_but', '')
+        session_end_str = session.get('Date_fin', '')
+
+        if not session_start_str or not session_end_str:
+            continue
+
+        try:
+            session_start = datetime.strptime(session_start_str, "%Y-%m-%d")
+            session_end = datetime.strptime(session_end_str, "%Y-%m-%d")
+        except ValueError:
+            continue
+
+        # Enrichir la session avec des infos formatées
+        session_name = session.get('Name', '').lower()
+        session['session_type'] = 'jour' if session_name.startswith('cdj') else 'soir'
+        session['session_type_label'] = 'Cours du jour' if session['session_type'] == 'jour' else 'Cours du soir'
+        session['date_debut'] = session_start.strftime('%d/%m/%Y')
+        session['date_fin'] = session_end.strftime('%d/%m/%Y')
+
+        # Vérifier correspondance exacte
+        if session_start.date() == start_date.date() and session_end.date() == end_date.date():
+            result['exact_matches'].append(session)
+            logger.info(f"  ✅ EXACT MATCH: {session.get('Name')} ({session_start_str} - {session_end_str})")
+
+        # Vérifier chevauchement
+        elif session_start <= end_date and session_end >= start_date:
+            result['overlap_matches'].append(session)
+            logger.info(f"  ⚡ OVERLAP: {session.get('Name')} ({session_start_str} - {session_end_str})")
+
+        # Sinon, garder pour alternatives
+        result['all_in_month'].append(session)
+
+        # Trouver la session la plus proche avant les dates demandées
+        if session_end < start_date:
+            if not result['closest_before'] or session_end > datetime.strptime(result['closest_before'].get('Date_fin', '1900-01-01'), "%Y-%m-%d"):
+                result['closest_before'] = session
+
+        # Trouver la session la plus proche après les dates demandées
+        if session_start > end_date:
+            if not result['closest_after'] or session_start < datetime.strptime(result['closest_after'].get('Date_d_but', '2100-01-01'), "%Y-%m-%d"):
+                result['closest_after'] = session
+
+    # Déterminer le type de match
+    if result['exact_matches']:
+        result['match_type'] = 'EXACT'
+        result['sessions_proposees'] = result['exact_matches']
+        logger.info(f"  🎯 Match type: EXACT ({len(result['exact_matches'])} session(s))")
+    elif result['overlap_matches']:
+        result['match_type'] = 'OVERLAP'
+        result['sessions_proposees'] = result['overlap_matches']
+        logger.info(f"  🎯 Match type: OVERLAP ({len(result['overlap_matches'])} session(s))")
+    elif result['closest_before'] or result['closest_after']:
+        result['match_type'] = 'CLOSEST'
+        logger.info(f"  🎯 Match type: CLOSEST (before={result['closest_before'] is not None}, after={result['closest_after'] is not None})")
+    else:
+        result['match_type'] = 'NO_MATCH'
+        logger.info("  🎯 Match type: NO_MATCH")
+
+    return result

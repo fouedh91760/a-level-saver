@@ -1,25 +1,68 @@
 <!-- Partial: Réponse à l'intention DEMANDE_CHANGEMENT_SESSION -->
-<!-- Candidat avec session assignée veut CHANGER (jour→soir, autres dates, etc.) -->
+<!-- Gère 2 cas: avec dates spécifiques (matching) ou sans (demande préférences) -->
 <b>Concernant votre demande de changement de session</b><br>
+{{#if has_date_range_request}}
+<!-- CAS 1: Dates spécifiques demandées - Matching intelligent -->
+{{#if is_exact_match}}
+Bonne nouvelle ! Une session {{#if session_preference}}{{preference_horaire_text}}{{/if}} correspond exactement à vos dates ({{requested_dates_raw}}) :<br>
+{{#each sessions_proposees}}
+<b>{{this.session_type_label}}</b> : du {{this.date_debut}} au {{this.date_fin}}<br>
+{{/each}}
+<br>
+<b>Merci de nous confirmer si vous souhaitez réserver cette session.</b><br>
+{{else}}
+{{#if is_overlap_match}}
+Nous n'avons pas de session correspondant exactement à vos dates ({{requested_dates_raw}}), mais voici les sessions qui chevauchent partiellement votre période de disponibilité :<br>
+{{#each sessions_proposees}}
+<b>{{this.session_type_label}}</b> : du {{this.date_debut}} au {{this.date_fin}}<br>
+{{/each}}
+<br>
+Ces sessions pourraient convenir si vous avez une certaine flexibilité sur vos dates.<br>
+<b>Merci de nous confirmer si l'une de ces sessions vous convient.</b><br>
+{{else}}
+Malheureusement, aucune session {{#if session_preference}}{{preference_horaire_text}}{{/if}} ne correspond à vos dates ({{requested_dates_raw}}).<br>
+<br>
+<b>Alternatives disponibles :</b><br>
+{{#if closest_session_before}}
+→ Avant vos dates : <b>{{closest_session_before.session_type_label}}</b> du {{closest_session_before.date_debut}} au {{closest_session_before.date_fin}}<br>
+{{/if}}
+{{#if closest_session_after}}
+→ Après vos dates : <b>{{closest_session_after.session_type_label}}</b> du {{closest_session_after.date_debut}} au {{closest_session_after.date_fin}}<br>
+{{/if}}
+{{#unless closest_session_before}}{{#unless closest_session_after}}
+Aucune session n'est disponible à proximité de vos dates pour le moment.<br>
+{{/unless}}{{/unless}}
+<br>
+Merci de nous indiquer si l'une de ces alternatives vous convient, ou si vous avez d'autres disponibilités.<br>
+{{/if}}
+{{/if}}
+{{else}}
+<!-- CAS 2: Pas de dates spécifiques - Comportement standard -->
 {{#if session_choisie}}
 Votre session actuelle est : <b>{{session_choisie}}</b>{{#if session_date_debut}} (du {{session_date_debut}} au {{session_date_fin}}){{/if}}.<br>
 <br>
 {{#if has_sessions_proposees}}
-Nous comprenons que vous souhaitez modifier votre session. Voici les alternatives disponibles :<br>
+Voici les alternatives disponibles :<br>
 {{#each sessions_proposees}}
-{{#if this.is_jour}}<b>Cours du jour</b> : Du {{this.date_debut}} au {{this.date_fin}}<br>{{/if}}
-{{#if this.is_soir}}<b>Cours du soir</b> : Du {{this.date_debut}} au {{this.date_fin}}<br>{{/if}}
+<b>{{this.session_type_label}}</b> : du {{this.date_debut}} au {{this.date_fin}}<br>
 {{/each}}
 <br>
 <b>Merci de nous confirmer si vous souhaitez changer pour l'une de ces sessions.</b><br>
 {{else}}
-Pour modifier votre session, merci de nous indiquer :<br>
+Pour modifier votre session, merci de nous préciser :<br>
 <ul>
-<li>Souhaitez-vous passer en cours du <b>jour</b> ou du <b>soir</b> ?</li>
-<li>Y a-t-il des dates à éviter absolument ?</li>
+<li>Vos dates de disponibilité (période souhaitée)</li>
+<li>Préférence pour les cours du <b>jour</b> (9h-18h) ou du <b>soir</b> (18h-22h)</li>
 </ul>
 Nous vous proposerons alors les sessions disponibles.<br>
 {{/if}}
 {{else}}
-Vous n'avez pas encore de session de formation assignée. Pour choisir votre session, merci de nous indiquer si vous préférez les cours du <b>jour</b> ou du <b>soir</b>.<br>
+Vous n'avez pas encore de session de formation assignée.<br>
+<br>
+Pour choisir votre session, merci de nous indiquer :<br>
+<ul>
+<li>Vos dates de disponibilité</li>
+<li>Préférence pour les cours du <b>jour</b> ou du <b>soir</b></li>
+</ul>
+{{/if}}
 {{/if}}

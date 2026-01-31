@@ -271,6 +271,34 @@ Contenu section 2.<br>
 ```
 **Règle :** Un `<br>` = retour à la ligne. Deux `<br><br>` = nouveau paragraphe/section. Ne JAMAIS mettre `<br>` suivi d'une ligne vide dans le template.
 
+#### 6.4 `_prepare_placeholder_data()` = WHITELIST de variables
+
+**CRITIQUE** : Les variables dans `context_data` ne sont PAS automatiquement disponibles dans les templates !
+
+```
+doc_ticket_workflow.py          template_engine.py              Template
+        │                              │                            │
+context_data = {                _prepare_placeholder_data()      {{#if my_var}}
+  'my_new_var': True,  ─────►   result = {                        ❌ INVISIBLE !
+}                                 'prenom': ...,                 {{/if}}
+                                  # my_new_var ABSENT !
+                                }
+```
+
+**Symptôme** : Variable définie dans le workflow, template ne réagit pas.
+
+**Solution** : Ajouter EXPLICITEMENT dans `_prepare_placeholder_data()` (~ligne 700-945) :
+```python
+result = {
+    ...
+    # Ajouter ici
+    'my_new_var': context.get('my_new_var', False),
+    ...
+}
+```
+
+**Fichier :** `src/state_engine/template_engine.py`
+
 ---
 
 ## RÈGLE 11 : MATRICE = Source de Vérité pour les Context Flags

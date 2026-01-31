@@ -932,6 +932,19 @@ class TemplateEngine:
             'remboursement_cma_choice_remboursement': intent_context.get('remboursement_cma_choice') == 'remboursement',
             'remboursement_cma_choice_conserver': intent_context.get('remboursement_cma_choice') == 'conserver',
 
+            # ===== MATCHING DATES SPÉCIFIQUES (DEMANDE_CHANGEMENT_SESSION) =====
+            # Variables pour le template intelligent qui gère les demandes avec dates précises
+            'has_date_range_request': context.get('has_date_range_request', False),
+            'requested_dates_raw': context.get('requested_dates_raw', ''),
+            'is_exact_match': context.get('is_exact_match', False),
+            'is_overlap_match': context.get('is_overlap_match', False),
+            'is_no_match': context.get('is_no_match', False),
+            'closest_session_before': self._format_session_for_template(context.get('closest_session_before')),
+            'closest_session_after': self._format_session_for_template(context.get('closest_session_after')),
+            # Dates de la session choisie (pour compatibilité)
+            'session_date_debut': self._format_date(enriched_lookups.get('session_date_debut', '')),
+            'session_date_fin': self._format_date(enriched_lookups.get('session_date_fin', '')),
+
             # Flags pour le template master (architecture modulaire)
             # Sections à afficher (peuvent être désactivées via context_flags de la matrice)
             'show_statut_section': context.get('show_statut_section', True),  # Par défaut True, sauf si désactivé
@@ -1596,6 +1609,40 @@ class TemplateEngine:
         if isinstance(session, dict):
             return session.get('name', '')
         return str(session)
+
+    def _format_session_for_template(self, session: Optional[Dict[str, Any]]) -> Optional[Dict[str, str]]:
+        """
+        Formate une session (depuis match_sessions_by_date_range) pour le template.
+
+        Input:
+            {
+                'Name': 'cdj-montreuil-...',
+                'Date_d_but': '2026-02-16',
+                'Date_fin': '2026-02-20',
+                'session_type': 'jour',
+                ...
+            }
+
+        Output:
+            {
+                'name': 'cdj-montreuil-...',
+                'date_debut': '16/02/2026',
+                'date_fin': '20/02/2026',
+                'session_type': 'jour',
+                'session_type_label': 'Cours du jour'
+            }
+        """
+        if not session:
+            return None
+
+        session_type = session.get('session_type', '')
+        return {
+            'name': session.get('Name', ''),
+            'date_debut': self._format_date(session.get('Date_d_but', '')),
+            'date_fin': self._format_date(session.get('Date_fin', '')),
+            'session_type': session_type,
+            'session_type_label': 'Cours du soir' if session_type == 'soir' else 'Cours du jour'
+        }
 
     def _flatten_session_options(self, session_data: Dict[str, Any]) -> List[Dict[str, Any]]:
         """

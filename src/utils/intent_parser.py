@@ -128,6 +128,39 @@ class IntentParser:
         return self._intent_context.get('requested_dept_code')
 
     @property
+    def requested_training_dates(self) -> Optional[Dict[str, Any]]:
+        """
+        Dates de formation demandées par le candidat.
+
+        Returns:
+            Dict avec start_date, end_date, month, raw_text, is_range, inferred_preference
+            ou None si non spécifié.
+        """
+        return self._intent_context.get('requested_training_dates')
+
+    @property
+    def has_date_range_request(self) -> bool:
+        """True si le candidat a spécifié une plage de dates pour sa formation."""
+        dates = self.requested_training_dates
+        return dates is not None and dates.get('start_date') is not None
+
+    @property
+    def effective_session_preference(self) -> Optional[str]:
+        """
+        Préférence de session avec fallback sur l'inférence des dates.
+
+        Priority:
+        1. session_preference explicite
+        2. inferred_preference depuis requested_training_dates
+        """
+        if self.session_preference:
+            return self.session_preference
+        dates = self.requested_training_dates
+        if dates:
+            return dates.get('inferred_preference')
+        return None
+
+    @property
     def raw_context(self) -> Dict[str, Any]:
         """Accès direct au intent_context complet (pour cas non couverts)."""
         return self._intent_context

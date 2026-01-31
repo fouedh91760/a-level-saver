@@ -313,6 +313,47 @@ CONTEXTE COMMUNICATION (comment le candidat formule sa demande):
 
 ---
 
+EXTRACTION DES DATES DE FORMATION DEMANDÉES (requested_training_dates):
+
+Quand le candidat mentionne des dates de DISPONIBILITÉ pour sa formation (congés, disponibilités):
+
+1. **Plages de dates explicites:**
+   - "du 21 au 28 février" → start_date: "2026-02-21", end_date: "2026-02-28", month: 2, is_range: true
+   - "entre le 15 et le 20 mars" → start_date: "2026-03-15", end_date: "2026-03-20", month: 3, is_range: true
+   - "du 21/02 au 28/02" → start_date: "2026-02-21", end_date: "2026-02-28", month: 2, is_range: true
+
+2. **Semaine:**
+   - "la semaine du 10 février" → start_date: "2026-02-10", end_date: "2026-02-16", month: 2, is_range: true (7 jours)
+   - "semaine du 15 mars" → start_date: "2026-03-15", end_date: "2026-03-21", month: 3, is_range: true
+
+3. **Date unique:**
+   - "à partir du 15 février" → start_date: "2026-02-15", end_date: null, month: 2, is_range: false
+   - "disponible le 20 mars" → start_date: "2026-03-20", end_date: "2026-03-20", month: 3, is_range: false
+
+4. **Inférence de préférence horaire (inferred_preference):**
+   - "9h-18h", "de 9h à 18h", "journée", "toute la journée" → inferred_preference: "jour"
+   - "18h-22h", "après le travail", "le soir", "en soirée" → inferred_preference: "soir"
+   - Si session_preference déjà explicite, utiliser celle-ci à la place
+
+5. **Normalisation:**
+   - Année: utiliser 2026 (ou 2027 si la date est passée)
+   - raw_text: garder le texte original (ex: "du 21 au 28 février")
+   - Formats acceptés: "21 février", "21/02", "21 fév", "21 fevrier"
+
+EXEMPLE COMPLET:
+Message: "Je serai en congés du 21 au 28 février, disponible de 9h à 18h"
+→ requested_training_dates: {
+    start_date: "2026-02-21",
+    end_date: "2026-02-28",
+    month: 2,
+    raw_text: "du 21 au 28 février",
+    is_range: true,
+    inferred_preference: "jour"
+  }
+→ session_preference: "jour" (copier inferred_preference si pas d'autre indication)
+
+---
+
 Réponds UNIQUEMENT en JSON valide:
 {
     "action": "GO" | "ROUTE" | "SPAM",
@@ -336,7 +377,15 @@ Réponds UNIQUEMENT en JSON valide:
         "communication_mode": "request" | "clarification" | "verification" | "follow_up",
         "references_previous_communication": true | false,
         "mentions_discrepancy": true | false,
-        "discrepancy_details": "description courte si discordance détectée" | null
+        "discrepancy_details": "description courte si discordance détectée" | null,
+        "requested_training_dates": {
+            "start_date": "YYYY-MM-DD" | null,
+            "end_date": "YYYY-MM-DD" | null,
+            "month": 1-12 | null,
+            "raw_text": "texte original des dates" | null,
+            "is_range": true | false,
+            "inferred_preference": "jour" | "soir" | null
+        } | null
     }
 }
 
@@ -350,6 +399,19 @@ Pour CONFIRMATION_SESSION, extraire dans intent_context:
 - confirmed_session_dates: "DD/MM/YYYY-DD/MM/YYYY" si le candidat mentionne une plage de dates
   → Exemples: "du 16/03 au 27/03" → "16/03/2026-27/03/2026"
   → Format: date_debut-date_fin (avec l'année en cours ou l'année suivante si passée)
+
+⚠️ CRITIQUE - Pour DEMANDE_CHANGEMENT_SESSION, TOUJOURS extraire dans intent_context:
+- requested_training_dates: si le candidat mentionne des dates de DISPONIBILITÉ
+  → "du 21 au 28 février" → {start_date: "2026-02-21", end_date: "2026-02-28", month: 2, raw_text: "du 21 au 28 février", is_range: true}
+  → "semaine du 15 mars" → {start_date: "2026-03-15", end_date: "2026-03-21", month: 3, raw_text: "semaine du 15 mars", is_range: true}
+- session_preference: inférer depuis les horaires mentionnés
+  → "9h-18h", "9h00 à 18h00", "journée", "toute la journée" → "jour"
+  → "18h-22h", "le soir", "après travail" → "soir"
+
+EXEMPLE - Message: "Je serai en congés du 21 au 28 février, disponible de 9h à 18h"
+→ primary_intent: "DEMANDE_CHANGEMENT_SESSION"
+→ session_preference: "jour"
+→ requested_training_dates: {start_date: "2026-02-21", end_date: "2026-02-28", month: 2, raw_text: "du 21 au 28 février", is_range: true, inferred_preference: "jour"}
 """
 
     def __init__(self):
@@ -606,6 +668,10 @@ Pour CONFIRMATION_SESSION, extraire dans intent_context:
                 logger.info(f"  ⚠️ Force majeure mentionnée: {intent_context.get('force_majeure_type')} - {intent_context.get('force_majeure_details', 'N/A')}")
             if intent_context.get('is_urgent'):
                 logger.info(f"  🚨 Situation urgente détectée")
+            if intent_context.get('requested_training_dates'):
+                logger.info(f"  📅 Dates demandées: {intent_context.get('requested_training_dates')}")
+            if intent_context.get('session_preference'):
+                logger.info(f"  ⏰ Préférence session: {intent_context.get('session_preference')}")
 
             return {
                 'action': action,
