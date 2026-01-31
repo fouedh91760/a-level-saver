@@ -26,6 +26,12 @@ load_dotenv(project_root / ".env")
 
 from .base_agent import BaseAgent
 
+# Import BusinessRules pour la détection d'envoi de documents
+try:
+    from business_rules import BusinessRules
+except ImportError:
+    BusinessRules = None
+
 logger = logging.getLogger(__name__)
 
 
@@ -102,7 +108,10 @@ INTENTIONS POSSIBLES (par ordre de spécificité - préfère les intentions spé
 - REPORT_DATE: Veut CHANGER sa date d'examen actuelle (candidat AVEC date assignée)
   Exemples: "Je voudrais reporter", "changer ma date", "décaler mon examen"
   ⚠️ Si "Date examen actuelle" contient une date ET que le candidat demande une autre date/mois/département → c'est REPORT_DATE !
+  ⚠️ PRIORITÉ MAXIMALE: Si le candidat indique qu'il sera ABSENT/INDISPONIBLE à sa date actuelle (voyage, hospitalisation, travail...) → c'est REPORT_DATE même s'il pose aussi une question sur la convocation !
   Exemples avec date existante: "je voudrais juillet au lieu de mars", "dates à Montpellier" (si sa date actuelle est ailleurs), "je ne peux pas en mars"
+  Exemples d'indisponibilité: "je serai en voyage le jour de l'examen", "je pars le 15 et l'examen est le 24", "je ne serai pas disponible à cette date"
+  ⚠️ CAS PIÈGE: "je n'ai pas reçu ma convocation et je suis en voyage à partir du 15" → Le vrai problème est l'ABSENCE, pas la convocation. primary_intent = REPORT_DATE
 - CONFIRMATION_DATE_EXAMEN: Candidat CONFIRME son choix de date d'examen
   Exemples: "je confirme la date du 15 mars", "je choisis le 31/03", "ok pour cette date"
   ⚠️ Important pour mise à jour CRM (crm_update: true)
@@ -142,6 +151,7 @@ INTENTIONS POSSIBLES (par ordre de spécificité - préfère les intentions spé
 **Intentions liées à la CONVOCATION:**
 - DEMANDE_CONVOCATION: Demande de convocation CMA
   Exemples: "où est ma convocation", "quand vais-je recevoir ma convocation", "pas reçu de convocation", "convocation examen"
+  ⚠️ NE PAS utiliser si le candidat mentionne qu'il sera ABSENT à l'examen (voyage, maladie, etc.) → utiliser REPORT_DATE à la place
 
 **Intentions liées à l'E-LEARNING:**
 - DEMANDE_ELEARNING_ACCESS: Demande d'accès à la formation e-learning
@@ -427,8 +437,11 @@ Pour CONFIRMATION_SESSION, extraire dans intent_context:
             ]
             context_parts.append("\n".join(deal_info))
 
-            # Règle automatique: Si Evalbox indique un refus → Refus CMA
-            # SAUF si le candidat vient de fournir ses identifiants ExamT3P (il a peut-être rechargé ses docs)
+            # Règle automatique: Si Evalbox indique un refus → vérifier l'intention
+            # LOGIQUE MÉTIER (modifiée 2026-01-31):
+            # - Si Evalbox = "Refusé CMA" ET envoi de documents → Refus CMA (il sait, il corrige)
+            # - Si Evalbox = "Refusé CMA" ET fournit identifiants → GO (vérifier compte)
+            # - Si Evalbox = "Refusé CMA" SANS envoi de documents → GO (il ne sait pas encore, workflow l'informe)
             evalbox = deal_data.get('Evalbox', '')
             if evalbox in ['Refusé CMA', 'Documents manquants', 'Documents refusés']:
                 # Vérifier si le dernier message contient des identifiants ExamT3P
@@ -440,7 +453,6 @@ Pour CONFIRMATION_SESSION, extraire dans intent_context:
 
                 if has_credentials:
                     # Le candidat a fourni ses identifiants → on traite le ticket normalement
-                    # pour vérifier son compte ExamT3P (peut-être qu'il a rechargé ses documents)
                     logger.info(f"  🔍 Evalbox = '{evalbox}' MAIS identifiants détectés → GO (vérification compte)")
                     return {
                         'action': 'GO',
@@ -453,19 +465,34 @@ Pour CONFIRMATION_SESSION, extraire dans intent_context:
                         'detected_intent': 'ENVOIE_IDENTIFIANTS',
                         'intent_context': {'has_credentials': True, 'evalbox_status': evalbox}
                     }
-                else:
-                    logger.info(f"  🔍 Evalbox = '{evalbox}' → Route automatique vers Refus CMA")
+
+                # Vérifier si le candidat ENVOIE des documents (intention TRANSMET_DOCUMENTS)
+                has_document_keywords = False
+                if BusinessRules:
+                    if ticket_subject and BusinessRules.is_document_submission(ticket_subject):
+                        has_document_keywords = True
+                    if thread_content and BusinessRules.is_document_submission(thread_content):
+                        has_document_keywords = True
+
+                if has_document_keywords:
+                    # Le candidat envoie des documents → router vers Refus CMA pour traitement
+                    logger.info(f"  🔍 Evalbox = '{evalbox}' ET envoi de documents → Route vers Refus CMA")
                     return {
                         'action': 'ROUTE',
                         'target_department': 'Refus CMA',
-                        'reason': f"Evalbox indique: {evalbox}",
+                        'reason': f"Evalbox = '{evalbox}' et le candidat envoie des documents",
                         'confidence': 1.0,
-                        'method': 'rule_evalbox',
-                        'primary_intent': None,
+                        'method': 'rule_evalbox_with_documents',
+                        'primary_intent': 'TRANSMET_DOCUMENTS',
                         'secondary_intents': [],
-                        'detected_intent': None,
-                        'intent_context': {}
+                        'detected_intent': 'TRANSMET_DOCUMENTS',
+                        'intent_context': {'evalbox_status': evalbox}
                     }
+                else:
+                    # Pas d'envoi de documents → rester en DOC, le workflow informera le candidat
+                    logger.info(f"  🔍 Evalbox = '{evalbox}' MAIS pas d'envoi de documents → GO (workflow informera le candidat)")
+                    # NE PAS retourner ici - laisser le triage IA détecter l'intention réelle
+                    # Le workflow utilisera le template approprié pour informer du refus
 
             # Règle automatique: Demande d'attestation France Travail / Pôle Emploi → Comptabilité
             thread_lower = thread_content.lower() if thread_content else ''

@@ -1933,11 +1933,12 @@ matrix:
       - exemples_questions
 
   "*:DEMANDE_ELEARNING_ACCESS":
-    template: "elearning_access.html"
-    blocks:
-      - identifiant_email_inscription
-      - mot_de_passe_oublie
-      - lien_elearning
+    template: "response_master.html"
+    description: "Demande accès e-learning - tous états (inclut alertes critiques)"
+    context_flags:
+      intention_demande_elearning: true
+      show_elearning_section: true
+      show_statut_section: true
 
   "*:DEMANDE_LIEN_VISIO":
     template: "lien_visio.html"

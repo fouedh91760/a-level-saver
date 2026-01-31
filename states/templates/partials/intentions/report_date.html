@@ -1,43 +1,52 @@
 <!-- Partial: Réponse à l'intention REPORT_DATE -->
-{{#if is_clarification_mode}}
-<!-- Mode clarification: le candidat questionne une incoherence, pas une demande de changement -->
-<b>Concernant votre question sur les dates</b><br>
-{{#if date_examen}}
-Votre date d'examen actuellement enregistree est le <b>{{date_examen}}</b>{{#if cma_departement}} (CMA {{cma_departement}}){{/if}}.<br>
-{{/if}}
-{{#if previously_communicated_date}}
-{{#if date_changed_since_last_comm}}
-<i>Note : Dans notre precedent echange, la date du {{previously_communicated_date}} avait ete mentionnee. Cette date a depuis ete mise a jour.</i><br>
-{{/if}}
-{{/if}}
-{{#if same_month_other_depts}}
-<i>Note : Des dates en {{requested_month_name}} existent dans d'autres departements ({{#each same_month_other_depts}}{{#unless @first}}, {{/unless}}{{this.Departement}}{{/each}}), mais pas dans votre CMA d'inscription.</i><br>
-{{/if}}
-<br>
-{{#if can_modify_exam_date}}
-Si vous souhaitez modifier votre date d'examen, merci de nous confirmer votre choix parmi les options disponibles.<br>
-{{else}}
-{{#if mentions_force_majeure}}
-Pour un changement apres la date de cloture, un justificatif de force majeure est necessaire.<br>
-{{else}}
-La date de cloture etant passee, un changement n'est possible qu'avec un justificatif de force majeure.<br>
-{{/if}}
-{{/if}}
-<br>
-{{else}}
-<!-- Mode request: comportement standard (demande de changement) -->
+{{#if report_bloque}}
+<!-- Clôture passée - options limitées -->
 <b>Concernant votre demande de changement de date</b><br>
+Votre examen est prevu le <b>{{date_examen}}</b>. Malheureusement, la date limite de modification des inscriptions est passee.<br>
 <br>
-{{#if can_modify_exam_date}}
-Nous pouvons effectuer le changement de date. Merci de nous indiquer la nouvelle date souhaitée parmi les options disponibles.<br>
-{{else}}
 {{#if mentions_force_majeure}}
-Nous comprenons votre situation. Pour un report après la date de clôture, un justificatif de force majeure est nécessaire (certificat médical, etc.).<br>
-Merci de nous l'envoyer par email et nous transmettrons votre demande à la CMA.<br>
-{{else}}
-Malheureusement, la date de clôture des inscriptions est passée pour votre session actuelle.<br>
-Un changement n'est possible qu'avec un justificatif de force majeure (certificat médical, etc.).<br>
-{{/if}}
-{{/if}}
+<b>Demande de report pour force majeure</b><br>
+Pour que votre demande soit etudiee par la CMA, merci de nous transmettre un justificatif a <b>doc@cab-formations.fr</b> :<br>
+• Certificat medical<br>
+• Certificat de deces d'un proche<br>
+• Tout document attestant de l'impossibilite de vous presenter<br>
 <br>
+<b>C'est la CMA qui statue sur l'acceptation ou le refus des demandes de report.</b> En cas de refus, des frais de reinscription de 241€ seront a prevoir.<br>
+{{else}}
+<b>Vos options :</b><br>
+<b>1. Vous presenter a l'examen</b><br>
+Si vous etes disponible le <b>{{date_examen}}</b>, nous vous encourageons a vous presenter. Vous recevrez votre convocation environ 10 jours avant l'examen.<br>
+<b>2. Demander un report (avec justificatif)</b><br>
+Si vous ne pouvez vraiment pas vous presenter, un report est possible uniquement avec un justificatif de force majeure (certificat medical, deces d'un proche, etc.). Envoyez votre justificatif a <b>doc@cab-formations.fr</b>.<br>
+<b>3. Ne pas se presenter (absence)</b><br>
+Si vous etes absent sans justificatif valide, votre inscription sera perdue et des frais de reinscription de 241€ seront necessaires pour une nouvelle date.<br>
+{{#if uber_20}}<b>Rappel :</b> Dans le cadre de l'offre Uber, les frais de votre premiere inscription ont ete pris en charge. Cette offre n'est valable qu'<b>une seule fois</b>.{{/if}}
+{{/if}}<br>
+{{#if has_next_dates}}
+<b>Prochaines dates d'examen disponibles (si report ou reinscription) :</b><br>
+{{#each next_dates}}&nbsp;&nbsp;→ <b>{{this.date_examen_formatted}}</b> (CMA {{this.Departement}}) - cloture le {{this.date_cloture_formatted}}<br>
+{{/each}}
+{{/if}}
+{{else}}
+{{#if report_possible}}
+<!-- Modification possible (clôture pas encore passée) -->
+<b>Concernant votre demande de changement de date</b><br>
+Nous pouvons effectuer le changement de date pour vous.<br>
+{{#if has_next_dates}}
+<b>Dates disponibles :</b><br>
+{{#each next_dates}}&nbsp;&nbsp;→ <b>{{this.date_examen_formatted}}</b> (CMA {{this.Departement}}) - cloture le {{this.date_cloture_formatted}}<br>
+{{/each}}<br>
+Merci de nous confirmer votre choix et nous procederons au changement.<br>
+{{else}}
+Merci de nous indiquer la nouvelle date souhaitee et nous verifierons sa disponibilite.<br>
+{{/if}}
+{{else}}
+<!-- Fallback générique -->
+<b>Concernant votre demande de changement de date</b><br>
+{{#if can_modify_exam_date}}
+Nous pouvons effectuer le changement. Merci de nous indiquer la nouvelle date souhaitee.<br>
+{{else}}
+La date de cloture des inscriptions est passee. Un changement n'est possible qu'avec un justificatif de force majeure (certificat medical, etc.).<br>
+{{/if}}
+{{/if}}
 {{/if}}

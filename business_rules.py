@@ -169,23 +169,17 @@ class BusinessRules:
 
             evalbox = selected_deal.get("Evalbox", "")
 
-            # Conditions Refus CMA
-            refus_cma_conditions = [
-                evalbox == "Refusé CMA",
-                evalbox == "Documents refusés",
-                evalbox == "Documents manquants"
-            ]
-
-            if any(refus_cma_conditions):
-                return "Refus CMA"
-
-            # Condition D: Evalbox OK mais envoi de documents
-            # Détecter les VRAIES soumissions de documents via mots-clés
-            # Cela évite les faux positifs (logos de signature email sans contexte)
+            # Détecter si le candidat ENVOIE des documents (intention = TRANSMET_DOCUMENTS)
+            # via mots-clés dans le sujet ou le contenu du thread
             #
-            # Logique:
-            # - Mots-clés présents (sujet OU thread) = soumission de documents → Refus CMA
-            # - Pièces jointes SEULES (sans mots-clés) = ignorées (probablement logos)
+            # LOGIQUE MÉTIER (modifiée 2026-01-31):
+            # - Si Evalbox = "Refusé CMA" ET envoi de documents → Refus CMA (il sait, il corrige)
+            # - Si Evalbox = "Refusé CMA" SANS envoi de documents → DOC (il ne sait pas encore, on l'informe)
+            # - Si Evalbox OK ET envoi de documents → Refus CMA (gérer les uploads)
+            # - Sinon → DOC
+            #
+            # Cela évite de router aveuglément vers Refus CMA quand le candidat
+            # pose une question (statut, convocation, etc.) sans savoir que son dossier est refusé.
 
             has_document_keywords = False
 
@@ -202,10 +196,16 @@ class BusinessRules:
                 logger.info(f"⚠️ Document keyword found in THREAD CONTENT")
                 has_document_keywords = True
 
-            # Si des mots-clés de documents sont détectés → Refus CMA
+            # Router vers Refus CMA SEULEMENT si envoi de documents détecté
             if has_document_keywords:
-                logger.info(f"🚨 Routing to Refus CMA due to document keywords")
+                logger.info(f"🚨 Routing to Refus CMA due to document keywords (Evalbox: {evalbox})")
                 return "Refus CMA"
+
+            # Si Evalbox = Refusé CMA mais PAS d'envoi de documents → rester DOC
+            # Le workflow informera le candidat du refus via le template
+            is_refus_cma = evalbox in ["Refusé CMA", "Documents refusés", "Documents manquants"]
+            if is_refus_cma:
+                logger.info(f"📋 Evalbox={evalbox} mais pas d'envoi de documents → DOC (workflow informera le candidat)")
             else:
                 logger.info(f"✅ No document keywords found - staying in DOC")
 

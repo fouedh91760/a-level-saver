@@ -1,3 +1,13 @@
 <!-- Partial: Statut REFUSÉ CMA -->
 <b style="color: #c0392b;">Attention :</b> Certaines pièces de votre dossier ont été <b>refusées</b> par la CMA.<br>
 Vous devez les corriger et les renvoyer avant la date de clôture pour maintenir votre inscription.<br>
+<br>
+{{#if has_pieces_refusees}}
+<b>Documents à corriger :</b><br>
+{{#each pieces_refusees_details}}
+• <b>{{this.nom}}</b><br>
+&nbsp;&nbsp;→ Motif : {{this.motif}}<br>
+&nbsp;&nbsp;→ Solution : {{this.solution}}<br>
+{{/each}}
+<br>
+{{/if}}

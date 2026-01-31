@@ -1193,6 +1193,16 @@ Deux comptes ExamenT3P fonctionnels ont été détectés pour ce candidat, et le
                     examt3p_data.update(examt3p_result)
                     examt3p_data['compte_existe'] = True
                     logger.info("  ✅ Données ExamenT3P extraites avec succès")
+
+                    # Log des pièces refusées pour debug
+                    pieces_refusees = examt3p_data.get('pieces_refusees_details', [])
+                    if pieces_refusees:
+                        logger.info(f"  📄 Pièces refusées trouvées: {len(pieces_refusees)}")
+                        for piece in pieces_refusees:
+                            logger.info(f"     - {piece.get('nom')}: {piece.get('motif')}")
+                    else:
+                        docs = examt3p_data.get('documents', [])
+                        logger.info(f"  📄 Aucune pièce refusée. Documents: {[(d.get('nom'), d.get('statut')) for d in docs]}")
                 else:
                     logger.warning(f"  ⚠️  Échec extraction ExamenT3P: {examt3p_result.get('error')}")
                     examt3p_data['extraction_error'] = examt3p_result.get('error')
@@ -2368,9 +2378,16 @@ L'équipe CAB Formations"""
             'is_follow_up_mode': analysis_result.get('is_follow_up_mode', False),
             # Demande de complétion dossier précédente
             'previously_asked_to_complete': analysis_result.get('previously_asked_to_complete', False),
+
+            # Pièces refusées (extraites de examt3p_data pour les templates Refus CMA)
+            'pieces_refusees_details': examt3p_data.get('pieces_refusees_details', []),
+            'has_pieces_refusees': len(examt3p_data.get('pieces_refusees_details', [])) > 0,
+            'documents_refuses': examt3p_data.get('documents_refuses', []),
+            'statut_documents': examt3p_data.get('statut_documents', ''),
+            'action_candidat_requise': examt3p_data.get('action_candidat_requise', False),
         })
 
-        # RECALCULATE cloture_passed et can_modify_exam_date avec date_cloture enrichi
+        # RECALCULATE cloture_passed et can_modify_exam_date avec date_cloture enrichie
         # (le StateDetector n'a pas accès à date_cloture lors de la détection)
         date_cloture = date_examen_vtc_result.get('date_cloture')
         if date_cloture:

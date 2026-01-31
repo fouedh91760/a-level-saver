@@ -310,6 +310,9 @@ class TemplateEngine:
         # Standardiser sur primary_intent avec fallback sur detected_intent (rétrocompat)
         intention = context.get('primary_intent') or context.get('detected_intent', '')
 
+        # DEBUG: Log state and intention for debugging
+        logger.info(f"🔍 _select_base_template: state={state.name}, intention={intention}, evalbox={evalbox}")
+
         # PASS 0: Chercher dans la matrice STATE:INTENTION (priorité maximale)
         # Format: "STATE_NAME:INTENTION" -> configuration spécifique
         if intention:
@@ -793,7 +796,7 @@ class TemplateEngine:
 
             # Pièces refusées (pour templates Refus CMA)
             'pieces_refusees_details': context.get('pieces_refusees_details', []),
-            'has_pieces_refusees': context.get('has_pieces_refusees', False),
+            'has_pieces_refusees': context.get('has_pieces_refusees', False) or bool(context.get('pieces_refusees_details', [])),
 
             # Prospect (alias pour templates)
             'is_prospect': context.get('is_prospect', False) or context.get('is_uber_prospect', False),

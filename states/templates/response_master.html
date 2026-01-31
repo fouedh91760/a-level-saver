@@ -280,11 +280,13 @@ Pour l'examen du {{this.date_examen_formatted}} :<br>
 
 <!-- =====================================================================
      SECTION 5: RESSOURCES
-     (Masquer e-learning si examen passé - plus besoin de réviser)
+     (Masquer e-learning si examen passé ou si intention e-learning déjà traitée)
      ===================================================================== -->
 {{#unless uber_prospect}}
 {{#unless examen_passe}}
+{{#unless intention_demande_elearning}}
 {{> acces_elearning_rappel}}
+{{/unless}}
 {{/unless}}
 {{/unless}}
 {{> verifier_spams}}
