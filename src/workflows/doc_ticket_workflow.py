@@ -553,6 +553,17 @@ Le candidat demande sa convocation mais la date d'examen dans Zoho CRM est dans 
                     ai_updates['Preference_horaire'] = matched_session_type
                 result['session_confirmed_update'] = True
 
+            # CAB ERROR CORRECTION: Si on a confirmé une erreur et trouvé la session correcte
+            if analysis_result.get('cab_error_corrected') and analysis_result.get('cab_error_corrected_session_id'):
+                corrected_session_id = analysis_result['cab_error_corrected_session_id']
+                corrected_session_name = analysis_result.get('cab_error_corrected_session_name', '')
+                corrected_session_type = analysis_result.get('cab_error_corrected_session_type', '')
+                logger.info(f"  📚 CAB ERROR CORRECTION: Session corrigée → {corrected_session_name} (ID: {corrected_session_id})")
+                ai_updates['Session'] = corrected_session_id
+                if corrected_session_type:
+                    ai_updates['Preference_horaire'] = corrected_session_type
+                result['cab_error_correction_update'] = True
+
             has_ai_updates = bool(ai_updates)
             scenario_requires_update = response_result.get('requires_crm_update')
 
@@ -1894,6 +1905,14 @@ Deux comptes ExamenT3P fonctionnels ont été détectés pour ce candidat, et le
 
                 if complaint_verification.get('is_cab_error'):
                     logger.info(f"  ✅ ERREUR CAB CONFIRMÉE: {complaint_verification.get('verification_details')}")
+                    # Stocker les infos de la session corrigée pour mise à jour CRM
+                    corrected = complaint_verification.get('matched_session')
+                    if corrected:
+                        session_data['cab_error_corrected'] = True
+                        session_data['cab_error_corrected_session_id'] = corrected.get('id')
+                        session_data['cab_error_corrected_session_name'] = corrected.get('Name')
+                        session_data['cab_error_corrected_session_type'] = corrected.get('session_type')
+                        logger.info(f"  📊 Session corrigée: {corrected.get('Name')} (ID: {corrected.get('id')})")
                 else:
                     logger.info(f"  ❌ Pas d'erreur CAB: {complaint_verification.get('verification_details')}")
 
@@ -2021,6 +2040,11 @@ Deux comptes ExamenT3P fonctionnels ont été détectés pour ce candidat, et le
             'matched_session_type': matched_session_type,
             'matched_session_start': matched_session_start,
             'matched_session_end': matched_session_end,
+            # Correction erreur CAB (DEMANDE_CHANGEMENT_SESSION avec plainte)
+            'cab_error_corrected': session_data.get('cab_error_corrected', False) if session_data else False,
+            'cab_error_corrected_session_id': session_data.get('cab_error_corrected_session_id') if session_data else None,
+            'cab_error_corrected_session_name': session_data.get('cab_error_corrected_session_name') if session_data else None,
+            'cab_error_corrected_session_type': session_data.get('cab_error_corrected_session_type') if session_data else None,
         }
 
     def _match_session_by_confirmed_dates(
@@ -3363,6 +3387,22 @@ Réponds UNIQUEMENT avec le format demandé, rien d'autre."""
             if matched_type:
                 crm_updates['Preference_horaire'] = matched_type
                 logger.info(f"  📊 Preference_horaire: {matched_type}")
+
+        # ================================================================
+        # 2.6 Correction erreur CAB (DEMANDE_CHANGEMENT_SESSION avec plainte)
+        # ================================================================
+        # Si on a confirmé une erreur CAB et trouvé la session correcte
+        if analysis_result.get('cab_error_corrected') and analysis_result.get('cab_error_corrected_session_id'):
+            corrected_session_id = analysis_result['cab_error_corrected_session_id']
+            corrected_session_name = analysis_result.get('cab_error_corrected_session_name', '')
+            crm_updates['Session'] = corrected_session_id
+            logger.info(f"  📊 Session (correction erreur CAB): {corrected_session_name} → ID {corrected_session_id}")
+
+            # Aussi mettre à jour Preference_horaire avec le type correct
+            corrected_type = analysis_result.get('cab_error_corrected_session_type')
+            if corrected_type:
+                crm_updates['Preference_horaire'] = corrected_type
+                logger.info(f"  📊 Preference_horaire (corrigé): {corrected_type}")
 
         # ================================================================
         # 3. Autres champs (texte simple - pas de mapping nécessaire)
