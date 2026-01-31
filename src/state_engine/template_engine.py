@@ -1067,6 +1067,7 @@ class TemplateEngine:
         'DEMANDE_ELEARNING_ACCESS': 'intention_demande_elearning',
         'DEMANDE_DATE_VISIO': 'intention_demande_date_visio',
         'DEMANDE_LIEN_VISIO': 'intention_demande_lien_visio',
+        'DEMANDE_CHANGEMENT_SESSION': 'intention_demande_changement_session',
         'REPORT_DATE': 'intention_report_date',
         'FORCE_MAJEURE_REPORT': 'intention_report_date',
         'DEMANDE_DATE_PLUS_TOT': 'intention_demande_date_plus_tot',

@@ -18,12 +18,16 @@ logger = logging.getLogger(__name__)
 
 
 # ===== KEYWORDS POUR DÉTECTION D'ENVOI DE DOCUMENTS =====
+# ATTENTION: Ces keywords doivent être SPÉCIFIQUES pour éviter les faux positifs
+# Le mot "document" seul est trop générique (apparaît dans footers, signatures, HTML)
 DOCUMENT_KEYWORDS = [
-    # Générique
+    # Envoi explicite de pièces jointes
     "ci-joint", "ci joint", "pièce jointe", "piece jointe",
-    "document", "fichier", "attachment", "attaché", "attache",
-    # Note: "voici le/les", "vous trouverez", "je vous envoie" retirés - trop génériques
+    "fichier joint", "en pièce jointe", "en piece jointe",
+    "attachment", "attaché", "attache",
     "je vous envoie ci-joint", "veuillez trouver ci-joint",
+    "vous trouverez ci-joint", "je vous transmets",
+    # Note: "document" retiré - trop générique (faux positifs avec footers/HTML)
 
     # Identité
     "pièce d'identité", "piece d'identite", "photo d'identité", "photo d'identite",

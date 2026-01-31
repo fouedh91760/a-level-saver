@@ -196,6 +196,25 @@ intentions:
       - Session_choisie
       - Preference_horaire
 
+  DEMANDE_CHANGEMENT_SESSION:
+    id: "I13b"
+    description: "Demande de CHANGER une session de formation déjà assignée"
+    triggers:
+      - "changer de session"
+      - "modifier ma session"
+      - "modifier les dates de ma formation"
+      - "changer les dates"
+      - "autre session"
+      - "décaler ma formation"
+      - "reporter ma formation"
+    notes: |
+      DIFFÉRENT de CONFIRMATION_SESSION: le candidat a DÉJÀ une session assignée et veut en changer.
+      DIFFÉRENT de DEMANDE_DATE_VISIO: le candidat ne demande pas d'infos, il veut CHANGER.
+      Détecter si:
+      - Session CRM non vide (session déjà assignée)
+      - Candidat mentionne vouloir changer/modifier/décaler
+      - Candidat mentionne des dates DIFFÉRENTES de sa session actuelle
+
   ENVOIE_DOCUMENTS:
     id: "I14"
     description: "J'ai téléchargé mes documents SUR EXAMT3P (confirmation d'action)"
@@ -1988,6 +2007,14 @@ matrix:
           condition: "Session is null"
           blocks:
             - confirmation_session_requise
+
+  "*:DEMANDE_CHANGEMENT_SESSION":
+    template: "response_master.html"
+    description: "Candidat avec session assignée veut CHANGER de session (jour→soir ou nouvelles dates)"
+    context_flags:
+      intention_demande_changement_session: true
+      show_sessions_section: true  # Afficher les alternatives disponibles
+      show_statut_section: true
 
   "*:SIGNALE_PAS_RECU_EMAIL":
     template: "pas_recu_email.html"

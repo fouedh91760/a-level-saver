@@ -130,6 +130,11 @@ INTENTIONS POSSIBLES (par ordre de spécificité - préfère les intentions spé
 - CONFIRMATION_SESSION: CONFIRME son choix de session
   Exemples: "je choisis cours du soir", "je prends l'option 2", "je confirme la formation du jour",
             "je participerai aux sessions du 16/03 au 27/03"
+- DEMANDE_CHANGEMENT_SESSION: Candidat avec session DÉJÀ assignée veut CHANGER de session
+  Exemples: "changer de session", "modifier ma session", "passer en cours du soir", "décaler ma formation", "reporter ma formation", "autres dates"
+  ⚠️ DIFFÉRENT de CONFIRMATION_SESSION: le candidat a DÉJÀ une session et veut en CHANGER
+  ⚠️ DIFFÉRENT de QUESTION_SESSION: le candidat ne pose pas de question, il veut MODIFIER
+  ⚠️ Indicateurs: session déjà assignée + demande de modification/changement
 - DEMANDE_DATE_VISIO: Demande la date/heure de sa prochaine formation en visio OU accès aux 40 heures
   Exemples: "quand est ma formation ?", "date de la visio", "horaires de la formation", "mes 40 heures", "40h de formation", "accès à mes heures", "heures de formation"
   ⚠️ PRIORITÉ SUR DEMANDE_ELEARNING_ACCESS: si le candidat mentionne "40 heures", "40h", ou "heures de formation" → c'est DEMANDE_DATE_VISIO

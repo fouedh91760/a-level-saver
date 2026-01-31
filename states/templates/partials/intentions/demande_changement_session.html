@@ -1,0 +1,25 @@
+<!-- Partial: Réponse à l'intention DEMANDE_CHANGEMENT_SESSION -->
+<!-- Candidat avec session assignée veut CHANGER (jour→soir, autres dates, etc.) -->
+<b>Concernant votre demande de changement de session</b><br>
+{{#if session_choisie}}
+Votre session actuelle est : <b>{{session_choisie}}</b>{{#if session_date_debut}} (du {{session_date_debut}} au {{session_date_fin}}){{/if}}.<br>
+<br>
+{{#if has_sessions_proposees}}
+Nous comprenons que vous souhaitez modifier votre session. Voici les alternatives disponibles :<br>
+{{#each sessions_proposees}}
+{{#if this.is_jour}}<b>Cours du jour</b> : Du {{this.date_debut}} au {{this.date_fin}}<br>{{/if}}
+{{#if this.is_soir}}<b>Cours du soir</b> : Du {{this.date_debut}} au {{this.date_fin}}<br>{{/if}}
+{{/each}}
+<br>
+<b>Merci de nous confirmer si vous souhaitez changer pour l'une de ces sessions.</b><br>
+{{else}}
+Pour modifier votre session, merci de nous indiquer :<br>
+<ul>
+<li>Souhaitez-vous passer en cours du <b>jour</b> ou du <b>soir</b> ?</li>
+<li>Y a-t-il des dates à éviter absolument ?</li>
+</ul>
+Nous vous proposerons alors les sessions disponibles.<br>
+{{/if}}
+{{else}}
+Vous n'avez pas encore de session de formation assignée. Pour choisir votre session, merci de nous indiquer si vous préférez les cours du <b>jour</b> ou du <b>soir</b>.<br>
+{{/if}}
