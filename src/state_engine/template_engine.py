@@ -1092,6 +1092,7 @@ class TemplateEngine:
         'DEMANDE_AUTRES_DEPARTEMENTS': 'intention_autres_departements',
         # Intentions fréquentes
         'QUESTION_GENERALE': 'intention_question_generale',
+        'DOCUMENT_QUESTION': 'intention_document_question',
         'RESULTAT_EXAMEN': 'intention_resultat_examen',
         'QUESTION_UBER': 'intention_question_uber',
         # Synonymes courants

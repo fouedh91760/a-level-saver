@@ -2058,6 +2058,13 @@ matrix:
       intention_question_generale: true
       show_statut_section: true
 
+  "*:DOCUMENT_QUESTION":
+    template: "response_master.html"
+    description: "Question sur les documents requis (formats, alternatives, réfugiés)"
+    context_flags:
+      intention_document_question: true
+      show_statut_section: true
+
   "*:DEMANDE_IDENTIFIANTS":
     template: "response_master.html"
     description: "Demande d'identifiants ExamT3P - tous états"

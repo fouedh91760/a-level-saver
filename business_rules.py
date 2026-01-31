@@ -17,6 +17,35 @@ from typing import Dict, Any, Optional, List
 logger = logging.getLogger(__name__)
 
 
+# ===== INDICATEURS DE QUESTION (vs envoi) =====
+# Si ces patterns sont présents, le candidat POSE UNE QUESTION sur les documents
+# et n'est PAS en train d'en envoyer → rester dans DOC
+QUESTION_INDICATORS = [
+    # Questions directes
+    "est-ce que", "est ce que", "est-ce qu'", "est ce qu'",
+    "serait-il possible", "serait il possible", "serait-ce possible",
+    "peut-on", "peut on", "pourrait-on", "pourrait on",
+    "puis-je", "puis je", "pourrais-je", "pourrais je",
+    "faut-il", "faut il", "dois-je", "dois je",
+    "acceptez-vous", "acceptez vous", "accepteriez-vous",
+    "comment faire", "comment puis-je", "comment dois-je",
+    "quel format", "quels formats", "quel type", "quels documents",
+    "quelle pièce", "quelles pièces",
+    # Expression de manque/absence
+    "je n'ai pas", "je n ai pas", "pas encore de", "pas de ",
+    "je ne possède pas", "je ne dispose pas",
+    "n'ai pas encore", "n ai pas encore",
+    # Demande de clarification
+    "obligatoire", "nécessaire", "requis", "exigé",
+    "suffit-il", "suffit il", "suffirait-il",
+    "à la place", "en remplacement", "au lieu de",
+    "alternative", "autres options",
+    # Questions conditionnelles
+    "si je n'ai pas", "si je n ai pas",
+    "dans le cas où", "au cas où",
+    "que faire si", "comment procéder si",
+]
+
 # ===== KEYWORDS POUR DÉTECTION D'ENVOI DE DOCUMENTS =====
 # ATTENTION: Ces keywords doivent être SPÉCIFIQUES pour éviter les faux positifs
 # Le mot "document" seul est trop générique (apparaît dans footers, signatures, HTML)
@@ -52,20 +81,55 @@ class BusinessRules:
     """Your custom business rules. Modify these methods!"""
 
     @staticmethod
-    def is_document_submission(thread_content: str) -> bool:
+    def is_document_question(thread_content: str) -> bool:
         """
-        Détecte si le contenu d'un thread correspond à un envoi de documents.
+        Détecte si le contenu est une QUESTION sur les documents (vs un envoi).
 
         Args:
-            thread_content: Contenu du thread (peut contenir du HTML)
+            thread_content: Contenu du thread
 
         Returns:
-            True si envoi de documents détecté
+            True si c'est une question/clarification sur les documents
         """
         if not thread_content:
             return False
 
         content_lower = thread_content.lower()
+
+        for indicator in QUESTION_INDICATORS:
+            if indicator in content_lower:
+                logger.info(f"❓ QUESTION_INDICATOR matched: '{indicator}' in content")
+                return True
+
+        # Présence de "?" suggère une question
+        if "?" in thread_content:
+            logger.info("❓ QUESTION_INDICATOR matched: '?' in content")
+            return True
+
+        return False
+
+    @staticmethod
+    def is_document_submission(thread_content: str) -> bool:
+        """
+        Détecte si le contenu d'un thread correspond à un envoi de documents.
+
+        IMPORTANT: Retourne False si c'est une QUESTION sur les documents.
+
+        Args:
+            thread_content: Contenu du thread (peut contenir du HTML)
+
+        Returns:
+            True si envoi de documents détecté (et pas une question)
+        """
+        if not thread_content:
+            return False
+
+        content_lower = thread_content.lower()
+
+        # D'abord vérifier si c'est une question → pas un envoi
+        if BusinessRules.is_document_question(thread_content):
+            logger.info("📋 Document keyword présent mais contexte = QUESTION → pas un envoi")
+            return False
 
         # Log which keyword matched for debugging
         for keyword in DOCUMENT_KEYWORDS:
@@ -200,10 +264,18 @@ class BusinessRules:
                 logger.info(f"⚠️ Document keyword found in THREAD CONTENT")
                 has_document_keywords = True
 
-            # Router vers Refus CMA SEULEMENT si envoi de documents détecté
+            # Router vers Refus CMA SEULEMENT si:
+            # 1. Envoi de documents détecté
+            # 2. ET Date_Dossier_reçu est remplie (dossier déjà soumis)
+            # Si Date_Dossier_reçu est vide → le candidat n'a pas encore soumis son dossier
+            # → traiter dans DOC (questions sur les documents requis, envoi initial)
             if has_document_keywords:
-                logger.info(f"🚨 Routing to Refus CMA due to document keywords (Evalbox: {evalbox})")
-                return "Refus CMA"
+                date_dossier_recu = selected_deal.get("Date_Dossier_re_u")
+                if date_dossier_recu:
+                    logger.info(f"🚨 Routing to Refus CMA due to document keywords (Evalbox: {evalbox}, Date_Dossier_reçu: {date_dossier_recu})")
+                    return "Refus CMA"
+                else:
+                    logger.info(f"📋 Document keywords trouvés mais Date_Dossier_reçu vide → DOC (dossier pas encore soumis)")
 
             # Si Evalbox = Refusé CMA mais PAS d'envoi de documents → rester DOC
             # Le workflow informera le candidat du refus via le template

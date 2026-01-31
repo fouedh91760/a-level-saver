@@ -92,6 +92,17 @@ IMPORTANT - DISTINCTION "FACTURE":
   → ROUTE Comptabilité
 - En cas de doute, si le candidat n'écrit pas explicitement "je veux/demande ma facture", c'est un document transmis
 
+IMPORTANT - RÉFUGIÉS / DEMANDEURS D'ASILE:
+⚠️ Les réfugiés politiques et demandeurs d'asile n'ont PAS besoin de passeport !
+- Si le candidat mentionne "demande d'asile", "réfugié", "protection subsidiaire", "titre de séjour" + question sur le passeport
+  → Ce n'est PAS une demande de remboursement !
+  → GO + intention DOCUMENT_QUESTION
+  → Le titre de séjour ou récépissé de demande d'asile SUFFIT comme pièce d'identité
+- Exemples à traiter dans DOC (pas Contact):
+  - "Je suis réfugié, dois-je fournir un passeport ?" → DOCUMENT_QUESTION (réponse: non, titre de séjour suffit)
+  - "Je n'ai pas de passeport car demandeur d'asile" → DOCUMENT_QUESTION (réponse: pas besoin, récépissé suffit)
+  - "Titre de séjour à la place du passeport ?" → DOCUMENT_QUESTION
+
 ---
 
 DÉTECTION D'INTENTIONS (TOUTES, pas seulement la principale):
@@ -149,8 +160,9 @@ INTENTIONS POSSIBLES (par ordre de spécificité - préfère les intentions spé
 **Intentions liées au DOSSIER:**
 - STATUT_DOSSIER: Question sur l'avancement
   Exemples: "où en est mon dossier", "mon inscription", "avancement", "statut"
-- DOCUMENT_QUESTION: Question sur les documents
-  Exemples: "quels documents", "pièces à fournir", "document manquant"
+- DOCUMENT_QUESTION: Question sur les documents requis ou leur format
+  Exemples: "quels documents", "pièces à fournir", "document manquant", "format accepté"
+  ⚠️ INCLUT les questions de réfugiés/demandeurs d'asile sur le passeport → réponse: titre de séjour suffit
 - ENVOIE_DOCUMENTS: Candidat CONFIRME avoir téléchargé ses documents SUR EXAMT3P lui-même
   Exemples: "j'ai téléchargé mes documents sur ExamT3P", "j'ai mis mes pièces sur le site", "documents ajoutés sur mon espace"
   ⚠️ Action: GO - le candidat a fait l'upload lui-même, on accuse réception
