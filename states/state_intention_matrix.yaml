@@ -1816,6 +1816,18 @@ matrix:
       show_statut_section: true
       show_sessions_section: true
 
+  # Alias pour READY_TO_PAY (même état, nom différent dans candidate_states.yaml)
+  "READY_TO_PAY:CONFIRMATION_SESSION":
+    template: "response_master.html"
+    crm_update:
+      - field: Preference_horaire
+        value: "{{session_preference}}"
+        condition: "session_preference != null"
+    context_flags:
+      intention_confirmation_session: true
+      show_statut_section: true
+      show_sessions_section: true
+
   # --- RESULTAT × Intentions ---
   "RESULTAT_ADMIS:RESULTAT_EXAMEN":
     template: "resultat_admis.html"

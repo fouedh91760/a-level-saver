@@ -2,13 +2,18 @@
 <!-- Note: Les dates et sessions sont affichées dans Section 4 centralisée (si pas de session_confirmed) -->
 <b>Concernant votre session de formation</b><br>
 {{#if session_confirmed}}
-Nous avons bien enregistré votre choix : <b>{{matched_session_name}}</b>.<br>
-Votre inscription à cette session est en cours de traitement.<br>
-Vous recevrez prochainement un email séparé avec le lien d'invitation à la visioconférence.<br>
+Nous avons bien enregistré votre choix{{#if matched_session_name}} : <b>{{matched_session_name}}</b>{{/if}}{{#if matched_session_start}} du <b>{{matched_session_start}}</b> au <b>{{matched_session_end}}</b>{{/if}}.<br>
+{{#if date_examen}}
+Votre examen est prévu le <b>{{date_examen}}</b>.<br>
+{{/if}}
+Vous recevrez le lien d'invitation à la visioconférence par email avant le début de la formation.<br>
 {{else}}
 {{#if session_choisie}}
 Votre session est confirmée : <b>{{session_choisie}}</b>.<br>
-Vous recevrez prochainement un email séparé avec le lien d'invitation à la visioconférence.<br>
+{{#if date_examen}}
+Votre examen est prévu le <b>{{date_examen}}</b>.<br>
+{{/if}}
+Vous recevrez le lien d'invitation à la visioconférence par email avant le début de la formation.<br>
 {{else}}
 {{#if preference_horaire_text}}
 Nous avons bien noté votre préférence pour les <b>{{preference_horaire_text}}</b>.<br>

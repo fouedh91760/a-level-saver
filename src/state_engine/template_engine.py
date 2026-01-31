@@ -717,8 +717,16 @@ class TemplateEngine:
             # Données aplaties pour itération facile dans les templates
             # FILTRER selon la préférence si l'intention est CONFIRMATION_SESSION
             'sessions_proposees': self._flatten_session_options_filtered(context),
-            'date_debut_formation': '',
-            'date_fin_formation': '',
+
+            # Session confirmée par le candidat (CONFIRMATION_SESSION)
+            # Priorité: matched_session (nouveau matching) > enriched_lookups (session déjà assignée)
+            'session_confirmed': context.get('session_confirmed', False) or bool(enriched_lookups.get('session_name')),
+            'matched_session_name': context.get('matched_session_name', '') or ('Cours du soir' if enriched_lookups.get('session_type') == 'soir' else 'Cours du jour' if enriched_lookups.get('session_type') == 'jour' else 'votre session de formation'),
+            'matched_session_start': self._format_date(context.get('matched_session_start') or enriched_lookups.get('session_date_debut', '')),
+            'matched_session_end': self._format_date(context.get('matched_session_end') or enriched_lookups.get('session_date_fin', '')),
+            # Alias pour compatibilité
+            'date_debut_formation': self._format_date(context.get('matched_session_start') or enriched_lookups.get('session_date_debut', '')),
+            'date_fin_formation': self._format_date(context.get('matched_session_end') or enriched_lookups.get('session_date_fin', '')),
 
             # Statut
             'statut_actuel': statut_actuel,
@@ -798,7 +806,7 @@ class TemplateEngine:
             # Context flags pour templates hybrides
             # AUTO-MAPPING: Génère automatiquement les flags depuis primary_intent et secondary_intents
             # Priorité: context_flags de la matrice > auto-mapping depuis intentions
-            **self._auto_map_intention_flags(context),
+            **self._log_and_return_intention_flags(context),
 
             # Context flags pour conditions bloquantes (Section 0 de response_master)
             # Ces flags sont définis via context_flags dans la matrice STATE:INTENTION
@@ -1123,6 +1131,15 @@ class TemplateEngine:
             if context.get(flag_name) is True:
                 flags[flag_name] = True
 
+        return flags
+
+    def _log_and_return_intention_flags(self, context: Dict[str, Any]) -> Dict[str, bool]:
+        """Wrapper pour _auto_map_intention_flags avec logging de debug."""
+        flags = self._auto_map_intention_flags(context)
+        primary_intent = context.get('primary_intent') or context.get('detected_intent', '')
+        active_flags = [k for k, v in flags.items() if v]
+        if active_flags:
+            logger.info(f"  🎯 Intention flags: {active_flags} (primary_intent={primary_intent})")
         return flags
 
     def _map_warning_state_flags(self, warning_states: List[DetectedState]) -> Dict[str, bool]:

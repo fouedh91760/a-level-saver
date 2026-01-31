@@ -445,7 +445,9 @@ def analyze_session_situation(
     exam_dates: List[Dict[str, Any]],
     threads: List[Dict] = None,
     crm_client = None,
-    triage_session_preference: Optional[str] = None
+    triage_session_preference: Optional[str] = None,
+    allow_change: bool = False,
+    enriched_lookups: Optional[Dict[str, Any]] = None
 ) -> Dict[str, Any]:
     """
     Analyse la situation et propose les sessions appropriées pour les dates d'examen.
@@ -457,6 +459,10 @@ def analyze_session_situation(
         crm_client: Client Zoho CRM
         triage_session_preference: Préférence détectée par TriageAgent ('jour'/'soir')
                                    Si fournie, override la détection automatique
+        allow_change: Si True, permet de proposer de nouvelles sessions même si une
+                      session est déjà assignée (utilisé pour CONFIRMATION_SESSION
+                      quand le candidat veut changer de session)
+        enriched_lookups: Lookups enrichis (pour récupérer session_type actuelle)
 
     Returns:
         {
@@ -536,11 +542,21 @@ def analyze_session_situation(
         return result
 
     # 3.5. Si session DÉJÀ ASSIGNÉE et PAS dans le passé → NE PAS proposer de nouvelles sessions
+    # SAUF si allow_change=True ET préférence ≠ session actuelle (changement de session demandé)
     if current_session and not result['current_session_is_past']:
         session_name = current_session.get('name', str(current_session)) if isinstance(current_session, dict) else str(current_session)
-        logger.info(f"  ✅ Session déjà assignée ({session_name}) et valide → Pas de proposition")
-        result['message'] = f"Votre session de formation est déjà programmée : {session_name}"
-        return result
+
+        # Récupérer le type de session actuel depuis enriched_lookups
+        current_type = enriched_lookups.get('session_type') if enriched_lookups else None
+
+        # Si allow_change ET préférence différente → proposer des sessions pour changement
+        if allow_change and preference and current_type and preference != current_type:
+            logger.info(f"  🔄 Changement de session demandé: {current_type} → {preference}")
+            # Continuer pour proposer des sessions
+        else:
+            logger.info(f"  ✅ Session déjà assignée ({session_name}) et valide → Pas de proposition")
+            result['message'] = f"Votre session de formation est déjà programmée : {session_name}"
+            return result
 
     # 4. Récupérer les sessions pour chaque date d'examen UNIQUE (cache pour éviter doublons)
     if crm_client:

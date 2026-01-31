@@ -136,8 +136,8 @@ def enrich_deal_lookups(
         result['session_type'] = session_record.get('session_type')
         result['session_name'] = session_record.get('Name')
         result['session_date_debut'] = session_record.get('Date_d_but')
-        result['session_date_fin'] = session_record.get('Date_de_fin')
-        logger.info(f"  📚 Session: {result['session_name']} ({result['session_type']})")
+        result['session_date_fin'] = session_record.get('Date_fin')
+        logger.info(f"  📚 Session: {result['session_name']} ({result['session_type']}) du {result['session_date_debut']} au {result['session_date_fin']}")
 
     return result
 

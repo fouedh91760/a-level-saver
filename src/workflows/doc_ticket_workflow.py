@@ -1737,7 +1737,9 @@ Deux comptes ExamenT3P fonctionnels ont été détectés pour ce candidat, et le
                 exam_dates=exam_dates_for_session,
                 threads=threads_data,
                 crm_client=self.crm_client,
-                triage_session_preference=triage_session_pref
+                triage_session_preference=triage_session_pref,
+                allow_change=(detected_intent == 'CONFIRMATION_SESSION'),
+                enriched_lookups=enriched_lookups
             )
             if session_data.get('session_preference'):
                 logger.info(f"  ➡️ Préférence détectée: {session_data['session_preference']}")
@@ -1775,6 +1777,8 @@ Deux comptes ExamenT3P fonctionnels ont été détectés pour ce candidat, et le
         matched_session_id = None
         matched_session_name = None
         matched_session_type = None
+        matched_session_start = None
+        matched_session_end = None
 
         if detected_intent == 'CONFIRMATION_SESSION':
             intent_context = triage_result.get('intent_context', {}) if triage_result else {}
@@ -1807,7 +1811,10 @@ Deux comptes ExamenT3P fonctionnels ont été détectés pour ce candidat, et le
                 matched_session_id = matched.get('id')
                 matched_session_name = matched.get('name')
                 matched_session_type = matched.get('session_type')
+                matched_session_start = matched.get('Date_d_but')
+                matched_session_end = matched.get('Date_fin')
                 logger.info(f"  ✅ Session matchée: {matched_session_name} (ID: {matched_session_id})")
+                logger.info(f"     Du {matched_session_start} au {matched_session_end}")
             elif session_preference:
                 # Le candidat a exprimé une préférence mais on n'a pas pu matcher
                 logger.warning(f"  ⚠️ Préférence '{session_preference}' exprimée mais aucune session disponible")
@@ -1858,6 +1865,8 @@ Deux comptes ExamenT3P fonctionnels ont été détectés pour ce candidat, et le
             'matched_session_id': matched_session_id,
             'matched_session_name': matched_session_name,
             'matched_session_type': matched_session_type,
+            'matched_session_start': matched_session_start,
+            'matched_session_end': matched_session_end,
         }
 
     def _match_session_by_confirmed_dates(
@@ -2303,6 +2312,8 @@ L'équipe CAB Formations"""
             'matched_session_id': analysis_result.get('matched_session_id'),
             'matched_session_name': analysis_result.get('matched_session_name'),
             'matched_session_type': analysis_result.get('matched_session_type'),
+            'matched_session_start': analysis_result.get('matched_session_start'),
+            'matched_session_end': analysis_result.get('matched_session_end'),
 
             # Uber
             'is_uber_20_deal': uber_result.get('is_uber_20_deal', False),
