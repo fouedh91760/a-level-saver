@@ -1,9 +1,16 @@
 <!-- Partial: Action COMPLÉTER LE DOSSIER -->
-Connectez-vous sur <a href="https://www.exament3p.fr">exament3p.fr</a> pour compléter votre dossier :<br>
-<br>
 {{#if identifiant_examt3p}}
+{{#if previously_asked_to_complete}}
+Connectez-vous sur <a href="https://www.exament3p.fr">exament3p.fr</a> pour finaliser votre dossier :<br>
+<br>
 → Identifiant : <b>{{identifiant_examt3p}}</b><br>
 → Mot de passe : <b>{{mot_de_passe_examt3p}}</b><br>
 <br>
-{{/if}}
 Vérifiez que toutes vos pièces sont bien téléchargées et validez votre dossier.<br>
+{{else}}
+<!-- Pas de demande précédente + credentials valides = on gère, pas d'action pour le candidat -->
+{{/if}}
+{{else}}
+Connectez-vous sur <a href="https://www.exament3p.fr">exament3p.fr</a> pour compléter votre dossier.<br>
+Vérifiez que toutes vos pièces sont bien téléchargées et validez votre dossier.<br>
+{{/if}}

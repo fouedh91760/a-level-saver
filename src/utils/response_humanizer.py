@@ -128,6 +128,9 @@ Fusionne les sections, ajoute des transitions naturelles, garde toutes les infor
 
         humanized = response.content[0].text.strip()
 
+        # Nettoyage des sauts de ligne excessifs
+        humanized = _cleanup_line_breaks(humanized)
+
         # Validation : vérifier que les données critiques sont préservées
         validation_result = _validate_humanized_response(template_response, humanized)
 
@@ -209,6 +212,32 @@ def _validate_humanized_response(original: str, humanized: str) -> Dict[str, Any
         'valid': len(issues) == 0,
         'issues': issues,
     }
+
+
+def _cleanup_line_breaks(html: str) -> str:
+    """
+    Nettoie les sauts de ligne excessifs dans le HTML.
+
+    - Remplace 3+ <br> consécutifs par 2
+    - Supprime les <br> en début de texte
+    - Supprime les <br> multiples avant la signature
+    """
+    result = html
+
+    # Supprimer <br> en début (après strip)
+    result = re.sub(r'^(\s*<br>\s*)+', '', result)
+
+    # Remplacer 2+ <br> consécutifs par un seul <br><br> (max 1 ligne vide)
+    # Pattern: <br> suivi de whitespace/newlines et autre(s) <br>
+    result = re.sub(r'(<br>\s*){2,}', '<br><br>', result)
+
+    # Supprimer espaces/newlines avant <br>
+    result = re.sub(r'\s+<br>', '<br>', result)
+
+    # Supprimer <br> multiples avant "Bien cordialement"
+    result = re.sub(r'(<br>\s*){2,}(Bien cordialement)', r'<br><br>\2', result)
+
+    return result
 
 
 def quick_humanize(template_response: str) -> str:

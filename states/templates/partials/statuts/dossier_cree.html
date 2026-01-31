@@ -1,2 +1,10 @@
 <!-- Partial: Statut DOSSIER CRÉÉ -->
+{{#if identifiant_examt3p}}
+{{#if previously_asked_to_complete}}
+Votre dossier est <b>en cours de constitution</b>. Une fois que vous aurez finalisé vos informations sur ExamT3P, nous prendrons le relais pour effectuer le paiement.<br>
+{{else}}
+Votre dossier est <b>en cours de complétion</b> sur la plateforme ExamT3P. Nous effectuons ensuite le paiement de votre inscription à l'examen.<br>
+{{/if}}
+{{else}}
 Votre dossier est <b>en cours de constitution</b>. Vous devez compléter vos informations et télécharger vos documents sur ExamT3P.<br>
+{{/if}}

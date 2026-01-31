@@ -438,8 +438,10 @@ def extract_cab_proposals_from_threads(threads: List[Dict]) -> Dict[str, Any]:
     recent_threshold = now - timedelta(hours=48)
 
     for thread in threads:
-        # Seulement les messages sortants (CAB -> candidat)
+        # Seulement les messages sortants (CAB -> candidat) qui ont été envoyés (pas les drafts)
         if thread.get('direction') != 'out':
+            continue
+        if thread.get('status') == 'DRAFT':
             continue
 
         # Recuperer le contenu du thread
@@ -484,6 +486,8 @@ def extract_cab_proposals_from_threads(threads: List[Dict]) -> Dict[str, Any]:
     # NOUVEAU: Extraire la derniere date d'examen mentionnee par CAB
     for thread in reversed(threads):
         if thread.get('direction') != 'out':
+            continue
+        if thread.get('status') == 'DRAFT':
             continue
         content = get_clean_thread_content(thread)
 
@@ -592,6 +596,67 @@ def detect_candidate_references(thread_content: str) -> Dict[str, Any]:
             logger.info(f"     → Reference a communication precedente detectee")
         if mentions_discrepancy:
             logger.info(f"     → Discordance/question detectee: {discrepancy_details[:50] if discrepancy_details else 'N/A'}...")
+
+    return result
+
+
+def detect_dossier_completion_request(threads: List[Dict]) -> Dict[str, Any]:
+    """
+    Détecte si CAB a déjà demandé au candidat de compléter son dossier ExamT3P.
+
+    Utilisé pour distinguer :
+    - Première communication → "Nous nous occupons de votre dossier"
+    - Demande déjà faite → "Merci de finaliser pour qu'on prenne le relais"
+
+    Args:
+        threads: Liste des threads du ticket
+
+    Returns:
+        {
+            'previously_asked_to_complete': bool,
+            'completion_request_date': str | None  # Date de la demande
+        }
+    """
+    from src.utils.text_utils import get_clean_thread_content
+
+    result = {
+        'previously_asked_to_complete': False,
+        'completion_request_date': None
+    }
+
+    if not threads:
+        return result
+
+    # Marqueurs de demande de complétion de dossier
+    completion_markers = [
+        "compléter votre dossier",
+        "completer votre dossier",
+        "télécharger vos documents",
+        "telecharger vos documents",
+        "connectez-vous sur exament3p",
+        "connectez vous sur exament3p",
+        "finaliser votre dossier",
+        "valider votre dossier",
+        "compléter vos informations",
+        "completer vos informations",
+        "→ identifiant :",  # On leur a donné les identifiants pour qu'ils complètent
+    ]
+
+    for thread in threads:
+        # Seulement les messages sortants (CAB -> candidat) qui ont été envoyés (pas les drafts)
+        if thread.get('direction') != 'out':
+            continue
+        if thread.get('status') == 'DRAFT':
+            continue
+
+        content = get_clean_thread_content(thread).lower()
+
+        # Vérifier si c'est une demande de complétion
+        if any(marker in content for marker in completion_markers):
+            result['previously_asked_to_complete'] = True
+            result['completion_request_date'] = thread.get('createdTime', '')[:10] if thread.get('createdTime') else None
+            logger.info(f"  📋 Demande de complétion dossier détectée (date: {result['completion_request_date']})")
+            break  # On prend la plus récente (threads sont triés)
 
     return result
 

@@ -904,6 +904,8 @@ class TemplateEngine:
             'is_clarification_mode': context.get('is_clarification_mode', False),
             'is_verification_mode': context.get('is_verification_mode', False),
             'is_follow_up_mode': context.get('is_follow_up_mode', False),
+            # Demande de complétion dossier précédente (pour Uber 20€)
+            'previously_asked_to_complete': context.get('previously_asked_to_complete', False),
 
             # Choix remboursement CMA (pour ERREUR_PAIEMENT_CMA)
             'remboursement_cma_choice_remboursement': intent_context.get('remboursement_cma_choice') == 'remboursement',

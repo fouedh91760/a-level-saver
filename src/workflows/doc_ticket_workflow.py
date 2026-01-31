@@ -1215,7 +1215,7 @@ Deux comptes ExamenT3P fonctionnels ont été détectés pour ce candidat, et le
         # Si ces étapes ne sont pas complétées, on ne peut pas les inscrire à l'examen
         from src.utils.uber_eligibility_helper import analyze_uber_eligibility
         from src.utils.examt3p_crm_sync import sync_examt3p_to_crm, sync_exam_date_from_examt3p
-        from src.utils.ticket_info_extractor import extract_confirmations_from_threads, extract_cab_proposals_from_threads, detect_candidate_references
+        from src.utils.ticket_info_extractor import extract_confirmations_from_threads, extract_cab_proposals_from_threads, detect_candidate_references, detect_dossier_completion_request
 
         # ================================================================
         # SYNC EXAMT3P → CRM (AVANT toute analyse)
@@ -1321,6 +1321,15 @@ Deux comptes ExamenT3P fonctionnels ont été détectés pour ce candidat, et le
 
         # DEBUG: Toujours logger le mode communication
         logger.info(f"  📝 Mode communication: {communication_mode} (discrepancy={mentions_discrepancy}, refs_previous={references_previous})")
+
+        # ================================================================
+        # DETECTION DEMANDE DE COMPLETION DOSSIER PRECEDENTE
+        # ================================================================
+        # Si on a déjà demandé au candidat de compléter son dossier ExamT3P
+        dossier_completion_request = detect_dossier_completion_request(threads_data) if threads_data else {}
+        previously_asked_to_complete = dossier_completion_request.get('previously_asked_to_complete', False)
+        if previously_asked_to_complete:
+            logger.info(f"  📋 Demande de complétion précédente détectée (date: {dossier_completion_request.get('completion_request_date')})")
 
         logger.info("  🚗 Vérification éligibilité Uber 20€...")
         uber_eligibility_result = analyze_uber_eligibility(deal_data)
@@ -1857,6 +1866,8 @@ Deux comptes ExamenT3P fonctionnels ont été détectés pour ce candidat, et le
             'is_clarification_mode': communication_mode == 'clarification',
             'is_verification_mode': communication_mode == 'verification',
             'is_follow_up_mode': communication_mode == 'follow_up',
+            # Demande de complétion dossier précédente
+            'previously_asked_to_complete': previously_asked_to_complete,
             # Lookups CRM enrichis (v2.2) - données complètes depuis les modules Zoho
             'enriched_lookups': enriched_lookups,
             'lookup_cache': lookup_cache,
@@ -2329,6 +2340,8 @@ L'équipe CAB Formations"""
             'is_clarification_mode': analysis_result.get('is_clarification_mode', False),
             'is_verification_mode': analysis_result.get('is_verification_mode', False),
             'is_follow_up_mode': analysis_result.get('is_follow_up_mode', False),
+            # Demande de complétion dossier précédente
+            'previously_asked_to_complete': analysis_result.get('previously_asked_to_complete', False),
         })
 
         # RECALCULATE cloture_passed et can_modify_exam_date avec date_cloture enrichi
