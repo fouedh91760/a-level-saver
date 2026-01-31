@@ -235,6 +235,29 @@ dept = str(date_info.get('Departement', ''))
 # Voir ligne ~2191 "FILTRE FINAL"
 ```
 
+#### 6.3 Sauts de ligne dans les templates HTML
+```html
+<!-- FAUX - Double saut de ligne (trop d'espace) -->
+<b>Titre</b><br>
+<br>
+Contenu du paragraphe.<br>
+<br>
+Autre paragraphe.<br>
+
+<!-- CORRECT - Un seul <br> entre paragraphes -->
+<b>Titre</b><br>
+Contenu du paragraphe.<br>
+Autre paragraphe.<br>
+
+<!-- CORRECT - <br><br> seulement pour séparer des SECTIONS distinctes -->
+<b>Section 1</b><br>
+Contenu section 1.<br>
+<br>
+<b>Section 2</b><br>
+Contenu section 2.<br>
+```
+**Règle :** Un `<br>` = retour à la ligne. Deux `<br><br>` = nouveau paragraphe/section. Ne JAMAIS mettre `<br>` suivi d'une ligne vide dans le template.
+
 ---
 
 ## DEBUGGING : Pistes d'Investigation
