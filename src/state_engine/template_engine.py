@@ -970,6 +970,8 @@ class TemplateEngine:
             # Dates de la session choisie (pour compatibilité)
             'session_date_debut': self._format_date(enriched_lookups.get('session_date_debut', '')),
             'session_date_fin': self._format_date(enriched_lookups.get('session_date_fin', '')),
+            # Flag pour indiquer si les dates de session sont passées (pour éviter affichage obsolète)
+            'session_dates_passed': self._is_date_passed(enriched_lookups.get('session_date_fin', '')) if enriched_lookups.get('session_date_fin') else False,
 
             # ===== PLAINTE SESSION (erreur CAB) =====
             # Variables pour gérer les réclamations d'erreur d'inscription
@@ -1025,17 +1027,20 @@ class TemplateEngine:
         # Si la matrice a défini un flag, NE PAS le recalculer
         # ================================================================
 
-        # show_dates_section - Matrice prioritaire
-        # CAS SPÉCIAL: date_case == 2 (date passée + non validé) → forcer affichage des dates
-        # Le candidat n'a jamais été inscrit, la date CRM est "fantôme"
+        # show_dates_section - MATRICE A TOUJOURS PRIORITÉ
+        # ================================================================
+        # RÈGLE 11 : Si la matrice définit explicitement un flag, le respecter
+        # ================================================================
         date_case = context.get('date_case')
-        if date_case == 2:
-            result['show_dates_section'] = bool(context.get('next_dates', []))
-            logger.info(f"📅 show_dates_section={result['show_dates_section']} (CAS 2: date passée non validée → proposer nouvelles dates)")
-        elif 'show_dates_section' in context:
-            # La matrice a explicitement défini ce flag → le respecter
+        if 'show_dates_section' in context:
+            # La matrice a explicitement défini ce flag → PRIORITÉ ABSOLUE
             result['show_dates_section'] = context['show_dates_section']
-            logger.info(f"📅 show_dates_section={context['show_dates_section']} (défini par matrice)")
+            logger.info(f"📅 show_dates_section={context['show_dates_section']} (défini par matrice - priorité absolue)")
+        elif date_case == 2:
+            # CAS SPÉCIAL: date passée + non validé → proposer nouvelles dates
+            # (seulement si la matrice n'a pas défini de flag)
+            result['show_dates_section'] = bool(context.get('next_dates', []))
+            logger.info(f"📅 show_dates_section={result['show_dates_section']} (CAS 2: date passée non validée)")
         elif context.get('suppress_next_dates'):
             result['show_dates_section'] = False
             logger.info("📅 show_dates_section=False (suppress_next_dates)")
@@ -1447,6 +1452,28 @@ class TemplateEngine:
         if not dates:
             return []
 
+        # Filtrer les dates dont l'examen est passé
+        from datetime import datetime
+        today = datetime.now().date()
+        filtered_dates = []
+        for d in dates:
+            exam_str = d.get('Date_Examen', '')
+            if exam_str:
+                try:
+                    exam_date = datetime.strptime(str(exam_str)[:10], '%Y-%m-%d').date()
+                    if exam_date >= today:
+                        filtered_dates.append(d)
+                    else:
+                        logger.debug(f"Date examen passée exclue: {exam_str}")
+                except (ValueError, TypeError):
+                    filtered_dates.append(d)  # En cas d'erreur de parsing, garder la date
+            else:
+                filtered_dates.append(d)
+
+        if not filtered_dates:
+            logger.warning("Toutes les dates d'examen sont passées - aucune date à afficher")
+            return []
+
         formatted = []
         seen_depts = set()
 
@@ -1476,7 +1503,7 @@ class TemplateEngine:
                         'session_type': session_type,
                     }
 
-        for d in dates[:5]:  # Limiter à 5 dates
+        for d in filtered_dates[:5]:  # Limiter à 5 dates (après filtrage des dates passées)
             date_str = d.get('Date_Examen', '')
             cloture_str = d.get('Date_Cloture_Inscription', '')
             dept = d.get('Departement', '')
@@ -1656,6 +1683,16 @@ class TemplateEngine:
         except Exception as e:
             return str(date_str)
 
+    def _is_date_passed(self, date_str: str) -> bool:
+        """Vérifie si une date est passée (avant aujourd'hui)."""
+        if not date_str:
+            return False
+        try:
+            date_obj = datetime.strptime(str(date_str)[:10], '%Y-%m-%d').date()
+            return date_obj < datetime.now().date()
+        except Exception:
+            return False
+
     def _format_dates_list(self, dates: List[Dict]) -> str:
         """Formate une liste de dates d'examen en HTML."""
         if not dates:
@@ -1769,6 +1806,19 @@ class TemplateEngine:
                 # Extraire les dates de la session
                 date_debut = session.get('Date_d_but', '')
                 date_fin = session.get('Date_fin', '')
+
+                # Filtrer les sessions dont la date de début est passée
+                if date_debut:
+                    try:
+                        from datetime import datetime
+                        today = datetime.now().date()
+                        debut_date = datetime.strptime(str(date_debut)[:10], '%Y-%m-%d').date()
+                        if debut_date < today:
+                            logger.debug(f"Session passée exclue: {session.get('Name', '')} (début: {date_debut})")
+                            continue
+                    except (ValueError, TypeError):
+                        pass  # En cas d'erreur de parsing, garder la session
+
                 date_debut_formatted = self._format_date(date_debut) if date_debut else ''
                 date_fin_formatted = self._format_date(date_fin) if date_fin else ''
 
@@ -1782,6 +1832,10 @@ class TemplateEngine:
                     s.get('date_examen_raw') == date_examen for s in flattened
                 )
 
+                # Générer le label du type de session si pas déjà défini
+                if not session_type_label and session_type:
+                    session_type_label = 'Cours du jour' if session_type == 'jour' else 'Cours du soir' if session_type == 'soir' else ''
+
                 flattened.append({
                     'date_examen': date_examen_formatted,
                     'date_examen_formatted': date_examen_formatted,
@@ -1790,6 +1844,7 @@ class TemplateEngine:
                     'cloture': cloture_formatted,
                     'date_cloture_formatted': cloture_formatted,
                     'nom': session_type_label or session.get('Name', ''),
+                    'session_type_label': session_type_label or ('Cours du jour' if session_type == 'jour' else 'Cours du soir' if session_type == 'soir' else ''),
                     'session_name': session.get('Name', ''),
                     'session_id': session.get('id', ''),
                     'debut': date_debut_formatted,
@@ -1921,7 +1976,8 @@ class TemplateEngine:
         """
         Retourne les sessions aplaties, FILTRÉES selon:
         1. deadline_passed_reschedule → uniquement sessions pour new_exam_date
-        2. CONFIRMATION_SESSION + préférence → uniquement jour/soir selon préférence
+        2. Date d'examen confirmée → uniquement sessions qui se terminent AVANT l'examen
+        3. CONFIRMATION_SESSION + préférence → uniquement jour/soir selon préférence
         """
         session_data = context.get('session_data', {})
         all_sessions = self._flatten_session_options(session_data)
@@ -1940,8 +1996,50 @@ class TemplateEngine:
                 logger.info(f"📅 Sessions filtrées pour report (deadline passée) - date {new_exam_formatted}: {len(filtered_by_date)}/{len(all_sessions)}")
                 all_sessions = filtered_by_date
 
-        # FILTRE 2: Préférence jour/soir pour CONFIRMATION_SESSION
+        # FILTRE 2: Si date d'examen CONFIRMÉE, ne proposer que les sessions qui se terminent
+        # AVANT cette date (on ne peut pas faire une formation après l'examen !)
         primary_intent = context.get('primary_intent') or context.get('detected_intent', '')
+
+        # Pour DEMANDE_CHANGEMENT_SESSION, filtrer par la date d'examen du candidat
+        if primary_intent == 'DEMANDE_CHANGEMENT_SESSION':
+            # Récupérer la date d'examen confirmée du candidat
+            enriched_lookups = context.get('enriched_lookups', {})
+            date_examen_raw = enriched_lookups.get('date_examen') or context.get('date_examen_raw', '')
+
+            if date_examen_raw:
+                try:
+                    exam_date = datetime.strptime(str(date_examen_raw)[:10], '%Y-%m-%d').date()
+                    filtered_by_exam = []
+                    for s in all_sessions:
+                        # Récupérer la date de fin de session (format DD/MM/YYYY ou YYYY-MM-DD)
+                        session_end_str = s.get('date_fin', '') or s.get('fin', '')
+                        if session_end_str:
+                            try:
+                                # Essayer format DD/MM/YYYY
+                                if '/' in session_end_str:
+                                    session_end = datetime.strptime(session_end_str, '%d/%m/%Y').date()
+                                else:
+                                    session_end = datetime.strptime(str(session_end_str)[:10], '%Y-%m-%d').date()
+
+                                # Garder seulement si la session se termine AVANT l'examen
+                                if session_end < exam_date:
+                                    filtered_by_exam.append(s)
+                            except (ValueError, TypeError):
+                                # En cas d'erreur de parsing, garder la session par prudence
+                                filtered_by_exam.append(s)
+                        else:
+                            # Pas de date de fin, garder par prudence
+                            filtered_by_exam.append(s)
+
+                    if filtered_by_exam:
+                        logger.info(f"📅 Sessions filtrées par date d'examen ({self._format_date(date_examen_raw)}): {len(filtered_by_exam)}/{len(all_sessions)}")
+                        all_sessions = filtered_by_exam
+                    else:
+                        logger.warning(f"⚠️ Aucune session se terminant avant l'examen du {self._format_date(date_examen_raw)}")
+                except (ValueError, TypeError) as e:
+                    logger.warning(f"⚠️ Impossible de parser la date d'examen '{date_examen_raw}': {e}")
+
+        # FILTRE 3: Préférence jour/soir pour CONFIRMATION_SESSION
         secondary_intents = context.get('secondary_intents', [])
         session_preference = self._get_session_preference(context)
 

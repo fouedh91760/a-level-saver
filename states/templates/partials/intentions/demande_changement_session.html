@@ -80,8 +80,10 @@ Merci de nous indiquer si l'une de ces alternatives vous convient, ou si vous av
 {{else}}
 <!-- CAS 2: Pas de dates spécifiques - Comportement standard -->
 {{#if session_choisie}}
+{{#unless session_dates_passed}}
 Votre session actuelle est : <b>{{session_choisie}}</b>{{#if session_date_debut}} (du {{session_date_debut}} au {{session_date_fin}}){{/if}}.<br>
 <br>
+{{/unless}}
 {{#if has_sessions_proposees}}
 Voici les alternatives disponibles :<br>
 {{#each sessions_proposees}}

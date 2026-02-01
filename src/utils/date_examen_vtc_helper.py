@@ -9,13 +9,15 @@ Workflow complet :
 
 CAS GÉRÉS:
 - CAS 1: Date vide → Proposer 2 prochaines dates (CMA du candidat)
-- CAS 2: Date passée + Evalbox ≠ VALIDE CMA/Dossier Synchronisé → Proposer 2 prochaines dates
+- CAS 2: Date passée + Evalbox pré-validation (N/A, Dossier créé, Pret a payer, Dossier Synchronisé)
+         → Auto-report sur prochaine date (candidat n'a PAS pu passer l'examen)
 - CAS 3: Evalbox = Refusé CMA → Informer du refus + pièces + prochaine date
 - CAS 4: Date future + Evalbox = VALIDE CMA → Rassurer (convocation ~10j avant)
 - CAS 5: Date future + Evalbox = Dossier Synchronisé → Prévenir (instruction en cours)
 - CAS 6: Date future + Evalbox = autre → En attente
-- CAS 7: Date passée + Evalbox = VALIDE CMA/Dossier Synchronisé → Examen passé (sauf indices contraires)
-- CAS 8: Date future + Date_Cloture passée + Evalbox ≠ VALIDE CMA/Dossier Synchronisé → Deadline ratée, proposer prochaines dates
+- CAS 7: Date passée + Evalbox = VALIDE CMA ou Convoc CMA reçue → Examen probablement passé
+         ATTENTION: "Dossier Synchronisé" = en instruction, PAS validé → utiliser CAS 2
+- CAS 8: Date future + Date_Cloture passée + Evalbox pré-validation → Deadline ratée, auto-report
 - CAS 9: Evalbox = Convoc CMA reçue → Transmettre identifiants, lien plateforme, instructions impression + bonne chance
 - CAS 10: Evalbox = Pret a payer → Paiement en cours, surveiller emails, corriger si refus CMA avant clôture
 """
@@ -803,8 +805,12 @@ def analyze_exam_date_situation(
 
     # CAS avec date dans le passé
     if date_is_past:
-        # CAS 7: Date passée + VALIDE CMA ou Dossier Synchronisé
-        if evalbox_status in ['VALIDE CMA', 'Dossier Synchronisé', 'Convoc CMA reçue']:
+        # Statuts validés = dossier vraiment validé par la CMA (candidat a pu passer l'examen)
+        # ATTENTION: "Dossier Synchronisé" = en instruction, PAS validé !
+        VALIDATED_STATUSES = ['VALIDE CMA', 'Convoc CMA reçue']
+
+        # CAS 7: Date passée + dossier VALIDÉ (examen probablement passé)
+        if evalbox_status in VALIDATED_STATUSES:
             result['case'] = 7
             result['case_description'] = "Date passée + dossier validé - Examen probablement passé"
 
@@ -837,11 +843,14 @@ def analyze_exam_date_situation(
             logger.info(f"  ➡️ CAS 7: Date passée + validé (indices non passé: {has_indices_not_passed})")
             return result
 
-        # CAS 2: Date passée + Evalbox autre
+        # CAS 2: Date passée + statuts pré-validation (N/A, Dossier créé, Pret a payer, Dossier Synchronisé)
+        # Le candidat n'a PAS pu passer l'examen car son dossier n'était pas validé
+        # → Auto-report automatique par la CMA sur la prochaine date
         else:
             result['case'] = 2
-            result['case_description'] = "Date passée + dossier non validé - Proposer 2 prochaines dates"
+            result['case_description'] = "Date passée + dossier non validé - Auto-report sur prochaine date"
             result['should_include_in_response'] = True
+            result['auto_report'] = True  # Flag pour indiquer l'auto-report
 
             if crm_client:
                 if departement:
@@ -850,6 +859,13 @@ def analyze_exam_date_situation(
                     # Fallback when department is unknown
                     logger.info("  ⚠️ Département inconnu - récupération des dates tous départements")
                     result['next_dates'] = get_next_exam_dates_any_department(crm_client, limit=15)  # Many dates for geographic coverage
+
+                # Stocker la première date comme date d'auto-report
+                if result['next_dates']:
+                    first_next = result['next_dates'][0]
+                    result['auto_report_date'] = first_next.get('Date_Examen')
+                    result['auto_report_session_id'] = first_next.get('id')
+                    logger.info(f"  ✅ Auto-report détecté: {date_examen_str} → {result['auto_report_date']}")
 
                 # Si pas de compte ExamT3P, chercher des dates plus tôt dans d'autres départements
                 if result['can_choose_other_department'] and result['next_dates'] and departement:
@@ -865,7 +881,7 @@ def analyze_exam_date_situation(
                             logger.info(f"  📅 {len(result['alternative_department_dates'])} date(s) plus tôt dans d'autres départements")
 
             result['response_message'] = generate_propose_dates_past_message(result['next_dates'], departement)
-            logger.info(f"  ➡️ CAS 2: Date passée + non validé")
+            logger.info(f"  ➡️ CAS 2: Date passée + non validé → auto-report")
             return result
 
     # CAS avec date dans le futur

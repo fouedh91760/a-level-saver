@@ -2068,7 +2068,8 @@ matrix:
     description: "Candidat avec session assignée veut CHANGER de session (jour→soir ou nouvelles dates)"
     context_flags:
       intention_demande_changement_session: true
-      show_sessions_section: true  # Afficher les alternatives disponibles
+      show_sessions_section: false  # Le partial gère déjà les sessions proposées
+      show_dates_section: false     # Le partial gère déjà les dates
       show_statut_section: true
 
   "*:SIGNALE_PAS_RECU_EMAIL":

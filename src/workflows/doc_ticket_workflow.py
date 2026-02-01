@@ -1576,6 +1576,64 @@ Deux comptes ExamenT3P fonctionnels ont été détectés pour ce candidat, et le
                 logger.info(f"  ✅ Date examen VTC OK (CAS {date_examen_vtc_result['case']})")
 
             # ================================================================
+            # AUTO-REPORT: Date passée + dossier non validé → nouvelle date
+            # ================================================================
+            # Si le système détecte un auto-report (date passée + statut pré-validation),
+            # vérifier si le candidat confirme une date spécifique dans son message
+            if date_examen_vtc_result.get('auto_report'):
+                from src.utils.date_confirmation_extractor import extract_confirmed_exam_date
+                from src.utils.examt3p_crm_sync import find_exam_session_by_date_and_dept
+
+                # Extraire le dernier message du candidat
+                candidate_message = ''
+                if threads_data:
+                    # Trouver le premier thread (le plus récent du candidat)
+                    for thread in threads_data:
+                        if thread.get('direction') == 'in':
+                            candidate_message = thread.get('content', '')
+                            break
+
+                confirmed = extract_confirmed_exam_date(candidate_message)
+                departement = enriched_lookups.get('cma_departement') or str(deal_data.get('CMA_de_depot', ''))
+
+                if confirmed:
+                    logger.info(f"  📅 Candidat confirme nouvelle date: {confirmed['formatted']}")
+
+                    # Valider que cette date existe pour le département
+                    session = find_exam_session_by_date_and_dept(
+                        self.crm_client, confirmed['date'], departement
+                    )
+                    if session:
+                        date_examen_vtc_result['confirmed_date'] = confirmed['date']
+                        date_examen_vtc_result['confirmed_date_formatted'] = confirmed['formatted']
+                        date_examen_vtc_result['confirmed_session_id'] = session.get('id')
+                        logger.info(f"  ✅ Date {confirmed['formatted']} validée pour dept {departement}")
+                    else:
+                        logger.warning(f"  ⚠️ Date {confirmed['formatted']} non trouvée pour dept {departement}")
+                else:
+                    logger.info(f"  📅 Pas de date confirmée par le candidat - utilisation auto-report: {date_examen_vtc_result.get('auto_report_date')}")
+
+                # Déterminer la nouvelle date à utiliser (confirmée ou auto-report)
+                new_date = date_examen_vtc_result.get('confirmed_date') or date_examen_vtc_result.get('auto_report_date')
+                new_session_id = date_examen_vtc_result.get('confirmed_session_id') or date_examen_vtc_result.get('auto_report_session_id')
+
+                if new_session_id and deal_id:
+                    # Préparer la mise à jour CRM
+                    date_examen_vtc_result['should_update_exam_date'] = True
+                    date_examen_vtc_result['new_exam_date'] = new_date
+                    date_examen_vtc_result['new_exam_session_id'] = new_session_id
+
+                    # Appliquer la mise à jour CRM immédiatement
+                    try:
+                        self.crm_client.update_deal(deal_id, {'Date_examen_VTC': new_session_id})
+                        logger.info(f"  ✅ CRM mis à jour: Date_examen_VTC → {new_date}")
+
+                        # Mettre à jour enriched_lookups pour que la réponse utilise la nouvelle date
+                        enriched_lookups['date_examen'] = new_date
+                    except Exception as e:
+                        logger.error(f"  ❌ Erreur mise à jour CRM Date_examen_VTC: {e}")
+
+            # ================================================================
             # AUTO-ASSIGNATION: Appliquer les mises à jour CRM si détectées
             # ================================================================
             if date_examen_vtc_result.get('auto_assigned') and date_examen_vtc_result.get('crm_updates'):

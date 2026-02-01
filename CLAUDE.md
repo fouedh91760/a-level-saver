@@ -39,7 +39,7 @@ Le workflow traite les tickets DOC en utilisant plusieurs agents spécialisés e
 
 ---
 
-## 14 RÈGLES CRITIQUES - Ne Jamais Oublier
+## 16 RÈGLES CRITIQUES - Ne Jamais Oublier
 
 | # | Règle | Piège à éviter | Détails |
 |---|-------|----------------|---------|
@@ -57,6 +57,8 @@ Le workflow traite les tickets DOC en utilisant plusieurs agents spécialisés e
 | 12 | **Anti-répétition = context flags** | Ajouter logique anti-répétition dans Humanizer | Voir §12 ci-dessous |
 | 13 | **Wildcard obligatoire** | Intention sans `*:INTENTION` dans matrice | Voir §13 ci-dessous |
 | 14 | **JAMAIS de fallback legacy** | Laisser une combinaison STATE:INTENTION tomber sur `base_legacy/` | Voir §14 ci-dessous |
+| 15 | **Statuts pré-validation ≠ validés** | Traiter "Dossier Synchronisé" comme validé | Voir §15 ci-dessous |
+| 16 | **Sessions filtrées par date examen** | Proposer session septembre pour examen mai | Voir §16 ci-dessous |
 
 ---
 
@@ -480,6 +482,66 @@ Certains templates legacy peuvent temporairement rester actifs pour des cas trè
 
 ---
 
+## RÈGLE 15 : Statuts Pré-Validation ≠ Validés
+
+### Le Problème
+
+"Dossier Synchronisé" signifie "en cours d'instruction par la CMA", **PAS validé**.
+
+Si date passée + dossier non validé → le candidat a été **auto-reporté** par la CMA, pas "examen passé".
+
+### Classification des Statuts
+
+| Statuts PRÉ-VALIDATION | Statuts VALIDÉS |
+|------------------------|-----------------|
+| `N/A` | `VALIDE CMA` |
+| `Dossier créé` | `Convoc CMA reçue` |
+| `Pret a payer` | |
+| **`Dossier Synchronisé`** | |
+
+### Impact sur la Logique
+
+```python
+# Dans date_examen_vtc_helper.py
+VALIDATED_STATUSES = ['VALIDE CMA', 'Convoc CMA reçue']  # PAS Dossier Synchronisé !
+
+if date_is_past:
+    if evalbox_status in VALIDATED_STATUSES:
+        case = 7  # Examen peut avoir été passé
+    else:
+        case = 2  # Auto-report sur prochaine date (candidat jamais inscrit réellement)
+```
+
+---
+
+## RÈGLE 16 : Sessions Filtrées par Date d'Examen
+
+### Le Problème
+
+On ne peut pas proposer une session de formation en **septembre** pour un examen en **mai**.
+
+### La Règle
+
+Les sessions proposées doivent se terminer **AVANT** la date d'examen du candidat.
+
+### Implémentation
+
+```python
+# Dans template_engine.py - _flatten_session_options_filtered()
+if primary_intent == 'DEMANDE_CHANGEMENT_SESSION':
+    # Filtrer: garder seulement les sessions qui se terminent AVANT l'examen
+    filtered = [s for s in sessions if session_end_date < exam_date]
+```
+
+### Exemple
+
+- Examen : 26/05/2026
+- ✅ Session 13/04 → 24/04 (avant examen)
+- ✅ Session 11/05 → 22/05 (avant examen)
+- ❌ Session 14/09 → 25/09 (APRÈS examen - filtrer !)
+
+---
+
 ## DEBUGGING : Pistes d'Investigation
 
 ### 7. Template non affiché / Partial manquant
@@ -600,6 +662,62 @@ session_data = analyze_session_situation(
 | `VALIDE CMA` | CMA a validé après paiement | "validé" |
 
 **Fichier:** `states/templates/partials/statuts/pret_a_payer.html`
+
+### 13. Template ne rend pas (reste en `{{> partials/...}}`)
+
+**Symptôme:** La réponse contient les directives Handlebars brutes au lieu du contenu.
+
+**Cause:** Erreur de compilation d'un partial (syntaxe Handlebars invalide).
+
+**Investigation:**
+```bash
+# Chercher les erreurs de compilation pybars
+grep "Failed to compile partial" logs
+```
+
+**Solution:** Corriger la syntaxe du partial - souvent `{{#if}}`/`{{/if}}` mal imbriqués ou `{{#unless}}` mal fermé.
+
+### 14. Sessions incohérentes avec date d'examen
+
+**Symptôme:** Session de septembre proposée pour un examen en mai.
+
+**Cause:** `_flatten_session_options_filtered` ne filtrait pas par date d'examen.
+
+**Règle:** Les sessions proposées doivent se terminer AVANT la date d'examen du candidat.
+
+**Fichier:** `src/state_engine/template_engine.py` - `_flatten_session_options_filtered()`
+
+### 15. Humanizer invente du contenu
+
+**Symptôme:** Réponse finale contient des infos absentes du template brut (ex: dates passées).
+
+**Debug:**
+1. Désactiver humanizer temporairement (`use_ai=False` dans `doc_ticket_workflow.py`)
+2. Comparer template brut vs réponse finale
+3. Si template brut OK → problème humanizer (comportement non-déterministe)
+
+**Note:** Le humanizer peut utiliser le message du candidat comme source de données alors qu'il ne devrait que reformuler le template.
+
+### 16. Ordre de priorité matrice ignoré
+
+**Symptôme:** Un flag défini dans la matrice (`show_dates_section: false`) est ignoré.
+
+**Cause:** Le code vérifie un cas spécial AVANT la matrice.
+
+**Règle:** TOUJOURS vérifier la matrice EN PREMIER :
+```python
+# ✅ CORRECT
+if 'show_dates_section' in context:  # Matrice d'abord
+    result['show_dates_section'] = context['show_dates_section']
+elif date_case == 2:  # Cas spéciaux ensuite
+    result['show_dates_section'] = True
+
+# ❌ FAUX
+if date_case == 2:  # Cas spécial écrase la matrice !
+    result['show_dates_section'] = True
+elif 'show_dates_section' in context:
+    ...
+```
 
 ---
 
