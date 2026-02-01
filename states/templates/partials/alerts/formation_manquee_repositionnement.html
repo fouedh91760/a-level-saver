@@ -1,0 +1,15 @@
+<!-- Partial: Session terminée - Proposition de rafraîchissement -->
+<b>Concernant votre formation</b><br>
+Votre session de formation{{#if session_manquee_dates}} ({{session_manquee_dates}}){{/if}} est maintenant terminée.<br>
+<br>
+Votre examen étant prévu le <b>{{date_examen_formatted}}</b>, nous pouvons vous proposer une session de <b>rafraîchissement</b> pour optimiser vos chances de réussite, <b>sans frais supplémentaires</b>.<br>
+<br>
+{{#if has_sessions_proposees}}
+<b>Sessions disponibles :</b><br>
+{{#each sessions_proposees}}
+{{#if this.is_first_of_exam}}<b>Pour l'examen du {{this.date_examen_formatted}}</b><br>{{/if}}
+&nbsp;&nbsp;→ {{this.nom}} : du <b>{{this.debut}}</b> au <b>{{this.fin}}</b> ({{this.type_text}})<br>
+{{/each}}
+<br>
+N'hésitez pas à nous indiquer si vous souhaitez participer à l'une de ces sessions.<br>
+{{/if}}

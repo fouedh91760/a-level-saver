@@ -2215,6 +2215,14 @@ matrix:
       intention_demande_date: true
       show_dates_section: true
 
+  "*:DEMANDE_DATE_EXAMEN":
+    template: "response_master.html"
+    description: "Candidat avec date assignée demande à la connaître - si passée, propose nouvelles dates"
+    context_flags:
+      intention_demande_date: true
+      show_dates_section: true
+      show_sessions_section: true
+
 # =============================================================================
 # SECTION 4: CONFIGURATION GLOBALE
 # =============================================================================

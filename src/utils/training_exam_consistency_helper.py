@@ -68,7 +68,13 @@ def analyze_training_exam_consistency(
     # ================================================================
     # 1. DÉTECTER SI LE CANDIDAT A MANQUÉ SA FORMATION
     # ================================================================
+    # Méthode 1: Détection via les threads (ce que le candidat dit)
     missed_training = detect_missed_training_in_threads(threads)
+
+    # Méthode 2: Détection via le CRM (session passée + examen futur)
+    if not missed_training:
+        missed_training = detect_missed_training_from_crm(deal_data)
+
     if not missed_training:
         logger.info("  ✅ Pas de formation manquée détectée")
         return result
@@ -103,12 +109,19 @@ def analyze_training_exam_consistency(
     # Vérifier si l'examen est dans les 14 prochains jours (imminent)
     today = datetime.now()
     days_until_exam = (exam_date - today).days
+    is_imminent = days_until_exam <= 14
 
-    if days_until_exam > 14:
-        logger.info(f"  ℹ️ Examen dans {days_until_exam} jours - pas imminent")
-        return result
+    # Formation manquée = toujours un problème (besoin de rafraîchissement)
+    # Même si l'examen n'est pas imminent, le candidat a besoin de nouvelles sessions
+    result['has_consistency_issue'] = True
+    result['issue_type'] = 'MISSED_TRAINING_IMMINENT_EXAM' if is_imminent else 'MISSED_TRAINING_NEEDS_REFRESH'
+    result['needs_refresh_session'] = True  # Toujours proposer des sessions de rafraîchissement
 
-    logger.warning(f"  🚨 EXAMEN IMMINENT: dans {days_until_exam} jours ({result['exam_date_formatted']})")
+    if is_imminent:
+        logger.warning(f"  🚨 EXAMEN IMMINENT: dans {days_until_exam} jours ({result['exam_date_formatted']})")
+        result['should_present_options'] = True  # Options A/B seulement si imminent
+    else:
+        logger.info(f"  ℹ️ Examen dans {days_until_exam} jours - proposer session de rafraîchissement")
 
     # ================================================================
     # 3. DÉTECTER SI FORCE MAJEURE MENTIONNÉE
@@ -139,27 +152,24 @@ def analyze_training_exam_consistency(
             logger.info(f"  📅 Prochaine date d'examen disponible: {result['next_exam_date_formatted']}")
 
     # ================================================================
-    # 5. PRÉPARER LES OPTIONS POUR LE CANDIDAT
+    # 5. PRÉPARER LES OPTIONS POUR LE CANDIDAT (seulement si examen imminent)
     # ================================================================
-    result['has_consistency_issue'] = True
-    result['issue_type'] = 'MISSED_TRAINING_IMMINENT_EXAM'
-    result['should_present_options'] = True
-
-    result['options'] = [
-        {
-            'id': 'A',
-            'title': 'Maintenir l\'examen',
-            'description': f"Passer l'examen le {result['exam_date_formatted']} si le e-learning vous a suffi",
-            'action': 'KEEP_EXAM'
-        },
-        {
-            'id': 'B',
-            'title': 'Reporter l\'examen',
-            'description': f"Demander un report vers le {result['next_exam_date_formatted'] or 'prochaine date disponible'} (justificatif force majeure requis)",
-            'action': 'RESCHEDULE_EXAM',
-            'requires': 'Certificat médical ou justificatif de force majeure'
-        }
-    ]
+    if is_imminent:
+        result['options'] = [
+            {
+                'id': 'A',
+                'title': 'Maintenir l\'examen',
+                'description': f"Passer l'examen le {result['exam_date_formatted']} si le e-learning vous a suffi",
+                'action': 'KEEP_EXAM'
+            },
+            {
+                'id': 'B',
+                'title': 'Reporter l\'examen',
+                'description': f"Demander un report vers le {result['next_exam_date_formatted'] or 'prochaine date disponible'} (justificatif force majeure requis)",
+                'action': 'RESCHEDULE_EXAM',
+                'requires': 'Certificat médical ou justificatif de force majeure'
+            }
+        ]
 
     # ================================================================
     # 6. GÉNÉRER LE MESSAGE DE RÉPONSE
@@ -213,6 +223,87 @@ def detect_missed_training_in_threads(threads: List[Dict]) -> Optional[Dict]:
                     'reason': reason,
                     'pattern': pattern
                 }
+
+    return None
+
+
+def detect_missed_training_from_crm(deal_data: Dict) -> Optional[Dict]:
+    """
+    Détecte si la formation est manquée en analysant les données CRM.
+
+    Condition: Session passée + Date d'examen future = Formation manquée
+
+    Returns:
+        Dict avec 'detected': True et 'reason' si détecté, None sinon
+    """
+    from src.utils.date_utils import parse_date_flexible
+
+    today = datetime.now().date()
+
+    # Récupérer la session assignée
+    session_raw = deal_data.get('Session')
+    if not session_raw:
+        return None
+
+    # Extraire la date de fin de session
+    session_name = session_raw.get('name', '') if isinstance(session_raw, dict) else str(session_raw)
+    session_id = session_raw.get('id') if isinstance(session_raw, dict) else None
+
+    # La date de fin de session doit être récupérée depuis le lookup enrichi ou le nom
+    # Format typique: "cds-montreuil- thu2 - 12 janvier - 23 janvier 2026"
+    # On doit parser la date de fin
+    session_end_date = None
+
+    # Essayer d'extraire la date de fin du nom de session
+    # Pattern: "XX janvier/février/... 2026" à la fin
+    import re
+    date_pattern = r'(\d{1,2})\s*(janvier|février|mars|avril|mai|juin|juillet|août|septembre|octobre|novembre|décembre)\s*(\d{4})'
+    matches = re.findall(date_pattern, session_name, re.IGNORECASE)
+    if len(matches) >= 2:
+        # Prendre la dernière date (date de fin)
+        day, month_name, year = matches[-1]
+        month_map = {
+            'janvier': 1, 'février': 2, 'mars': 3, 'avril': 4,
+            'mai': 5, 'juin': 6, 'juillet': 7, 'août': 8,
+            'septembre': 9, 'octobre': 10, 'novembre': 11, 'décembre': 12
+        }
+        month = month_map.get(month_name.lower(), 1)
+        try:
+            session_end_date = datetime(int(year), month, int(day)).date()
+        except ValueError:
+            pass
+
+    if not session_end_date:
+        return None
+
+    # Récupérer la date d'examen
+    exam_date_raw = deal_data.get('Date_examen_VTC')
+    if not exam_date_raw:
+        return None
+
+    # Extraire la date d'examen (format: {'name': '94_2026-03-31', 'id': '...'} ou string)
+    if isinstance(exam_date_raw, dict):
+        exam_date_str = exam_date_raw.get('name', '')
+        if '_' in exam_date_str:
+            exam_date_str = exam_date_str.split('_')[1]
+    else:
+        exam_date_str = str(exam_date_raw)
+
+    exam_date = parse_date_flexible(exam_date_str)
+    if not exam_date:
+        return None
+
+    exam_date = exam_date.date() if hasattr(exam_date, 'date') else exam_date
+
+    # Condition: Session passée ET examen futur
+    if session_end_date < today and exam_date > today:
+        logger.info(f"  🔍 Formation manquée détectée via CRM: session terminée le {session_end_date}, examen le {exam_date}")
+        return {
+            'detected': True,
+            'reason': 'session_terminee',
+            'session_end_date': session_end_date.isoformat(),
+            'exam_date': exam_date.isoformat()
+        }
 
     return None
 

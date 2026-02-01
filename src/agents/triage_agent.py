@@ -117,6 +117,11 @@ Un candidat peut avoir PLUSIEURS intentions dans un même message - c'est très 
 INTENTIONS POSSIBLES (par ordre de spécificité - préfère les intentions spécifiques):
 
 **Intentions liées aux DATES D'EXAMEN:**
+- DEMANDE_DATE_EXAMEN: Demande de connaître sa date d'examen (candidat AVEC date assignée)
+  Exemples: "quelle est ma date d'examen", "quand est mon examen", "date de l'examen", "je n'ai pas reçu ma date", "c'est quand l'examen"
+  ⚠️ Utiliser si "Date examen actuelle" contient une date ET le candidat demande juste à la CONNAÎTRE
+  ⚠️ DIFFÉRENT de DEMANDE_DATES_FUTURES: le candidat A DÉJÀ une date (vérifier contexte CRM)
+  ⚠️ DIFFÉRENT de DEMANDE_CONVOCATION: le candidat demande la DATE, pas le document officiel de convocation
 - DEMANDE_DATES_FUTURES: Demande de dates d'examen disponibles (candidat SANS date assignée)
   Exemples: "Quelles sont les prochaines dates ?", "dates disponibles"
   ⚠️ Utiliser SEULEMENT si "Date examen actuelle" = "Aucune date assignée"

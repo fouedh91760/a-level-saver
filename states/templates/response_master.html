@@ -77,6 +77,9 @@
 {{#if session_assignment_error}}
 {{> partials/warnings/session_assignment_error}}
 {{/if}}
+{{#if formation_manquee_needs_refresh}}
+{{> partials/alerts/formation_manquee_repositionnement}}
+{{/if}}
 
 <!-- =====================================================================
      SECTION 1: RÉPONDRE À L'INTENTION DU CANDIDAT

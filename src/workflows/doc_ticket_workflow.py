@@ -1960,6 +1960,10 @@ Deux comptes ExamenT3P fonctionnels ont été détectés pour ce candidat, et le
             # CAS 5: Erreur de saisie session → proposer sessions pour la date d'examen assignée
             exam_dates_for_session = [date_examen_info]
             logger.info(f"  📚 ERREUR SAISIE SESSION → recherche sessions avant date examen {date_examen_info.get('Date_Examen')}")
+        elif training_exam_consistency_result.get('has_consistency_issue') and has_assigned_date:
+            # CAS 6: Formation manquée + examen futur → proposer sessions de rafraîchissement
+            exam_dates_for_session = [date_examen_info]
+            logger.info(f"  📚 FORMATION MANQUÉE + examen futur → recherche sessions de rafraîchissement pour {date_examen_info.get('Date_Examen')}")
         else:
             exam_dates_for_session = []
 

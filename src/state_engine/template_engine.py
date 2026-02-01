@@ -1004,6 +1004,12 @@ class TemplateEngine:
             'assigned_session_info': context.get('assigned_session_info', {}),
             'claimed_session_info': context.get('claimed_session_info', {}),
 
+            # ===== FORMATION MANQUÉE (repositionnement) =====
+            # Variables pour gérer le cas où le candidat a manqué sa formation
+            'formation_manquee': context.get('training_exam_consistency_data', {}).get('has_consistency_issue', False),
+            'formation_manquee_needs_refresh': context.get('training_exam_consistency_data', {}).get('needs_refresh_session', False),
+            'session_manquee_dates': self._format_session_dates_from_name(enriched_lookups.get('session_name', '')),
+
             # Flags pour le template master (architecture modulaire)
             # Sections à afficher (peuvent être désactivées via context_flags de la matrice)
             'show_statut_section': context.get('show_statut_section', True),  # Par défaut True, sauf si désactivé
@@ -1118,11 +1124,16 @@ class TemplateEngine:
             elif not is_report_intention:
                 has_sessions = bool(self._flatten_session_options_filtered(context))
                 has_proposed_options = bool(context.get('session_data', {}).get('proposed_options'))
+                # Exception: formation manquée → proposer sessions même si une session existe (elle est passée)
+                training_missed = context.get('training_exam_consistency_data', {}).get('has_consistency_issue', False)
+                session_exists_but_can_override = training_missed and deal_data.get('Session')
                 result['show_sessions_section'] = (
                     has_sessions and
-                    not deal_data.get('Session') and
+                    (not deal_data.get('Session') or session_exists_but_can_override) and
                     (bool(date_examen) or has_proposed_options)
                 )
+                if session_exists_but_can_override:
+                    logger.info("📚 show_sessions_section=True (formation manquée → proposer rafraîchissement)")
 
         return result
 
@@ -1753,6 +1764,25 @@ class TemplateEngine:
         if isinstance(session, dict):
             return session.get('name', '')
         return str(session)
+
+    def _format_session_dates_from_name(self, session_name: str) -> str:
+        """
+        Extrait les dates d'un nom de session.
+        Ex: "cds-montreuil- thu2 - 12 janvier - 23 janvier 2026" → "12 au 23 janvier 2026"
+        """
+        if not session_name:
+            return ''
+        import re
+        # Pattern: "XX janvier/février/... - XX janvier/février/... 2026"
+        date_pattern = r'(\d{1,2})\s*(janvier|février|mars|avril|mai|juin|juillet|août|septembre|octobre|novembre|décembre)(?:\s*-\s*|\s+au\s+)(\d{1,2})\s*(janvier|février|mars|avril|mai|juin|juillet|août|septembre|octobre|novembre|décembre)\s*(\d{4})'
+        match = re.search(date_pattern, session_name, re.IGNORECASE)
+        if match:
+            day1, month1, day2, month2, year = match.groups()
+            if month1.lower() == month2.lower():
+                return f"{day1} au {day2} {month2} {year}"
+            else:
+                return f"{day1} {month1} au {day2} {month2} {year}"
+        return ''
 
     def _format_session_for_template(self, session: Optional[Dict[str, Any]]) -> Optional[Dict[str, str]]:
         """
