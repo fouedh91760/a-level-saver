@@ -996,6 +996,24 @@ RÉSUMÉ (2-3 phrases):"""
             if triage_result.get('intent_context', {}).get('mentions_force_majeure'):
                 logger.info(f"  ⚠️ Force majeure: {triage_result['intent_context'].get('force_majeure_type')}")
 
+        # ================================================================
+        # RÈGLE CRITIQUE: TRANSMET_DOCUMENTS + Date_Dossier_reçu vide → GO (pas ROUTE)
+        # Si le candidat envoie ses documents pour la PREMIÈRE fois (dossier pas encore reçu),
+        # on reste dans DOC pour traiter. On ne route vers Refus CMA que si c'est une correction.
+        # ================================================================
+        if (ai_triage['action'] == 'ROUTE'
+            and ai_triage['target_department'] == 'Refus CMA'
+            and ai_triage.get('primary_intent') == 'TRANSMET_DOCUMENTS'):
+
+            date_dossier_recu = selected_deal.get('Date_Dossier_re_u') if selected_deal else None
+            if not date_dossier_recu:
+                logger.info("  📋 TRANSMET_DOCUMENTS + Date_Dossier_reçu VIDE → Envoi initial, on reste dans DOC")
+                ai_triage['action'] = 'GO'
+                ai_triage['target_department'] = 'DOC'
+                ai_triage['reason'] = 'Envoi initial de documents (Date_Dossier_reçu vide) - traitement dans DOC'
+            else:
+                logger.info(f"  📋 TRANSMET_DOCUMENTS + Date_Dossier_reçu={date_dossier_recu} → Correction, route vers Refus CMA")
+
         # Determine action based on AI recommendation
         if ai_triage['action'] == 'ROUTE' and ai_triage['target_department'] != 'DOC':
             # Auto-transfer if enabled
@@ -1801,7 +1819,19 @@ Deux comptes ExamenT3P fonctionnels ont été détectés pour ce candidat, et le
         detected_intent = intent.detected_intent  # Rétrocompatibilité
         has_assigned_date = date_examen_info and isinstance(date_examen_info, dict) and date_examen_info.get('Date_Examen')
 
-        if has_assigned_date and detected_intent == 'CONFIRMATION_SESSION':
+        # CAS SPÉCIAL: Date passée + non validé (CAS 2) → traiter comme date vide
+        # Le candidat n'a jamais été inscrit à l'examen, proposer la prochaine date du département
+        date_case = date_examen_vtc_result.get('case')
+        if date_case == 2:
+            current_dept = date_examen_vtc_result.get('current_departement') or (date_examen_info.get('Departement') if date_examen_info else None)
+            if current_dept:
+                from src.utils.date_examen_vtc_helper import get_next_exam_dates
+                exam_dates_for_session = get_next_exam_dates(self.crm_client, current_dept, limit=2)
+                logger.info(f"  📚 CAS 2 (date passée non validée) → prochaines dates département {current_dept}: {len(exam_dates_for_session)}")
+            else:
+                exam_dates_for_session = next_dates if next_dates else []
+                logger.info(f"  📚 CAS 2 (date passée non validée) → next_dates par défaut")
+        elif has_assigned_date and detected_intent == 'CONFIRMATION_SESSION':
             # CAS 1: Candidat confirme sa session → utiliser SA date assignée
             exam_dates_for_session = [date_examen_info]
             logger.info(f"  📚 CONFIRMATION_SESSION + date assignée ({date_examen_info.get('Date_Examen')}) → sessions pour cette date uniquement")

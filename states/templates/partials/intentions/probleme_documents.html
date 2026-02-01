@@ -1,9 +1,20 @@
 <!-- Partial: Réponse à l'intention DOCUMENT_QUESTION / SIGNALE_PROBLEME_DOCS -->
+<!-- NOTE: Pour Uber CAS B (test manquant), on a déjà reçu les docs → CAB uploade sur ExamT3P pour le candidat -->
+{{#if uber_cas_b}}
+<b>Vos documents administratifs</b><br>
+Nous avons bien reçu vos documents. Nous créons votre compte ExamT3P et téléchargeons vos pièces pour vous.<br>
+<br>
+{{else}}
 <b>Concernant vos documents</b><br>
 <br>
 {{#if evalbox_refus_cma}}
 Certaines pièces ont été refusées. Connectez-vous sur ExamT3P pour voir les motifs de refus et corriger.<br>
 {{else}}
+{{#if cab_paye_examen}}
+<!-- Uber/partenariat: CAB gère les documents -->
+Nous avons bien reçu vos documents. Nous créons votre compte ExamT3P et téléchargeons vos pièces pour vous.<br>
+{{else}}
+<!-- Candidat standard: doit uploader lui-même -->
 Pour télécharger vos documents, connectez-vous sur <a href="https://www.exament3p.fr">exament3p.fr</a>.<br>
 <br>
 <b>Documents requis :</b><br>
@@ -13,4 +24,6 @@ Pour télécharger vos documents, connectez-vous sur <a href="https://www.examen
 &nbsp;&nbsp;→ Signature (image sur fond blanc)<br>
 &nbsp;&nbsp;→ Permis de conduire<br>
 {{/if}}
+{{/if}}
 <br>
+{{/if}}

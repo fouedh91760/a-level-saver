@@ -1,5 +1,25 @@
 <!-- Partial: Reponse a l'intention ERREUR_PAIEMENT_CMA -->
 <!-- Candidat Uber 20€ qui a payé les frais CMA lui-même par erreur -->
+<!-- OU candidat qui se plaint du délai de paiement (mais paiement déjà fait) -->
+
+{{#if cab_paye_examen}}
+{{#if evalbox_dossier_synchronise}}
+<!-- CAS SPÉCIAL: Paiement DÉJÀ effectué par CAB, candidat se plaint du délai -->
+<!-- Ne rien afficher ici - la réclamation est traitée par le partial reclamation.html -->
+<!-- et le statut dossier_synchronise.html confirme que tout est en ordre -->
+{{else}}
+{{#if evalbox_pret_a_payer}}
+<!-- Paiement en cours de traitement par CAB -->
+<b>Concernant le paiement des frais d'inscription</b><br>
+<br>
+Le paiement des frais d'inscription (241€) est actuellement <b>en cours de traitement</b> de notre côté. Dans le cadre de votre offre Uber, ces frais sont pris en charge par CAB Formations.<br>
+<br>
+Une fois le paiement effectué, votre dossier sera transmis à la CMA pour vérification de vos documents. Nous vous tiendrons informé(e) dès que cette étape sera complétée.<br>
+<br>
+{{/if}}
+{{/if}}
+{{else}}
+<!-- Candidat NON Uber ou qui a payé lui-même -->
 {{#if remboursement_cma_choice_remboursement}}
 <!-- CAS 1: Le candidat a confirmé son choix = REMBOURSEMENT -->
 <b>Suite à votre choix de remboursement</b><br>
@@ -54,5 +74,6 @@ Vous avez <b>deux options</b> :<br>
 <br>
 <b>Merci de nous indiquer quelle option vous préférez</b> afin que nous puissions adapter la suite de votre accompagnement.<br>
 <br>
+{{/if}}
 {{/if}}
 {{/if}}

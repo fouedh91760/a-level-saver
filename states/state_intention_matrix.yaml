@@ -365,6 +365,40 @@ intentions:
       - "ne fonctionne pas"
       - "problème document"
 
+  QUESTION_PERMIS_ETRANGER:
+    id: "I18a"
+    description: "Question sur permis de conduire étranger (hors zone Euro)"
+    triggers:
+      - "permis étranger"
+      - "permis algérien"
+      - "permis marocain"
+      - "permis tunisien"
+      - "permis africain"
+      - "échange de permis"
+      - "permis hors europe"
+      - "permis non européen"
+
+  QUESTION_CARTE_SEJOUR:
+    id: "I18b"
+    description: "Question sur carte de séjour (expirée, récépissé)"
+    triggers:
+      - "carte de séjour"
+      - "titre de séjour"
+      - "carte séjour expirée"
+      - "récépissé"
+      - "renouvellement carte"
+
+  QUESTION_HEBERGEMENT:
+    id: "I18c"
+    description: "Question sur justificatif de domicile quand hébergé"
+    triggers:
+      - "hébergé"
+      - "hébergement"
+      - "attestation hébergement"
+      - "chez mes parents"
+      - "chez un ami"
+      - "pas de facture à mon nom"
+
   CONFIRMATION_PAIEMENT:
     id: "I19"
     description: "Question sur le paiement"
@@ -2085,6 +2119,27 @@ matrix:
     context_flags:
       intention_document_question: true
       show_statut_section: true
+
+  "*:QUESTION_PERMIS_ETRANGER":
+    template: "response_master.html"
+    description: "Question sur permis étranger - échange obligatoire si hors zone Euro"
+    context_flags:
+      intention_question_permis_etranger: true
+      show_statut_section: false
+
+  "*:QUESTION_CARTE_SEJOUR":
+    template: "response_master.html"
+    description: "Question sur carte de séjour expirée - récépissé obligatoire"
+    context_flags:
+      intention_question_carte_sejour: true
+      show_statut_section: false
+
+  "*:QUESTION_HEBERGEMENT":
+    template: "response_master.html"
+    description: "Question sur justificatif de domicile quand hébergé"
+    context_flags:
+      intention_question_hebergement: true
+      show_statut_section: false
 
   "*:DEMANDE_IDENTIFIANTS":
     template: "response_master.html"

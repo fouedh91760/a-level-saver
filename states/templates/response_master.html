@@ -80,6 +80,9 @@
      (Masqué pour Uber CAS A - tout est déjà dans le partial cas_a_docs_manquants)
      ===================================================================== -->
 {{#unless uber_cas_a}}
+{{#if intention_reclamation}}
+{{> partials/intentions/reclamation}}
+{{/if}}
 {{#if intention_statut_dossier}}
 {{> partials/intentions/statut_dossier}}
 {{/if}}
@@ -121,6 +124,15 @@
 {{/if}}
 {{#if intention_document_question}}
 {{> partials/intentions/document_question}}
+{{/if}}
+{{#if intention_question_permis_etranger}}
+{{> partials/documents/permis_etranger}}
+{{/if}}
+{{#if intention_question_carte_sejour}}
+{{> partials/documents/carte_sejour_expiree}}
+{{/if}}
+{{#if intention_question_hebergement}}
+{{> partials/documents/hebergement}}
 {{/if}}
 {{#if intention_resultat_examen}}
 {{> partials/intentions/resultat_examen}}

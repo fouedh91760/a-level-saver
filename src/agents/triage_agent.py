@@ -187,6 +187,15 @@ INTENTIONS POSSIBLES (par ordre de spécificité - préfère les intentions spé
   ⚠️ Action: Si Date_Dossier_reçu VIDE → GO + intention TRANSMET_DOCUMENTS (envoi initial, on gère dans DOC)
 - SIGNALE_PROBLEME_DOCS: Problème technique lors de l'upload des documents
   Exemples: "erreur lors de l'envoi", "impossible de télécharger", "bug sur le site"
+- QUESTION_PERMIS_ETRANGER: Question sur permis de conduire étranger (hors zone Euro)
+  Exemples: "j'ai un permis marocain", "permis algérien accepté?", "dois-je échanger mon permis", "permis étranger"
+  ⚠️ Seuls permis français ou européens (zone Euro) acceptés. Autres = échange de permis obligatoire
+- QUESTION_CARTE_SEJOUR: Question sur carte de séjour (expirée, récépissé)
+  Exemples: "ma carte de séjour est expirée", "j'ai un récépissé", "titre de séjour périmé"
+  ⚠️ Si expirée, récépissé de renouvellement OBLIGATOIRE pour s'inscrire
+- QUESTION_HEBERGEMENT: Question sur justificatif de domicile quand hébergé
+  Exemples: "je suis hébergé chez mes parents", "pas de facture à mon nom", "attestation d'hébergement"
+  ⚠️ Si facture mobile à son nom sur adresse hébergement = suffit. Sinon = attestation + pièce ID hébergeur
 - CONFIRMATION_PAIEMENT: Confirmation ou question sur le paiement
   Exemples: "j'ai payé", "paiement effectué", "facture", "preuve de paiement"
 

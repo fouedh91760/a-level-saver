@@ -1,5 +1,8 @@
 <!-- Partial: Réponse à l'intention DEMANDE_DATE_VISIO -->
 <!-- Candidat demande accès à ses 40 heures de formation visio -->
+<!-- NOTE: Si session_confirmed=true (via CONFIRMATION_SESSION), ce partial ne doit PAS redemander de choisir -->
+{{#unless session_confirmed}}
+{{#unless intention_confirmation_session}}
 <b>Concernant vos 40 heures de formation en visioconférence</b><br>
 {{#if session_assigned}}
 Votre session de formation est confirmée :<br>
@@ -34,3 +37,5 @@ Pour accéder à vos 40 heures de formation, nous devons d'abord confirmer votre
 Les sessions de formation sont planifiées en fonction de la date d'examen choisie.<br>
 {{/if}}
 {{/if}}
+{{/unless}}
+{{/unless}}

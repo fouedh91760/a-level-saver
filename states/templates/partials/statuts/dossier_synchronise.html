@@ -1,2 +1,19 @@
 <!-- Partial: Statut DOSSIER SYNCHRONISÉ -->
-Votre dossier est <b>en cours d'instruction</b> par la CMA. Les pièces sont en cours de vérification.<br>
+<!-- Terminologie ExamT3P : "en cours d'instruction" (jamais "Dossier Synchronisé") -->
+Votre dossier est <b>en cours d'instruction</b> par la CMA (Chambre des Métiers et de l'Artisanat).<br>
+{{#if num_dossier}}
+→ N° de dossier : {{num_dossier}}<br>
+{{/if}}
+{{#if date_examen}}
+→ Date d'examen prévue : <b>{{date_examen}}</b><br>
+{{/if}}
+<br>
+{{#if cab_paye_examen}}
+<!-- Candidat Uber/partenariat : CAB a payé -->
+Les frais d'inscription (241€) ont été réglés par CAB Formations dans le cadre de votre offre.<br>
+<br>
+{{/if}}
+<b>Ce qui se passe actuellement :</b><br>
+La CMA vérifie la conformité de vos documents. Ce processus prend généralement 5 à 10 jours ouvrés.<br>
+<br>
+<b>⚠️ Important :</b> La CMA peut demander des corrections sur certains documents. Dans ce cas, vous recevrez un email et devrez corriger{{#if date_cloture}} <b>avant le {{date_cloture}}</b> (date limite d'inscription){{/if}}.<br>

@@ -710,6 +710,7 @@ class TemplateEngine:
             # Identifiants ExamT3P
             'identifiant_examt3p': examt3p_data.get('identifiant', ''),
             'mot_de_passe_examt3p': examt3p_data.get('mot_de_passe', ''),
+            'connection_test_success': examt3p_data.get('connection_test_success', False),
 
             # Dates
             'date_examen': date_examen_formatted or '',
@@ -1025,7 +1026,13 @@ class TemplateEngine:
         # ================================================================
 
         # show_dates_section - Matrice prioritaire
-        if 'show_dates_section' in context:
+        # CAS SPÉCIAL: date_case == 2 (date passée + non validé) → forcer affichage des dates
+        # Le candidat n'a jamais été inscrit, la date CRM est "fantôme"
+        date_case = context.get('date_case')
+        if date_case == 2:
+            result['show_dates_section'] = bool(context.get('next_dates', []))
+            logger.info(f"📅 show_dates_section={result['show_dates_section']} (CAS 2: date passée non validée → proposer nouvelles dates)")
+        elif 'show_dates_section' in context:
             # La matrice a explicitement défini ce flag → le respecter
             result['show_dates_section'] = context['show_dates_section']
             logger.info(f"📅 show_dates_section={context['show_dates_section']} (défini par matrice)")
@@ -1156,7 +1163,12 @@ class TemplateEngine:
         'ERREUR_PAIEMENT_CMA': 'intention_erreur_paiement_cma',
         'QUESTION_EXAMEN_PRATIQUE': 'intention_question_examen_pratique',
         'PERMIS_RENOUVELLEMENT': 'intention_permis_renouvellement',
+        # Questions documents spécifiques
+        'QUESTION_PERMIS_ETRANGER': 'intention_question_permis_etranger',
+        'QUESTION_CARTE_SEJOUR': 'intention_question_carte_sejour',
+        'QUESTION_HEBERGEMENT': 'intention_question_hebergement',
         'PERMIS_PROBATOIRE': 'intention_permis_probatoire',
+        'RECLAMATION': 'intention_reclamation',
     }
 
     def _auto_map_intention_flags(self, context: Dict[str, Any]) -> Dict[str, bool]:
