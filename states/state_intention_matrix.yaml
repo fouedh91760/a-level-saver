@@ -280,6 +280,24 @@ intentions:
       - "période probatoire"
     priority: 80
 
+  # --- Permis en renouvellement ---
+  PERMIS_RENOUVELLEMENT:
+    id: "I40"
+    description: "Permis en cours de renouvellement, abîmé, volé ou perdu"
+    triggers:
+      - "nouveau permis"
+      - "renouvellement permis"
+      - "permis abîmé"
+      - "permis volé"
+      - "permis perdu"
+      - "en attente de mon permis"
+      - "ANTS"
+      - "récépissé"
+      - "refaire mon permis"
+      - "permis endommagé"
+      - "attendre mon nouveau permis"
+    priority: 80
+
   # --- Date lointaine ExamT3P ---
   DATE_LOINTAINE_EXAMT3P:
     id: "I39"
@@ -1549,6 +1567,13 @@ matrix:
     context_flags:
       intention_permis_probatoire: true
       show_dates_section: true
+
+  "*:PERMIS_RENOUVELLEMENT":
+    template: "response_master.html"
+    description: "Permis en renouvellement - ancien permis + récépissé ANTS acceptés"
+    context_flags:
+      intention_permis_renouvellement: true
+      show_statut_section: true
 
   "*:DATE_LOINTAINE_EXAMT3P":
     template: "response_master.html"

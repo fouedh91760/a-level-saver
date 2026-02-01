@@ -1017,8 +1017,18 @@ class TemplateEngine:
         elif not is_report_intention:
             result['show_dates_section'] = not date_examen and bool(context.get('next_dates', []))
 
-        # show_sessions_section - Matrice prioritaire
-        if 'show_sessions_section' in context:
+        # show_sessions_section - CONFIRMATION_SESSION et session existante ont priorité absolue
+        # Si le candidat a confirmé sa session OU si une session existe déjà, on ne propose JAMAIS d'autres sessions
+        session_already_exists = bool(enriched_lookups.get('session_name')) or bool(deal_data.get('Session'))
+        is_confirmation_intent = context.get('intention_confirmation_session') or context.get('primary_intent') == 'CONFIRMATION_SESSION'
+
+        if context.get('session_confirmed'):
+            result['show_sessions_section'] = False
+            logger.info("📚 show_sessions_section=False (session confirmée → priorité absolue)")
+        elif is_confirmation_intent and session_already_exists:
+            result['show_sessions_section'] = False
+            logger.info("📚 show_sessions_section=False (CONFIRMATION_SESSION + session déjà assignée)")
+        elif 'show_sessions_section' in context:
             # La matrice a explicitement défini ce flag → le respecter
             result['show_sessions_section'] = context['show_sessions_section']
             logger.info(f"📚 show_sessions_section={context['show_sessions_section']} (défini par matrice)")
@@ -1124,6 +1134,8 @@ class TemplateEngine:
         'DEMANDE_EXCEPTION': 'intention_demande_exception',
         'ERREUR_PAIEMENT_CMA': 'intention_erreur_paiement_cma',
         'QUESTION_EXAMEN_PRATIQUE': 'intention_question_examen_pratique',
+        'PERMIS_RENOUVELLEMENT': 'intention_permis_renouvellement',
+        'PERMIS_PROBATOIRE': 'intention_permis_probatoire',
     }
 
     def _auto_map_intention_flags(self, context: Dict[str, Any]) -> Dict[str, bool]:
@@ -1165,6 +1177,8 @@ class TemplateEngine:
             'intention_question_examen_pratique': False,
             'intention_demande_exception': False,
             'intention_erreur_paiement_cma': False,
+            'intention_permis_renouvellement': False,
+            'intention_permis_probatoire': False,
         }
 
         # Récupérer l'intention principale (rétrocompatibilité + nouveau format)

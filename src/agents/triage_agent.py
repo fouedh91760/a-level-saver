@@ -239,6 +239,9 @@ INTENTIONS POSSIBLES (par ordre de spécificité - préfère les intentions spé
   Exemples: "supprimer mes données", "droit à l'oubli"
 - PERMIS_PROBATOIRE: Question sur le permis probatoire (jeune permis < 3 ans)
   Exemples: "permis probatoire", "jeune permis", "moins de 3 ans de permis", "fin de probation"
+- PERMIS_RENOUVELLEMENT: Permis en cours de renouvellement, abîmé, volé ou perdu
+  Exemples: "nouveau permis", "renouvellement permis", "permis abîmé", "permis volé", "permis perdu", "en attente de mon permis", "ANTS", "récépissé"
+  ⚠️ Réponse: Ils peuvent utiliser l'ancien permis (même abîmé) + récépissé ANTS pour s'inscrire à l'examen
 - DATE_LOINTAINE_EXAMT3P: Le candidat ne peut pas choisir la date qu'il veut sur ExamT3P
   Exemples: "je ne peux pas choisir de date en juillet", "la date n'apparaît pas", "pas de date disponible en août"
   ⚠️ DIFFÉRENT de REPORT_DATE: ici le candidat CONSTATE une impossibilité, il ne DEMANDE pas un changement
