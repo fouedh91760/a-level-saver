@@ -790,6 +790,20 @@ class TemplateEngine:
             'session_is_soir': enriched_lookups.get('session_type') == 'soir',
             'compte_existe': context.get('compte_existe', False),
             'personal_account_warning': context.get('personal_account_warning', False),
+            # Erreur de saisie session (A5)
+            'session_assignment_error': context.get('session_assignment_error', False),
+            'session_error_dates': context.get('session_error_dates', ''),
+            'session_error_correct_year': context.get('session_error_correct_year'),
+            # Type de session d'origine (pour erreur de saisie - on garde la préférence)
+            'original_session_type': enriched_lookups.get('session_type'),  # 'jour' ou 'soir'
+            'original_session_type_text': 'cours du soir' if enriched_lookups.get('session_type') == 'soir' else ('cours du jour' if enriched_lookups.get('session_type') == 'jour' else ''),
+            # Correction automatique erreur d'année (session corrigée)
+            'session_year_error_corrected': context.get('session_year_error_corrected', False),
+            'session_year_error_corrected_name': context.get('session_year_error_corrected_name', ''),
+            'session_year_error_corrected_start': context.get('session_year_error_corrected_start', ''),
+            'session_year_error_corrected_end': context.get('session_year_error_corrected_end', ''),
+            'session_year_error_corrected_start_formatted': self._format_date(context.get('session_year_error_corrected_start', '')) if context.get('session_year_error_corrected_start') else '',
+            'session_year_error_corrected_end_formatted': self._format_date(context.get('session_year_error_corrected_end', '')) if context.get('session_year_error_corrected_end') else '',
             'can_modify_exam_date': context.get('can_modify_exam_date', True),
             'cloture_passed': context.get('cloture_passed', False),
             'deadline_passed_reschedule': context.get('deadline_passed_reschedule', False),
@@ -1052,10 +1066,23 @@ class TemplateEngine:
 
         # show_sessions_section - CONFIRMATION_SESSION et session existante ont priorité absolue
         # Si le candidat a confirmé sa session OU si une session existe déjà, on ne propose JAMAIS d'autres sessions
+        # EXCEPTION: session_assignment_error → la session existante est ERRONNÉE, on doit proposer les bonnes
         session_already_exists = bool(enriched_lookups.get('session_name')) or bool(deal_data.get('Session'))
         is_confirmation_intent = context.get('intention_confirmation_session') or context.get('primary_intent') == 'CONFIRMATION_SESSION'
+        has_session_assignment_error = context.get('session_assignment_error', False)
 
-        if context.get('session_confirmed'):
+        if has_session_assignment_error:
+            # Cas spécial: session erronée
+            if context.get('session_year_error_corrected'):
+                # Session auto-corrigée → PAS besoin de proposer des alternatives
+                result['show_sessions_section'] = False
+                logger.info("📚 show_sessions_section=False (session_year_error_corrected → confirmation directe)")
+            else:
+                # Erreur mais pas de correction auto → proposer les bonnes sessions
+                has_sessions = bool(self._flatten_session_options_filtered(context))
+                result['show_sessions_section'] = has_sessions
+                logger.info(f"📚 show_sessions_section={has_sessions} (session_assignment_error → proposer corrections)")
+        elif context.get('session_confirmed'):
             result['show_sessions_section'] = False
             logger.info("📚 show_sessions_section=False (session confirmée → priorité absolue)")
         elif is_confirmation_intent and session_already_exists:
@@ -2000,8 +2027,9 @@ class TemplateEngine:
         # AVANT cette date (on ne peut pas faire une formation après l'examen !)
         primary_intent = context.get('primary_intent') or context.get('detected_intent', '')
 
-        # Pour DEMANDE_CHANGEMENT_SESSION, filtrer par la date d'examen du candidat
-        if primary_intent == 'DEMANDE_CHANGEMENT_SESSION':
+        # Pour DEMANDE_CHANGEMENT_SESSION ou session_assignment_error, filtrer par la date d'examen du candidat
+        has_session_assignment_error = context.get('session_assignment_error', False)
+        if primary_intent == 'DEMANDE_CHANGEMENT_SESSION' or has_session_assignment_error:
             # Récupérer la date d'examen confirmée du candidat
             enriched_lookups = context.get('enriched_lookups', {})
             date_examen_raw = enriched_lookups.get('date_examen') or context.get('date_examen_raw', '')
@@ -2054,6 +2082,18 @@ class TemplateEngine:
                 logger.info(f"✅ Sessions filtrées selon préférence '{session_preference}': {len(filtered)}/{len(all_sessions)}")
                 return filtered
             logger.warning(f"⚠️ Aucune session '{session_preference}' trouvée, affichage de toutes les sessions")
+
+        # FILTRE 4: Pour session_assignment_error, filtrer par le type de session d'origine
+        # (la session erronée indique la préférence du candidat)
+        if has_session_assignment_error:
+            enriched_lookups = context.get('enriched_lookups', {})
+            original_type = enriched_lookups.get('session_type')  # 'jour' ou 'soir'
+            if original_type:
+                filtered = [s for s in all_sessions if s.get('type') == original_type]
+                if filtered:
+                    logger.info(f"✅ Sessions filtrées par type d'origine '{original_type}' (erreur saisie): {len(filtered)}/{len(all_sessions)}")
+                    return filtered
+                logger.warning(f"⚠️ Aucune session '{original_type}' trouvée avant examen, affichage de toutes les sessions")
 
         return all_sessions
 
@@ -2270,6 +2310,23 @@ class TemplateEngine:
                 if template_content:
                     rendered = self.pybars_renderer.render(template_content, alert_context)
                     return f"<hr>\n{rendered}\n<hr>"
+            return None
+
+        if alert_type == 'session_assignment_error':
+            # Utiliser pybars_renderer pour gérer le template Handlebars
+            if self.pybars_renderer:
+                alert_context = {
+                    'session_error_dates': alert.get('session_error_dates', ''),
+                    'session_end_date': alert.get('session_end_date', ''),
+                    'deal_created_date': alert.get('deal_created_date', ''),
+                    'correct_year': alert.get('correct_year'),
+                    'has_exam_date': bool(alert.get('date_examen_formatted')),
+                    'date_examen_formatted': alert.get('date_examen_formatted', '')
+                }
+                template_content = self._load_template('templates/partials/warnings/session_assignment_error.html')
+                if template_content:
+                    rendered = self.pybars_renderer.render(template_content, alert_context)
+                    return rendered  # Pas de <hr> car c'est le contenu principal
             return None
 
         return None

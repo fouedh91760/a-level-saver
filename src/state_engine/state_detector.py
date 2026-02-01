@@ -20,6 +20,8 @@ from datetime import datetime, date
 from typing import Dict, Any, Optional, List, Tuple
 from dataclasses import dataclass, field
 
+from src.utils.training_exam_consistency_helper import detect_session_assignment_error
+
 logger = logging.getLogger(__name__)
 
 # Chemin vers le fichier de configuration des états
@@ -387,6 +389,15 @@ class StateDetector:
         # Calculer can_modify_exam_date (règle B1)
         context['can_modify_exam_date'] = self._can_modify_exam_date(context)
 
+        # Détecter erreur de saisie session (A5)
+        session_error_data = detect_session_assignment_error(deal_data, enriched_lookups or {})
+        context['session_assignment_error'] = session_error_data.get('is_assignment_error', False)
+        context['session_error_data'] = session_error_data
+        if context['session_assignment_error']:
+            # Préparer les données pour le template
+            context['session_error_dates'] = session_error_data.get('session_name', '')
+            context['session_error_correct_year'] = session_error_data.get('correct_year')
+
         return context
 
     def _extract_date_examen(self, deal_data: Dict[str, Any]) -> Optional[str]:
@@ -507,6 +518,23 @@ class StateDetector:
                 'personal_account_email': context.get('personal_account_email', ''),
                 'cab_account_email': context.get('cab_account_email', ''),
                 'cab_payment_date': context.get('cab_payment_date', '')
+            })
+
+        # Alerte A5: Erreur de saisie session (session passée impossible)
+        if context.get('session_assignment_error') is True:
+            session_error_data = context.get('session_error_data', {})
+            alerts.append({
+                'type': 'session_assignment_error',
+                'id': 'A5',
+                'title': 'Erreur de saisie session détectée',
+                'template': 'partials/warnings/session_assignment_error.html',
+                'position': 'main_content',
+                'priority': 'warning',
+                'session_error_dates': session_error_data.get('session_name', ''),
+                'session_end_date': session_error_data.get('session_end_date_formatted', ''),
+                'deal_created_date': session_error_data.get('deal_created_date_formatted', ''),
+                'correct_year': session_error_data.get('correct_year'),
+                'error_type': session_error_data.get('error_type', 'unknown')
             })
 
         return alerts
@@ -703,6 +731,10 @@ class StateDetector:
         if 'personal_account_warning' in condition:
             return context.get('personal_account_warning') is True
 
+        # État A5: Erreur de saisie session (session passée impossible)
+        if 'session_assignment_error' in condition:
+            return context.get('session_assignment_error') is True
+
         return False
 
     def _match_examt3p_state(
@@ -868,6 +900,12 @@ class StateDetector:
         if state_name == 'DOSSIER_NOT_RECEIVED':
             if consistency_data.get('dossier_not_received') is True:
                 logger.debug(f"État {state_name} détecté via training_exam_consistency_data")
+                return True
+
+        # A5: Erreur de saisie session (session passée impossible)
+        if state_name == 'SESSION_ASSIGNMENT_ERROR':
+            if context.get('session_assignment_error') is True:
+                logger.info(f"⚠️ État {state_name} détecté: erreur de saisie session")
                 return True
 
         return False

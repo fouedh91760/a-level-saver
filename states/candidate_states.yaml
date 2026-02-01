@@ -303,6 +303,36 @@ states:
 
     crm_updates: null
 
+  # ---------------------------------------------------------------------------
+  # A5: ERREUR DE SAISIE SESSION (session passée impossible)
+  # ---------------------------------------------------------------------------
+  SESSION_ASSIGNMENT_ERROR:
+    id: "A5"
+    priority: 104
+    severity: "WARNING"  # Continue workflow mais signale l'erreur admin
+    description: "Session assignée dans le passé mais deal créé après - erreur de saisie admin"
+    category: "analysis"
+
+    detection:
+      method: "training_exam_consistency_helper"
+      condition: "session_assignment_error == true"
+
+    workflow:
+      action: "RESPOND_WITH_ALERT"
+      alert_internal: true  # Notifier l'équipe interne
+      propose_session_change: true
+
+    response:
+      generate: true
+      template: "response_master.html"
+      alert_template: "partials/alerts/session_assignment_error.html"
+      alert_position: "main_content"
+      context_flags:
+        session_assignment_error: true
+        show_session_options: true
+
+    crm_updates: null  # La correction doit être faite manuellement
+
 # =============================================================================
 # ÉTATS ÉLIGIBILITÉ UBER (Priorité 200-299)
 # =============================================================================

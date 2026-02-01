@@ -4,12 +4,17 @@ Helper pour gérer la cohérence entre les dates de formation et d'examen.
 Cas critiques détectés:
 1. Formation manquée + Examen imminent → Proposer 2 options au candidat
 2. Formation proposée APRÈS examen → ERREUR LOGIQUE à éviter
+3. Session assignée avant création opportunité → ERREUR DE SAISIE ADMIN
 
 Règles métier:
 - Report d'examen possible UNIQUEMENT pour force majeure (certificat médical, décès, etc.)
 - Ne pas avoir suivi la formation ≠ force majeure
 - Si e-learning complété, l'examen peut être maintenu
 - En cas de report, la CMA positionne sur la prochaine date disponible
+
+Détection erreur de saisie session:
+- Si session_end_date < deal_created_date → ERREUR (impossible d'avoir participé)
+- Si session_end_date >= deal_created_date ET session_end_date < today → Formation passée normale
 """
 import logging
 import re
@@ -443,3 +448,228 @@ def check_session_dates_consistency(
             continue
 
     return result
+
+
+def detect_session_assignment_error(
+    deal_data: Dict,
+    enriched_lookups: Dict
+) -> Dict:
+    """
+    Détecte si la session assignée est une ERREUR DE SAISIE.
+
+    Logique:
+    - Si la session se termine AVANT la date de création du deal
+      → ERREUR DE SAISIE (impossible que le candidat y ait participé)
+    - Si la session se termine APRÈS la date de création mais dans le passé
+      → Formation passée normale (le candidat a pu y participer)
+
+    Args:
+        deal_data: Données du deal CRM (contient Created_Time)
+        enriched_lookups: Données enrichies (contient session_date_fin)
+
+    Returns:
+        {
+            'is_assignment_error': bool,
+            'session_name': str or None,
+            'session_end_date': str or None,
+            'deal_created_date': str or None,
+            'days_difference': int or None,  # Nombre de jours entre fin session et création deal
+            'correct_year': int or None,  # Année probable correcte (si erreur d'année)
+        }
+    """
+    from src.utils.date_utils import parse_date_flexible
+
+    result = {
+        'is_assignment_error': False,
+        'session_name': None,
+        'session_end_date': None,
+        'session_end_date_formatted': None,
+        'deal_created_date': None,
+        'deal_created_date_formatted': None,
+        'days_difference': None,
+        'correct_year': None,
+        'error_type': None,  # 'wrong_year', 'wrong_session', etc.
+    }
+
+    # 1. Vérifier si une session est assignée
+    session_end = enriched_lookups.get('session_date_fin')
+    session_name = enriched_lookups.get('session_name')
+
+    if not session_end:
+        logger.debug("  ℹ️ Pas de session assignée - pas d'erreur possible")
+        return result
+
+    result['session_name'] = session_name
+    result['session_end_date'] = session_end
+
+    # 2. Récupérer la date de création du deal
+    deal_created_raw = deal_data.get('Created_Time')
+    if not deal_created_raw:
+        logger.warning("  ⚠️ Pas de date de création du deal")
+        return result
+
+    # 3. Parser les dates
+    try:
+        session_end_date = parse_date_flexible(session_end)
+        deal_created_date = parse_date_flexible(deal_created_raw)
+
+        if not session_end_date or not deal_created_date:
+            logger.warning(f"  ⚠️ Impossible de parser les dates: session={session_end}, deal={deal_created_raw}")
+            return result
+
+        result['session_end_date_formatted'] = session_end_date.strftime("%d/%m/%Y")
+        result['deal_created_date_formatted'] = deal_created_date.strftime("%d/%m/%Y")
+        result['deal_created_date'] = deal_created_date.strftime("%Y-%m-%d")
+
+    except Exception as e:
+        logger.error(f"  ❌ Erreur parsing dates: {e}")
+        return result
+
+    # 4. Comparer les dates
+    days_diff = (deal_created_date - session_end_date).days
+    result['days_difference'] = days_diff
+
+    # Si le deal a été créé APRÈS la fin de la session → ERREUR
+    if days_diff > 0:
+        result['is_assignment_error'] = True
+        logger.warning(
+            f"  🚨 ERREUR DE SAISIE SESSION détectée: "
+            f"Session '{session_name}' terminée le {result['session_end_date_formatted']} "
+            f"mais deal créé le {result['deal_created_date_formatted']} "
+            f"({days_diff} jours APRÈS)"
+        )
+
+        # Déterminer le type d'erreur
+        session_year = session_end_date.year
+        deal_year = deal_created_date.year
+
+        if deal_year - session_year >= 1:
+            # Erreur d'année probable (ex: mars 2024 au lieu de mars 2026)
+            result['error_type'] = 'wrong_year'
+            result['correct_year'] = deal_year
+            # Ou l'année suivante si on est en fin d'année
+            if deal_created_date.month >= 10 and session_end_date.month <= 3:
+                result['correct_year'] = deal_year + 1
+            # Extraire le mois de la session erronée pour trouver l'équivalente
+            result['wrong_session_month'] = session_end_date.month
+            result['wrong_session_type'] = enriched_lookups.get('session_type')  # 'jour' ou 'soir'
+            logger.info(f"  💡 Erreur d'année probable: {session_year} → {result['correct_year']} (mois: {session_end_date.month}, type: {result['wrong_session_type']})")
+        else:
+            result['error_type'] = 'wrong_session'
+    else:
+        logger.debug(
+            f"  ✅ Session OK: Deal créé {abs(days_diff)} jours AVANT la fin de session"
+        )
+
+    return result
+
+
+def find_corrected_session_for_year_error(
+    session_error_data: Dict,
+    exam_date: str,
+    crm_client
+) -> Optional[Dict]:
+    """
+    Trouve la session corrigée quand l'erreur est une mauvaise année.
+
+    Ex: Session mars 2024 soir assignée → trouver mars 2026 soir
+
+    Args:
+        session_error_data: Résultat de detect_session_assignment_error
+        exam_date: Date d'examen (format YYYY-MM-DD)
+        crm_client: Client CRM pour chercher les sessions
+
+    Returns:
+        Dict avec la session corrigée ou None si pas trouvée
+        {
+            'id': str,
+            'Name': str,
+            'session_type': str,
+            'date_debut': str,
+            'date_fin': str,
+        }
+    """
+    from src.utils.date_utils import parse_date_flexible
+
+    if session_error_data.get('error_type') != 'wrong_year':
+        logger.debug("  ℹ️ Pas une erreur d'année - pas de correction automatique")
+        return None
+
+    correct_year = session_error_data.get('correct_year')
+    wrong_month = session_error_data.get('wrong_session_month')
+    session_type = session_error_data.get('wrong_session_type')  # 'jour' ou 'soir'
+
+    if not all([correct_year, wrong_month, session_type]):
+        logger.warning(f"  ⚠️ Données insuffisantes pour correction: year={correct_year}, month={wrong_month}, type={session_type}")
+        return None
+
+    # Parser la date d'examen pour filtrer les sessions qui se terminent avant
+    exam_date_parsed = parse_date_flexible(exam_date)
+    if not exam_date_parsed:
+        logger.warning(f"  ⚠️ Impossible de parser la date d'examen: {exam_date}")
+        return None
+
+    logger.info(f"  🔍 Recherche session corrigée: mois={wrong_month}, type={session_type}, année={correct_year}")
+
+    try:
+        # Construire la plage de dates pour le mois cible
+        # Ex: mars 2026 → chercher sessions dont Date_fin est entre 01/03/2026 et 31/03/2026
+        from datetime import date
+        import calendar
+
+        last_day = calendar.monthrange(correct_year, wrong_month)[1]
+        month_start = date(correct_year, wrong_month, 1)
+        month_end = date(correct_year, wrong_month, last_day)
+
+        # Chercher les sessions Uber (VISIO Zoom VTC) du bon type qui se terminent dans le bon mois
+        # et AVANT la date d'examen
+        sessions = crm_client.get_records(
+            'Sessions1',
+            fields=['Name', 'Date_d_but', 'Date_fin', 'session_type', 'Lieu_de_formation'],
+            per_page=200
+        )
+
+        matching_sessions = []
+        for s in sessions:
+            # Vérifier le type (jour/soir)
+            if s.get('session_type') != session_type:
+                continue
+
+            # Vérifier que c'est une session Uber (VISIO)
+            lieu = s.get('Lieu_de_formation', '')
+            if 'VISIO' not in str(lieu).upper():
+                continue
+
+            # Vérifier la date de fin
+            date_fin_str = s.get('Date_fin')
+            if not date_fin_str:
+                continue
+
+            date_fin = parse_date_flexible(date_fin_str)
+            if not date_fin:
+                continue
+
+            # Doit être dans le bon mois ET avant l'examen
+            if date_fin.month == wrong_month and date_fin.year == correct_year:
+                if date_fin.date() < exam_date_parsed.date():
+                    matching_sessions.append({
+                        'id': s.get('id'),
+                        'Name': s.get('Name'),
+                        'session_type': s.get('session_type'),
+                        'date_debut': s.get('Date_d_but'),
+                        'date_fin': s.get('Date_fin'),
+                    })
+
+        if matching_sessions:
+            # Prendre la session la plus proche de l'examen (dernière du mois)
+            matching_sessions.sort(key=lambda x: x.get('date_fin', ''), reverse=True)
+            best_match = matching_sessions[0]
+            logger.info(f"  ✅ Session corrigée trouvée: {best_match['Name']} ({best_match['date_debut']} - {best_match['date_fin']})")
+            return best_match
+        else:
+            logger.warning(f"  ⚠️ Aucune session {session_type} trouvée pour {wrong_month}/{correct_year} avant examen {exam_date}")
+            return None
+
+    except Exception as e:
+        logger.error(f"  ❌ Erreur lors de la recherche de session corrigée: {e}")
+        return None

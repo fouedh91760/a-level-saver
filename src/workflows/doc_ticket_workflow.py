@@ -564,6 +564,17 @@ Le candidat demande sa convocation mais la date d'examen dans Zoho CRM est dans 
                     ai_updates['Preference_horaire'] = corrected_session_type
                 result['cab_error_correction_update'] = True
 
+            # SESSION YEAR ERROR CORRECTION: Erreur d'année (mars 2024 → mars 2026)
+            if analysis_result.get('session_year_error_corrected') and analysis_result.get('session_year_error_corrected_id'):
+                corrected_session_id = analysis_result['session_year_error_corrected_id']
+                corrected_session_name = analysis_result.get('session_year_error_corrected_name', '')
+                corrected_session_type = analysis_result.get('session_year_error_corrected_type', '')
+                logger.info(f"  📚 SESSION YEAR ERROR CORRECTION: Session corrigée → {corrected_session_name} (ID: {corrected_session_id})")
+                ai_updates['Session'] = corrected_session_id
+                if corrected_session_type:
+                    ai_updates['Preference_horaire'] = corrected_session_type
+                result['session_year_error_correction_update'] = True
+
             has_ai_updates = bool(ai_updates)
             scenario_requires_update = response_result.get('requires_crm_update')
 
@@ -1864,6 +1875,14 @@ Deux comptes ExamenT3P fonctionnels ont été détectés pour ce candidat, et le
         current_session = deal_data.get('Session')
         session_is_empty = not current_session
 
+        # Détecter erreur de saisie session (session passée impossible)
+        from src.utils.training_exam_consistency_helper import detect_session_assignment_error
+        session_error_check = detect_session_assignment_error(deal_data, enriched_lookups)
+        has_session_assignment_error = session_error_check.get('is_assignment_error', False)
+        session_year_error_corrected = None  # Session corrigée si erreur d'année
+        if has_session_assignment_error:
+            logger.warning(f"  🚨 ERREUR SAISIE SESSION détectée: {session_error_check.get('session_name')} (créé {session_error_check.get('days_difference')} jours après)")
+
         # ================================================================
         # LOGIQUE PRIORITÉ DATES POUR SESSIONS:
         # ================================================================
@@ -1921,6 +1940,10 @@ Deux comptes ExamenT3P fonctionnels ont été détectés pour ce candidat, et le
             # CAS 4: Pas de nouvelles dates, mais date existante et session vide
             exam_dates_for_session = [date_examen_info]
             logger.info("  📚 Session vide mais date examen assignée - recherche sessions correspondantes...")
+        elif has_session_assignment_error and has_assigned_date:
+            # CAS 5: Erreur de saisie session → proposer sessions pour la date d'examen assignée
+            exam_dates_for_session = [date_examen_info]
+            logger.info(f"  📚 ERREUR SAISIE SESSION → recherche sessions avant date examen {date_examen_info.get('Date_Examen')}")
         else:
             exam_dates_for_session = []
 
@@ -1933,7 +1956,7 @@ Deux comptes ExamenT3P fonctionnels ont été détectés pour ce candidat, et le
         should_analyze_sessions = (
             not skip_date_session_analysis
             and (exam_dates_for_session or has_specific_dates or is_session_complaint)  # Permettre le matching même sans dates d'examen, ou sur plainte
-            and (date_examen_vtc_result.get('should_include_in_response') or session_is_empty or is_report_date or is_session_change_request)
+            and (date_examen_vtc_result.get('should_include_in_response') or session_is_empty or is_report_date or is_session_change_request or has_session_assignment_error)
         )
 
         if should_analyze_sessions:
@@ -1999,6 +2022,48 @@ Deux comptes ExamenT3P fonctionnels ont été détectés pour ce candidat, et le
                 logger.info(f"  ➡️ Préférence détectée: {session_data['session_preference']}")
             if session_data.get('proposed_options'):
                 logger.info(f"  ✅ {len(session_data['proposed_options'])} option(s) de session proposée(s)")
+
+            # ================================================================
+            # CORRECTION AUTOMATIQUE ERREUR D'ANNÉE (mars 2024 → mars 2026)
+            # ================================================================
+            if has_session_assignment_error and session_error_check.get('error_type') == 'wrong_year':
+                wrong_month = session_error_check.get('wrong_session_month')
+                session_type = session_error_check.get('wrong_session_type')  # 'jour' ou 'soir'
+                proposed = session_data.get('proposed_options', [])
+
+                if proposed and wrong_month and session_type:
+                    logger.info(f"  🔍 Recherche session corrigée: mois={wrong_month}, type={session_type}")
+                    from src.utils.date_utils import parse_date_flexible
+
+                    # Extraire toutes les sessions de proposed_options (structure imbriquée)
+                    all_sessions = []
+                    for opt in proposed:
+                        sessions_list = opt.get('sessions', [])
+                        all_sessions.extend(sessions_list)
+
+                    # Chercher la session qui correspond au même mois
+                    best_match = None
+                    for sess in all_sessions:
+                        date_fin_str = sess.get('Date_fin')
+                        if date_fin_str:
+                            date_fin = parse_date_flexible(date_fin_str)
+                            if date_fin and date_fin.month == wrong_month:
+                                best_match = sess
+                                break
+
+                    # Si pas de match exact sur le mois, prendre la première session disponible
+                    if not best_match and all_sessions:
+                        best_match = all_sessions[0]
+
+                    if best_match:
+                        session_year_error_corrected = {
+                            'id': best_match.get('id'),
+                            'Name': best_match.get('Name'),
+                            'session_type': best_match.get('session_type'),
+                            'date_debut': best_match.get('Date_d_but'),
+                            'date_fin': best_match.get('Date_fin'),
+                        }
+                        logger.info(f"  ✅ SESSION CORRIGÉE AUTOMATIQUEMENT: {session_year_error_corrected.get('Name')} ({session_year_error_corrected.get('date_debut')} - {session_year_error_corrected.get('date_fin')})")
 
             # ================================================================
             # VÉRIFICATION PLAINTE SESSION (erreur CAB)
@@ -2167,6 +2232,16 @@ Deux comptes ExamenT3P fonctionnels ont été détectés pour ce candidat, et le
             'cab_error_corrected_session_id': session_data.get('cab_error_corrected_session_id') if session_data else None,
             'cab_error_corrected_session_name': session_data.get('cab_error_corrected_session_name') if session_data else None,
             'cab_error_corrected_session_type': session_data.get('cab_error_corrected_session_type') if session_data else None,
+            # Erreur de saisie session (A5) - session passée impossible
+            'session_assignment_error': has_session_assignment_error,
+            'session_error_data': session_error_check if has_session_assignment_error else {},
+            # Correction automatique erreur d'année (session mars 2024 → mars 2026)
+            'session_year_error_corrected': session_year_error_corrected is not None,
+            'session_year_error_corrected_id': session_year_error_corrected.get('id') if session_year_error_corrected else None,
+            'session_year_error_corrected_name': session_year_error_corrected.get('Name') if session_year_error_corrected else None,
+            'session_year_error_corrected_type': session_year_error_corrected.get('session_type') if session_year_error_corrected else None,
+            'session_year_error_corrected_start': session_year_error_corrected.get('date_debut') if session_year_error_corrected else None,
+            'session_year_error_corrected_end': session_year_error_corrected.get('date_fin') if session_year_error_corrected else None,
         }
 
     def _match_session_by_confirmed_dates(
@@ -2490,6 +2565,7 @@ L'équipe CAB Formations"""
         deal_data = analysis_result.get('deal_data', {})
         examt3p_data = analysis_result.get('examt3p_data', {})
         threads_data = analysis_result.get('threads', [])
+        enriched_lookups = analysis_result.get('enriched_lookups', {})
 
         # Build linking_result from analysis data
         linking_result = {
@@ -2506,7 +2582,8 @@ L'équipe CAB Formations"""
             examt3p_data=examt3p_data,
             triage_result=triage_result,
             linking_result=linking_result,
-            threads_data=threads_data
+            threads_data=threads_data,
+            enriched_lookups=enriched_lookups
         )
 
         # Pour rétrocompatibilité, on utilise primary_state comme référence principale
@@ -2648,6 +2725,14 @@ L'équipe CAB Formations"""
             'matched_session_type': analysis_result.get('matched_session_type'),
             'matched_session_start': analysis_result.get('matched_session_start'),
             'matched_session_end': analysis_result.get('matched_session_end'),
+
+            # Erreur de saisie session corrigée automatiquement (erreur d'année)
+            'session_assignment_error': analysis_result.get('session_assignment_error', False),
+            'session_error_dates': analysis_result.get('session_error_data', {}).get('session_name', ''),
+            'session_year_error_corrected': analysis_result.get('session_year_error_corrected', False),
+            'session_year_error_corrected_name': analysis_result.get('session_year_error_corrected_name', ''),
+            'session_year_error_corrected_start': analysis_result.get('session_year_error_corrected_start', ''),
+            'session_year_error_corrected_end': analysis_result.get('session_year_error_corrected_end', ''),
 
             # Uber
             'is_uber_20_deal': uber_result.get('is_uber_20_deal', False),

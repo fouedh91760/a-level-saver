@@ -1,0 +1,46 @@
+<!-- Partial: Erreur de saisie session détectée (A5) -->
+<b>Concernant vos dates de formation</b><br>
+<br>
+Vous avez raison de nous signaler cette incohérence. Les dates que vous avez reçues ({{session_error_dates}}) correspondent à une erreur de saisie de notre part - nous avions sélectionné la mauvaise année.<br>
+<br>
+<b>Veuillez nous excuser pour cette confusion.</b><br>
+<br>
+{{#if session_year_error_corrected}}
+{{!-- Correction automatique: même mois, bonne année --}}
+Nous avons corrigé votre dossier. <b>Votre session de formation est maintenant confirmée :</b><br>
+→ <b>{{original_session_type_text}}</b> : du {{session_year_error_corrected_start_formatted}} au {{session_year_error_corrected_end_formatted}}<br>
+<br>
+Vous recevrez le lien d'invitation à la visioconférence par email avant le début de la formation.<br>
+{{else}}
+{{!-- Pas de correction automatique possible: proposer les sessions disponibles --}}
+{{#if has_exam_date}}
+Votre examen est prévu le <b>{{date_examen_formatted}}</b>.
+{{/if}}
+{{#if original_session_type}}
+Nous avons bien noté votre préférence initiale pour les <b>{{original_session_type_text}}</b>.<br>
+<br>
+{{#if has_sessions_proposees}}
+<b>Voici les sessions {{original_session_type_text}} disponibles avant votre examen :</b><br>
+{{#each sessions_proposees}}
+{{#if this.is_jour}}
+→ <b>Cours du jour</b> : du {{this.date_debut}} au {{this.date_fin}}<br>
+{{/if}}
+{{#if this.is_soir}}
+→ <b>Cours du soir</b> : du {{this.date_debut}} au {{this.date_fin}}<br>
+{{/if}}
+{{/each}}
+<br>
+<b>Merci de nous confirmer la session qui vous convient</b> et nous corrigerons immédiatement votre dossier. Vous recevrez ensuite le lien d'invitation à la visioconférence par email.<br>
+{{else}}
+Malheureusement, il n'y a plus de sessions {{original_session_type_text}} disponibles qui se terminent avant votre date d'examen ({{date_examen_formatted}}).<br>
+<br>
+<b>Souhaitez-vous passer en cours du {{#if session_is_soir}}jour{{else}}soir{{/if}} à la place ?</b> Nous vous proposerons alors les sessions disponibles.<br>
+{{/if}}
+{{else}}
+<b>Merci de nous indiquer votre préférence :</b><br>
+→ <b>Cours du jour</b> : formation intensive sur 1 semaine (9h-17h)<br>
+→ <b>Cours du soir</b> : formation sur 2 semaines pour les personnes en activité (18h-22h)<br>
+<br>
+Dès réception de votre choix, nous corrigerons votre dossier et vous recevrez une nouvelle confirmation avec les bonnes dates.<br>
+{{/if}}
+{{/if}}

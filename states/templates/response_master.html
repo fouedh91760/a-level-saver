@@ -74,6 +74,9 @@
 {{#if credentials_inconnus}}
 {{> partials/credentials/inconnus}}
 {{/if}}
+{{#if session_assignment_error}}
+{{> partials/warnings/session_assignment_error}}
+{{/if}}
 
 <!-- =====================================================================
      SECTION 1: RÉPONDRE À L'INTENTION DU CANDIDAT
@@ -96,7 +99,9 @@
 {{> partials/intentions/confirmation_session}}
 {{/if}}
 {{#if intention_demande_changement_session}}
+{{#unless session_assignment_error}}
 {{> partials/intentions/demande_changement_session}}
+{{/unless}}
 {{/if}}
 {{#if intention_demande_convocation}}
 {{> partials/intentions/demande_convocation}}
@@ -141,7 +146,9 @@
 {{> partials/intentions/question_uber}}
 {{/if}}
 {{#if intention_question_session}}
+{{#unless session_assignment_error}}
 {{> partials/intentions/question_session}}
+{{/unless}}
 {{/if}}
 {{#if intention_question_processus}}
 {{> partials/intentions/question_processus}}
