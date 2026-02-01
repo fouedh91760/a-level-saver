@@ -1,16 +1,21 @@
 <!-- Partial: Action COMPLÉTER LE DOSSIER -->
-{{#if identifiant_examt3p}}
-{{#if previously_asked_to_complete}}
-Connectez-vous sur <a href="https://www.exament3p.fr">exament3p.fr</a> pour finaliser votre dossier :<br>
+<!-- S'affiche uniquement si EXAM_INCLUS = Non (candidat gère lui-même) -->
+Pour finaliser votre inscription à l'examen VTC, vous devez créer votre compte sur <a href="https://www.exament3p.fr">ExamT3P</a> et compléter votre dossier.<br>
 <br>
-→ Identifiant : <b>{{identifiant_examt3p}}</b><br>
-→ Mot de passe : <b>{{mot_de_passe_examt3p}}</b><br>
+<b>Étape 1 — Créer votre compte et télécharger vos documents</b><br>
+Rendez-vous sur <a href="https://www.exament3p.fr">ExamT3P</a> pour créer votre compte et télécharger les documents suivants :<br>
+{{> partials/common/liste_documents_requis}}
 <br>
-Vérifiez que toutes vos pièces sont bien téléchargées et validez votre dossier.<br>
-{{else}}
-<!-- Pas de demande précédente + credentials valides = on gère, pas d'action pour le candidat -->
-{{/if}}
-{{else}}
-Connectez-vous sur <a href="https://www.exament3p.fr">exament3p.fr</a> pour compléter votre dossier.<br>
-Vérifiez que toutes vos pièces sont bien téléchargées et validez votre dossier.<br>
-{{/if}}
+<b>Étape 2 — Choisir votre date d'examen et payer</b><br>
+Une fois vos documents validés (coche verte), vous pourrez :<br>
+→ Choisir votre département et votre date d'examen<br>
+→ Procéder au paiement des frais d'inscription (<b>241€</b>)<br>
+<br>
+<b>Étape 3 — Nous transmettre vos informations</b><br>
+Pour que nous puissions assurer le suivi de votre dossier, merci de nous communiquer par retour de mail :<br>
+→ Votre <b>identifiant ExamT3P</b> (email utilisé)<br>
+→ Votre <b>mot de passe ExamT3P</b><br>
+→ Le <b>département</b> choisi pour l'examen<br>
+→ La <b>date d'examen</b> sélectionnée<br>
+<br>
+<i>Sans ces informations, nous ne pourrons pas suivre l'avancement de votre dossier ni vous accompagner efficacement.</i><br>

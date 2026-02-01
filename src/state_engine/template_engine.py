@@ -406,26 +406,28 @@ class TemplateEngine:
                     self._inject_context_flags(config, context, state, "PASS 4")
                     return template_key, config
 
-        # PASS 5: Evalbox (le plus courant)
-        for template_key, config in self.base_templates.items():
-            if 'for_evalbox' in config:
-                if evalbox == config['for_evalbox']:
-                    self._inject_context_flags(config, context, state, "PASS 5")
-                    return template_key, config
+        # PASS 5: DÉSACTIVÉ - Plus de fallback vers templates legacy (for_evalbox)
+        # Règle 14: JAMAIS de fallback legacy - tout doit passer par response_master.html
+        # Les anciens templates base_legacy/ sont obsolètes
+        # for template_key, config in self.base_templates.items():
+        #     if 'for_evalbox' in config:
+        #         if evalbox == config['for_evalbox']:
+        #             self._inject_context_flags(config, context, state, "PASS 5")
+        #             return template_key, config
 
-        # Fallback: chercher par nom d'état normalisé
-        state_name_normalized = state.name.lower().replace('_', '-')
-        for template_key, config in self.base_templates.items():
-            if template_key.lower() == state_name_normalized:
-                self._inject_context_flags(config, context, state, "Fallback by name")
-                return template_key, config
+        # Fallback by name: DÉSACTIVÉ - Plus de fallback vers templates legacy
+        # state_name_normalized = state.name.lower().replace('_', '-')
+        # for template_key, config in self.base_templates.items():
+        #     if template_key.lower() == state_name_normalized:
+        #         self._inject_context_flags(config, context, state, "Fallback by name")
+        #         return template_key, config
 
-        # FALLBACK FINAL: Utiliser response_master.html avec auto-mapping des intentions
-        # Cela permet de gérer TOUS les états sans créer ~200 entrées manuelles
-        logger.info(f"📝 Fallback vers response_master.html pour {state.name}")
+        # FALLBACK FINAL: TOUJOURS utiliser response_master.html
+        # Architecture moderne : matrice STATE:INTENTION + response_master.html
+        logger.info(f"📝 Utilisation de response_master.html pour {state.name}:{intention}")
         return 'response_master', {
             'file': 'templates/response_master.html',
-            'description': f'Template master générique pour {state.name}',
+            'description': f'Template master pour {state.name}',
         }
 
     def _inject_context_flags(
@@ -776,6 +778,10 @@ class TemplateEngine:
                 context.get('compte_uber', False) and
                 context.get('eligible_uber', False)
             ),
+            # Frais d'examen : si "Oui", CAB paye les 241€ (Uber, partenariats, etc.)
+            # Champ CRM: EXAM_INCLUS (picklist: Oui/Non/N/A)
+            'exam_inclus': deal_data.get('EXAM_INCLUS', '') == 'Oui',
+            'cab_paye_examen': deal_data.get('EXAM_INCLUS', '') == 'Oui',
             'can_choose_other_department': context.get('can_choose_other_department', False) or not context.get('compte_existe', True),
             'session_assigned': context.get('session_assigned', False),
             'compte_existe': context.get('compte_existe', False),
@@ -1255,6 +1261,10 @@ class TemplateEngine:
         is_uber_20 = context.get('is_uber_20_deal', False)
         uber_case = context.get('uber_case', '')
 
+        # EXAM_INCLUS = Oui → CAB gère (compte, docs, paiement)
+        deal_data = context.get('deal_data', {})
+        cab_paye_examen = deal_data.get('EXAM_INCLUS', '') == 'Oui'
+
         # États bloquants Uber - Utiliser uber_case pour éviter les incohérences
         # uber_case est déterminé par StateDetector qui gère la logique J+1 et verification pending
         if is_uber_20 and uber_case:
@@ -1305,24 +1315,29 @@ class TemplateEngine:
                 return actions
 
         # Actions selon Evalbox
-        if evalbox == 'Dossier crée':
+        # Si EXAM_INCLUS = Non (candidat gère lui-même), il doit :
+        # 1. Créer son compte ExamT3P, 2. Upload docs, 3. Payer, 4. Nous informer
+        if not cab_paye_examen and evalbox in [
+            '', None, 'N/A', 'None',  # Pas de compte
+            'Dossier crée',            # Compte créé, docs en cours
+            'Documents refusés',       # Docs refusés
+            'Documents manquants',     # Docs incomplets
+            'Refusé CMA'               # Refus CMA
+        ]:
             actions['action_completer_dossier'] = True
             actions['has_required_action'] = True
         elif evalbox == 'Dossier Synchronisé':
             # Uber ELIGIBLE = CAB a déjà payé, pas de lien de paiement à surveiller
-            if not (is_uber_20 and uber_case == 'ELIGIBLE'):
+            if not cab_paye_examen:
                 actions['action_surveiller_paiement'] = True
                 actions['has_required_action'] = True
         elif evalbox in ['Pret a payer', 'Pret a payer par cheque']:
             # Uber ELIGIBLE = CAB a déjà payé, pas de paiement attendu
-            if not (is_uber_20 and uber_case == 'ELIGIBLE'):
+            if not cab_paye_examen:
                 actions['action_surveiller_paiement'] = True
                 actions['has_required_action'] = True
         elif evalbox == 'VALIDE CMA':
             actions['action_attendre_convocation'] = True
-            actions['has_required_action'] = True
-        elif evalbox == 'Refusé CMA':
-            actions['action_corriger_documents'] = True
             actions['has_required_action'] = True
         elif evalbox == 'Convoc CMA reçue':
             # Ne pas afficher "préparer examen" si l'examen est déjà passé

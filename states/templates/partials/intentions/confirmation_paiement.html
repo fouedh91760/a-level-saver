@@ -1,10 +1,13 @@
+{{!-- Partial: Confirmation paiement --}}
+{{!-- Si EXAM_INCLUS = Oui : CAB paye les 241€, pas de section paiement nécessaire --}}
+{{!-- Sinon : afficher infos sur le paiement du candidat --}}
+{{#unless cab_paye_examen}}
 <b>Concernant votre paiement</b><br>
-<br>
 {{#if paiement_cma_recu}}
-Nous avons bien recu confirmation de votre paiement aupres de la CMA. Votre dossier est en cours de traitement.<br>
+Nous avons bien reçu confirmation de votre paiement auprès de la CMA. Votre dossier est en cours de traitement.<br>
 {{else}}
-Pour verifier le statut de votre paiement, connectez-vous a votre espace ExamT3P avec vos identifiants.<br>
-<br>
-Si vous avez effectue le paiement recemment, veuillez patienter quelques jours pour que celui-ci soit pris en compte par la CMA.<br>
+Pour vérifier le statut de votre paiement, connectez-vous à votre espace ExamT3P avec vos identifiants.<br>
+Si vous avez effectué le paiement récemment, veuillez patienter quelques jours pour que celui-ci soit pris en compte par la CMA.<br>
 {{/if}}
 <br>
+{{/unless}}

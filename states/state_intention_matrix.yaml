@@ -2079,6 +2079,20 @@ matrix:
       intention_statut_dossier: true
       show_statut_section: true
 
+  "*:CONFIRMATION_PAIEMENT":
+    template: "response_master.html"
+    description: "Confirmation/question sur le paiement - tous états"
+    context_flags:
+      intention_confirmation_paiement: true
+      show_statut_section: true
+
+  "*:SIGNALE_PROBLEME_DOCS":
+    template: "response_master.html"
+    description: "Problème technique avec upload de documents - tous états"
+    context_flags:
+      intention_probleme_documents: true
+      show_statut_section: true
+
   "*:RESULTAT_EXAMEN":
     template: "response_master.html"
     description: "Question sur les résultats d'examen - tous états"

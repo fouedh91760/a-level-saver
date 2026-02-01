@@ -39,7 +39,7 @@ Le workflow traite les tickets DOC en utilisant plusieurs agents spécialisés e
 
 ---
 
-## 12 RÈGLES CRITIQUES - Ne Jamais Oublier
+## 14 RÈGLES CRITIQUES - Ne Jamais Oublier
 
 | # | Règle | Piège à éviter | Détails |
 |---|-------|----------------|---------|
@@ -55,6 +55,8 @@ Le workflow traite les tickets DOC en utilisant plusieurs agents spécialisés e
 | 10 | **Partials = .html** | Créer partial en .md | `docs/TEMPLATES.md` |
 | 11 | **MATRICE = Source de vérité** | Le code Python recalcule les flags de la matrice | Voir §11 ci-dessous |
 | 12 | **Anti-répétition = context flags** | Ajouter logique anti-répétition dans Humanizer | Voir §12 ci-dessous |
+| 13 | **Wildcard obligatoire** | Intention sans `*:INTENTION` dans matrice | Voir §13 ci-dessous |
+| 14 | **JAMAIS de fallback legacy** | Laisser une combinaison STATE:INTENTION tomber sur `base_legacy/` | Voir §14 ci-dessous |
 
 ---
 
@@ -403,6 +405,78 @@ if any(marker in content for marker in session_markers):
 if context.get('sessions_proposed_recently') and is_follow_up_intent:
     result['show_sessions_section'] = False
 ```
+
+---
+
+## RÈGLE 14 : JAMAIS de Fallback vers Legacy
+
+### Objectif
+
+L'architecture moderne (`response_master.html` + matrice `STATE:INTENTION`) a pour objectif de **supprimer le legacy à terme**. On ne doit JAMAIS revenir vers les templates legacy (`base_legacy/`).
+
+### Le Problème
+
+```
+Template Engine - Ordre de sélection :
+
+   PASS 0: Matrice STATE:INTENTION     ✅ Architecture moderne
+   PASS 1: for_intention               ⚠️ Transition
+   PASS 2: for_condition               ⚠️ Transition
+   PASS 3: for_uber_case               ⚠️ Transition
+   PASS 4: for_resultat                ⚠️ Transition
+   PASS 5: for_evalbox                 ❌ LEGACY ! (base_legacy/)
+   Fallback: response_master.html      ✅ Générique moderne
+```
+
+Si une combinaison `STATE:INTENTION` n'existe pas dans la matrice, le code peut tomber sur **PASS 5 (Evalbox)** et utiliser un template legacy comme `dossier_cree.html`.
+
+### La Règle
+
+**Si on identifie qu'une entrée tombe sur un template legacy → ALERTER et migrer vers l'architecture moderne.**
+
+### Détection d'un Fallback Legacy
+
+```bash
+# Dans les logs du workflow, chercher :
+# ❌ LEGACY si le log montre :
+#    "Template: dossier_cree" (ou autre template sans "response_master")
+#    ET PAS de log "Template sélectionné via matrice"
+
+# ✅ MODERNE si le log montre :
+#    "✅ Template sélectionné via matrice: STATE:INTENTION -> response_master.html"
+```
+
+### Migration vers Architecture Moderne
+
+Quand on identifie un fallback legacy :
+
+1. **Identifier la combinaison** : quel `STATE` + quelle `INTENTION` ?
+2. **Ajouter l'entrée dans la matrice** :
+
+```yaml
+# states/state_intention_matrix.yaml
+"EXAM_DATE_ASSIGNED_WAITING:CONFIRMATION_PAIEMENT":
+  template: "response_master.html"
+  context_flags:
+    intention_confirmation_paiement: true
+    show_statut_section: true
+```
+
+3. **Vérifier le partial d'intention** existe : `partials/intentions/<intention>.html`
+4. **Tester** et vérifier que le log affiche "Template sélectionné via matrice"
+
+### Templates Legacy à Migrer
+
+| Template Legacy | Evalbox | Migration |
+|-----------------|---------|-----------|
+| `dossier_cree.html` | Dossier crée | → `response_master.html` + partials |
+| `dossier_synchronise.html` | Dossier Synchronisé | → `response_master.html` + partials |
+| `pret_a_payer.html` | Pret a payer | → `response_master.html` + partials |
+| `docs_refuses.html` | Documents refusés | → `response_master.html` + partials |
+
+### Exceptions (Cas Spéciaux)
+
+Certains templates legacy peuvent temporairement rester actifs pour des cas très spécifiques qui n'ont pas encore de partial moderne. Dans ce cas, **documenter explicitement** pourquoi et créer une issue de migration.
 
 ---
 
