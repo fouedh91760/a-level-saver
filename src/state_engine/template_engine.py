@@ -2130,17 +2130,18 @@ class TemplateEngine:
 <hr>"""
 
         if alert_type == 'personal_account_warning':
-            # Charger le partial template et résoudre les variables
-            template_content = self._load_partial_path('partials/warnings/personal_account_warning.html')
-            if template_content:
+            # Utiliser pybars_renderer pour gérer le template Handlebars
+            if self.pybars_renderer:
                 alert_context = {
                     'personal_account_email': alert.get('personal_account_email', ''),
                     'cab_account_email': alert.get('cab_account_email', '')
                 }
-                # Résoudre les conditionnels {{#if}} puis les variables {{variable}}
-                rendered = self._resolve_if_blocks(template_content, alert_context)
-                rendered, _ = self._replace_placeholders(rendered, alert_context)
-                return f"<hr>\n{rendered}\n<hr>"
+                # Le partial est déjà chargé par pybars_renderer, on peut l'appeler via {{> warnings/personal_account_warning}}
+                # Mais pour une alerte standalone, on charge et rend directement
+                template_content = self._load_template('templates/partials/warnings/personal_account_warning.html')
+                if template_content:
+                    rendered = self.pybars_renderer.render(template_content, alert_context)
+                    return f"<hr>\n{rendered}\n<hr>"
             return None
 
         return None

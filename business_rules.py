@@ -81,6 +81,42 @@ class BusinessRules:
     """Your custom business rules. Modify these methods!"""
 
     @staticmethod
+    def strip_forwarded_content(content: str) -> str:
+        """
+        Supprime le contenu transféré/cité d'un email pour éviter les faux positifs.
+
+        Les emails transférés de CMA contiennent souvent des footers avec "TAXI",
+        "capacité de transport", etc. qui ne reflètent pas l'intention du candidat.
+
+        Args:
+            content: Contenu HTML ou texte de l'email
+
+        Returns:
+            Contenu nettoyé sans les blockquotes/forwards
+        """
+        import re
+
+        if not content:
+            return ""
+
+        # 1. Supprimer les <blockquote> HTML (emails transférés)
+        content = re.sub(r'<blockquote[^>]*>.*?</blockquote>', '', content, flags=re.DOTALL | re.IGNORECASE)
+
+        # 2. Supprimer les sections "Begin forwarded message" et après
+        content = re.sub(r'Begin forwarded message:.*', '', content, flags=re.DOTALL | re.IGNORECASE)
+        content = re.sub(r'---------- Forwarded message ---------.*', '', content, flags=re.DOTALL | re.IGNORECASE)
+        content = re.sub(r'Message transféré.*', '', content, flags=re.DOTALL | re.IGNORECASE)
+
+        # 3. Supprimer les lignes citées (commençant par >)
+        content = re.sub(r'^>.*$', '', content, flags=re.MULTILINE)
+
+        # 4. Supprimer les signatures email communes
+        content = re.sub(r'Sent from my iPhone.*', '', content, flags=re.DOTALL | re.IGNORECASE)
+        content = re.sub(r'Envoyé depuis mon.*', '', content, flags=re.DOTALL | re.IGNORECASE)
+
+        return content
+
+    @staticmethod
     def is_document_question(thread_content: str) -> bool:
         """
         Détecte si le contenu est une QUESTION sur les documents (vs un envoi).
@@ -225,14 +261,19 @@ class BusinessRules:
             ]
 
             # Vérifier sujet et dernier thread
+            # IMPORTANT: Nettoyer le contenu des emails transférés/blockquotes
+            # pour éviter les faux positifs (ex: footer CMA avec "TAXI")
             combined_content = ""
             if ticket.get("subject"):
                 combined_content += ticket["subject"].lower() + " "
             if last_thread_content:
-                combined_content += last_thread_content.lower()
+                # Nettoyer le contenu transféré avant vérification
+                cleaned_content = BusinessRules.strip_forwarded_content(last_thread_content)
+                combined_content += cleaned_content.lower()
 
             # Si demande autre service détectée → Contact (malgré deal 20€)
             if any(keyword in combined_content for keyword in other_service_keywords):
+                logger.info(f"🚦 Keyword autre service détecté dans contenu nettoyé → Contact")
                 return "Contact"
 
             evalbox = selected_deal.get("Evalbox", "")
