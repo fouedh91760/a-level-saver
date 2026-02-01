@@ -783,7 +783,10 @@ class TemplateEngine:
             'exam_inclus': deal_data.get('EXAM_INCLUS', '') == 'Oui',
             'cab_paye_examen': deal_data.get('EXAM_INCLUS', '') == 'Oui',
             'can_choose_other_department': context.get('can_choose_other_department', False) or not context.get('compte_existe', True),
-            'session_assigned': context.get('session_assigned', False),
+            # Session assignée: soit explicitement dans context, soit déduit des enriched_lookups
+            'session_assigned': context.get('session_assigned', False) or bool(enriched_lookups.get('session_name')),
+            'session_is_jour': enriched_lookups.get('session_type') == 'jour',
+            'session_is_soir': enriched_lookups.get('session_type') == 'soir',
             'compte_existe': context.get('compte_existe', False),
             'personal_account_warning': context.get('personal_account_warning', False),
             'can_modify_exam_date': context.get('can_modify_exam_date', True),

@@ -1,0 +1,15 @@
+<!-- Partial: Réponse à l'intention DEMANDE_LIEN_VISIO -->
+<b>Lien de formation visio</b><br>
+{{#if session_choisie}}
+Votre session de formation est prévue prochainement.<br>
+<br>
+Le lien de connexion vous sera envoyé par email quelques jours avant le début de la formation.<br>
+{{else}}
+{{#if is_prospect}}
+Une fois votre inscription finalisée et votre session confirmée, le lien de connexion vous sera envoyé par email quelques jours avant le début de la formation.<br>
+{{else}}
+Pour recevoir le lien de formation visio, vous devez d'abord confirmer votre session de formation.<br>
+<br>
+Merci de nous indiquer si vous préférez les <b>cours du jour</b> (9h-17h sur 1 semaine) ou les <b>cours du soir</b> (18h-22h sur 2 semaines).<br>
+{{/if}}
+{{/if}}

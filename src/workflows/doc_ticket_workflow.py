@@ -2585,6 +2585,10 @@ L'équipe CAB Formations"""
             'documents_refuses': examt3p_data.get('documents_refuses', []),
             'statut_documents': examt3p_data.get('statut_documents', ''),
             'action_candidat_requise': examt3p_data.get('action_candidat_requise', False),
+
+            # Lookups CRM enrichis (v2.2) - données complètes depuis les modules Zoho
+            # CRITIQUE: Contient session_date_debut, session_date_fin, session_type, etc.
+            'enriched_lookups': analysis_result.get('enriched_lookups', {}),
         })
 
         # RECALCULATE cloture_passed et can_modify_exam_date avec date_cloture enrichie

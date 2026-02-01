@@ -133,10 +133,18 @@ def enrich_deal_lookups(
     session_record = enrich_lookup_field(crm_client, deal_data, 'Session', cache)
     if session_record:
         result['session_record'] = session_record
-        result['session_type'] = session_record.get('session_type')
         result['session_name'] = session_record.get('Name')
         result['session_date_debut'] = session_record.get('Date_d_but')
         result['session_date_fin'] = session_record.get('Date_fin')
+        # Session type: d'abord le champ, sinon déduit du nom (cds=soir, cdj=jour)
+        session_type = session_record.get('session_type')
+        if not session_type and result['session_name']:
+            name_lower = result['session_name'].lower()
+            if 'cds' in name_lower or 'cours du soir' in name_lower:
+                session_type = 'soir'
+            elif 'cdj' in name_lower or 'cours du jour' in name_lower:
+                session_type = 'jour'
+        result['session_type'] = session_type
         logger.info(f"  📚 Session: {result['session_name']} ({result['session_type']}) du {result['session_date_debut']} au {result['session_date_fin']}")
 
     return result

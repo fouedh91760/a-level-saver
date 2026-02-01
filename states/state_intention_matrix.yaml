@@ -2022,16 +2022,12 @@ matrix:
       # Les 40h sont les sessions visio, pas l'e-learning
 
   "*:DEMANDE_LIEN_VISIO":
-    template: "lien_visio.html"
-    conditional_blocks:
-      - session_confirmee:
-          condition: "Session is not null"
-          blocks:
-            - lien_sera_envoye_avant_session
-      - session_non_confirmee:
-          condition: "Session is null"
-          blocks:
-            - confirmation_session_requise
+    template: "response_master.html"
+    description: "Candidat demande le lien de formation visio (40h avec formateur)"
+    context_flags:
+      intention_demande_lien_visio: true
+      show_dates_section: false
+      show_sessions_section: false  # La session est gérée dans le partial intention
 
   "*:DEMANDE_CHANGEMENT_SESSION":
     template: "response_master.html"
