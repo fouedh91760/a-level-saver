@@ -769,7 +769,6 @@ Le candidat demande sa convocation mais la date d'examen dans Zoho CRM est dans 
         # API returns newest first, but we want the most MEANINGFUL customer message
         # Skip: feedback/ratings, very short messages, "lisez mon mail précédent"
         threads = self.desk_client.get_all_threads_with_full_content(ticket_id)
-        last_thread_content = ""
         min_meaningful_length = 80  # Ignore very short messages
 
         # Patterns to skip (feedback, automated, follow-ups asking to read previous)
@@ -783,8 +782,25 @@ Le candidat demande sa convocation mais la date d'examen dans Zoho CRM est dans 
             "mon precedent mail",
         ]
 
+        # Collecter les messages récents du candidat (pour avoir le contexte complet)
+        # Ex: candidat envoie "je choisis cours du jour" puis "confirmez les dates svp"
+        # On doit voir les deux messages pour comprendre l'intention
+        recent_candidate_messages = []
+        first_cab_response_seen = False
+
         for thread in threads:
-            if thread.get('direction') == 'in':
+            direction = thread.get('direction')
+
+            # Arrêter si on trouve une réponse CAB (les messages avant sont "anciens")
+            if direction == 'out':
+                first_cab_response_seen = True
+                continue
+
+            # Si on a déjà vu une réponse CAB, on arrête (messages trop vieux)
+            if first_cab_response_seen:
+                break
+
+            if direction == 'in':
                 content = get_clean_thread_content(thread)
                 content_lower = content.lower()
 
@@ -792,13 +808,13 @@ Le candidat demande sa convocation mais la date d'examen dans Zoho CRM est dans 
                 if any(pattern in content_lower for pattern in skip_patterns):
                     continue
 
-                # Take the first customer message that's meaningful (>80 chars)
-                if len(content) >= min_meaningful_length:
-                    last_thread_content = content
-                    break
-                # Fallback to any customer message if none are long enough
-                elif not last_thread_content:
-                    last_thread_content = content
+                # Collecter ce message s'il est significatif
+                if len(content) >= min_meaningful_length or not recent_candidate_messages:
+                    recent_candidate_messages.append(content)
+
+        # Combiner les messages récents (du plus récent au plus ancien)
+        # Limite: 3 messages max pour éviter trop de contexte
+        last_thread_content = "\n---\n".join(recent_candidate_messages[:3]) if recent_candidate_messages else ""
 
         # Default result
         triage_result = {

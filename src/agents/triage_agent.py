@@ -140,11 +140,19 @@ INTENTIONS POSSIBLES (par ordre de spécificité - préfère les intentions spé
   Exemples: "dates ailleurs", "autre département", "dates à Lyon", "d'autres options"
 
 **Intentions liées à la FORMATION:**
-- QUESTION_SESSION: Question sur les sessions de formation (cours du soir/jour)
-  Exemples: "cours du soir", "formation du jour", "horaires de formation", "infos sur les cours"
-- CONFIRMATION_SESSION: CONFIRME son choix de session
-  Exemples: "je choisis cours du soir", "je prends l'option 2", "je confirme la formation du jour",
-            "je participerai aux sessions du 16/03 au 27/03"
+- QUESTION_SESSION: POSE UNE QUESTION sur les sessions (veut des informations)
+  Exemples: "c'est quoi les cours du soir ?", "quels sont les horaires ?", "comment ça se passe ?"
+  ⚠️ SEULEMENT si c'est une vraie QUESTION (interrogatif), PAS un choix/décision
+- CONFIRMATION_SESSION: FAIT UN CHOIX / CONFIRME sa session (décision prise)
+  Exemples: "je choisis cours du soir", "je prends les cours du jour", "je confirme la formation du jour",
+            "je participerai aux sessions du 16/03 au 27/03", "je préfère les cours du jour",
+            "je garde les cours du jour", "les cours du jour me conviennent", "OK pour cours du soir"
+  ⚠️ PRIORITÉ sur QUESTION_SESSION et DEMANDE_DATE_VISIO: si le candidat EXPRIME UN CHOIX
+     ("je choisis", "je prends", "je préfère", "je garde", "OK pour"), c'est CONFIRMATION_SESSION
+  ⚠️ Si session DÉJÀ assignée et candidat dit "je choisis/garde [même type]" = CONFIRMATION de sa session actuelle
+     Exemple: session actuelle = "cdj-..." (cours du jour), candidat dit "je choisis les cours du jour"
+     → C'est CONFIRMATION_SESSION (il confirme sa session), PAS une question ni un changement
+  ⚠️ Regarder le contexte CRM "Session formation actuelle" pour savoir le type actuel
 - DEMANDE_CHANGEMENT_SESSION: Candidat avec session DÉJÀ assignée veut CHANGER de session
   Exemples: "changer de session", "modifier ma session", "passer en cours du soir", "décaler ma formation", "reporter ma formation", "autres dates"
   ⚠️ DIFFÉRENT de CONFIRMATION_SESSION: le candidat a DÉJÀ une session et veut en CHANGER
@@ -563,12 +571,22 @@ EXEMPLE PLAINTE - Message: "J'avais clairement indiqué mon choix pour une forma
                 # Fallback: lookup non enrichi, on indique juste qu'une date existe
                 date_examen_info = "Date assignée (détails non disponibles)"
 
+            # Récupérer l'info de la session actuelle
+            session_info = "Aucune session assignée"
+            session = deal_data.get('Session')
+            if session:
+                session_name = session.get('name', str(session)) if isinstance(session, dict) else str(session)
+                # Déterminer le type de session depuis le nom
+                session_type = "jour" if session_name.lower().startswith('cdj') else "soir" if session_name.lower().startswith('cds') else "inconnu"
+                session_info = f"{session_name} (cours du {session_type})"
+
             deal_info = [
                 f"**Deal trouvé:** {deal_data.get('Deal_Name', 'N/A')}",
                 f"**Montant:** {deal_data.get('Amount', 'N/A')}€",
                 f"**Stage:** {deal_data.get('Stage', 'N/A')}",
                 f"**Evalbox:** {deal_data.get('Evalbox', 'N/A')}",
-                f"**Date examen actuelle:** {date_examen_info}"
+                f"**Date examen actuelle:** {date_examen_info}",
+                f"**Session formation actuelle:** {session_info}"
             ]
             context_parts.append("\n".join(deal_info))
 
