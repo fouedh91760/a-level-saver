@@ -442,16 +442,25 @@ def analyze_exam_date_situation(
     deal_data: Dict[str, Any],
     threads: List[Dict] = None,
     crm_client = None,
-    examt3p_data: Dict[str, Any] = None
+    examt3p_data: Dict[str, Any] = None,
+    session_preference: str = None,
+    enriched_lookups: Dict[str, Any] = None
 ) -> Dict[str, Any]:
     """
     Analyse la situation de date d'examen VTC du candidat et détermine l'action à prendre.
+
+    LOGIQUE D'AUTO-ASSIGNATION (v2.0):
+    - Scénario A: Date vide + pas de session → fixer prochaine date + déduire session compatible
+    - Scénario B: Date vide + session confirmée → fixer date juste après fin de session
+    - Scénario C: Date fixée + pas de session → proposer sessions compatibles
 
     Args:
         deal_data: Données du deal CRM
         threads: Threads du ticket (pour détecter indices examen non passé)
         crm_client: Client Zoho CRM (pour récupérer les prochaines dates)
         examt3p_data: Données ExamT3P (pour pièces refusées)
+        session_preference: Préférence horaire du candidat ('jour' ou 'soir')
+        enriched_lookups: Lookups enrichis avec infos session (session_date_fin, session_type, etc.)
 
     Returns:
         {
@@ -467,7 +476,13 @@ def analyze_exam_date_situation(
             'date_cloture': str or None,
             'alternative_department_dates': List[Dict] (dates plus tôt dans autres depts),
             'can_choose_other_department': bool (True si pas de compte ExamT3P),
-            'current_departement': str or None
+            'current_departement': str or None,
+            # Nouveaux champs pour auto-assignation
+            'auto_assigned': bool (True si date/session auto-assignée),
+            'auto_assigned_exam_date': str or None (date YYYY-MM-DD assignée),
+            'auto_assigned_exam_session_id': str or None (ID session examen pour CRM),
+            'auto_assigned_session': Dict or None (session formation déduite),
+            'crm_updates': Dict (mises à jour CRM à appliquer)
         }
     """
     result = {
@@ -484,8 +499,31 @@ def analyze_exam_date_situation(
         # Dates alternatives dans d'autres départements
         'alternative_department_dates': [],
         'can_choose_other_department': False,
-        'current_departement': None
+        'current_departement': None,
+        # Nouveaux champs pour auto-assignation
+        'auto_assigned': False,
+        'auto_assigned_exam_date': None,
+        'auto_assigned_exam_session_id': None,
+        'auto_assigned_session': None,
+        'crm_updates': {}
     }
+
+    # Extraire les infos de session depuis enriched_lookups
+    session_confirmed = False
+    session_date_fin = None
+    session_type = None
+    session_id = None
+
+    if enriched_lookups:
+        session_date_fin = enriched_lookups.get('session_date_fin')
+        session_type = enriched_lookups.get('session_type')
+        # session_id est dans session_record (pas directement dans enriched_lookups)
+        session_record = enriched_lookups.get('session_record', {})
+        if session_record:
+            session_id = session_record.get('id')
+        session_confirmed = bool(session_id and session_date_fin)
+        if session_confirmed:
+            logger.info(f"  📚 Session déjà confirmée: {enriched_lookups.get('session_name')} (fin: {session_date_fin})")
 
     logger.info("🔍 Analyse de la situation date d'examen VTC...")
 
@@ -528,35 +566,133 @@ def analyze_exam_date_situation(
     # DÉTERMINATION DU CAS
     # ================================================================
 
-    # CAS 1: Date vide
+    # CAS 1: Date vide → AUTO-ASSIGNATION
     if not date_examen_vtc:
         result['case'] = 1
-        result['case_description'] = "Date examen VTC vide - Proposer 2 prochaines dates"
         result['should_include_in_response'] = True
 
         if crm_client:
-            if departement:
-                result['next_dates'] = get_next_exam_dates(crm_client, departement, limit=2)
-            else:
-                # Fallback when department is unknown - get dates from any department
-                logger.info("  ⚠️ Département inconnu - récupération des dates tous départements")
-                result['next_dates'] = get_next_exam_dates_any_department(crm_client, limit=15)  # Many dates for geographic coverage
+            # ================================================================
+            # SCÉNARIO B: Session DÉJÀ confirmée → Fixer date APRÈS fin de session
+            # ================================================================
+            if session_confirmed and session_date_fin:
+                logger.info(f"  📅 SCÉNARIO B: Session confirmée (fin: {session_date_fin}) → recherche date examen après")
+                result['case_description'] = "Date vide + session confirmée - Auto-assignation date après session"
 
-            # Si pas de compte ExamT3P, chercher des dates plus tôt dans d'autres départements
-            if result['can_choose_other_department'] and result['next_dates'] and departement:
-                first_date = result['next_dates'][0].get('Date_Examen')
-                if first_date:
-                    result['alternative_department_dates'] = get_earlier_dates_other_departments(
-                        crm_client,
-                        departement,
-                        first_date,
-                        limit=3
-                    )
-                    if result['alternative_department_dates']:
-                        logger.info(f"  📅 {len(result['alternative_department_dates'])} date(s) plus tôt dans d'autres départements")
+                # Chercher la première date d'examen APRÈS la fin de session
+                # On récupère plus de dates pour avoir des options après la session
+                if departement:
+                    all_dates = get_next_exam_dates(crm_client, departement, limit=5)
+                else:
+                    all_dates = get_next_exam_dates_any_department(crm_client, limit=15)
+
+                # Filtrer: date examen > session_date_fin
+                try:
+                    session_end = datetime.strptime(session_date_fin, "%Y-%m-%d").date()
+                    valid_dates = []
+                    for d in all_dates:
+                        exam_date_str = d.get('Date_Examen', '')
+                        if exam_date_str:
+                            exam_date = datetime.strptime(exam_date_str, "%Y-%m-%d").date()
+                            if exam_date > session_end:
+                                valid_dates.append(d)
+
+                    if valid_dates:
+                        # Prendre la première date valide (la plus proche après la session)
+                        auto_date = valid_dates[0]
+                        result['auto_assigned'] = True
+                        result['auto_assigned_exam_date'] = auto_date.get('Date_Examen')
+                        result['auto_assigned_exam_session_id'] = auto_date.get('id')
+                        result['date_examen_info'] = auto_date
+                        result['next_dates'] = [auto_date]  # Juste la date confirmée
+
+                        # CRM updates
+                        result['crm_updates'] = {
+                            'Date_examen_VTC': auto_date.get('id')
+                        }
+
+                        logger.info(f"  ✅ AUTO-ASSIGNATION (Scénario B): Examen {result['auto_assigned_exam_date']} (après session {session_date_fin})")
+                    else:
+                        logger.warning(f"  ⚠️ Aucune date d'examen trouvée après la fin de session ({session_date_fin})")
+                        result['next_dates'] = all_dates
+                        result['case_description'] = "Date vide + session confirmée - Pas de date après session"
+                except Exception as e:
+                    logger.error(f"  ❌ Erreur parsing session_date_fin: {e}")
+                    result['next_dates'] = all_dates
+
+            # ================================================================
+            # SCÉNARIO A: Pas de session → Fixer prochaine date + déduire session
+            # ================================================================
+            else:
+                logger.info(f"  📅 SCÉNARIO A: Pas de session → auto-assignation date + session")
+                result['case_description'] = "Date vide + pas de session - Auto-assignation date et session"
+
+                if departement:
+                    result['next_dates'] = get_next_exam_dates(crm_client, departement, limit=2)
+                else:
+                    logger.info("  ⚠️ Département inconnu - récupération des dates tous départements")
+                    result['next_dates'] = get_next_exam_dates_any_department(crm_client, limit=15)
+
+                if result['next_dates']:
+                    # Prendre la première date disponible
+                    auto_date = result['next_dates'][0]
+                    exam_date_str = auto_date.get('Date_Examen')
+
+                    result['auto_assigned'] = True
+                    result['auto_assigned_exam_date'] = exam_date_str
+                    result['auto_assigned_exam_session_id'] = auto_date.get('id')
+                    result['date_examen_info'] = auto_date
+
+                    # CRM updates pour la date
+                    result['crm_updates'] = {
+                        'Date_examen_VTC': auto_date.get('id')
+                    }
+
+                    # Déduire la session de formation compatible
+                    if exam_date_str:
+                        from src.utils.session_helper import get_sessions_for_exam_date
+                        compatible_sessions = get_sessions_for_exam_date(
+                            crm_client,
+                            exam_date_str,
+                            session_type=session_preference,
+                            limit=2
+                        )
+
+                        if compatible_sessions:
+                            # Prendre la session selon la préférence (ou la première si pas de préférence)
+                            if session_preference:
+                                # Chercher la session du type préféré
+                                matching_session = next(
+                                    (s for s in compatible_sessions if s.get('session_type') == session_preference),
+                                    compatible_sessions[0]
+                                )
+                            else:
+                                matching_session = compatible_sessions[0]
+
+                            result['auto_assigned_session'] = matching_session
+                            result['crm_updates']['Session'] = matching_session.get('id')
+                            if session_preference:
+                                result['crm_updates']['Preference_horaire'] = session_preference
+
+                            logger.info(f"  ✅ AUTO-ASSIGNATION (Scénario A): Examen {exam_date_str} + Session {matching_session.get('Name')}")
+                        else:
+                            logger.warning(f"  ⚠️ Pas de session compatible trouvée pour l'examen du {exam_date_str}")
+
+                # Si pas de compte ExamT3P, chercher des dates plus tôt dans d'autres départements
+                if result['can_choose_other_department'] and result['next_dates'] and departement:
+                    first_date = result['next_dates'][0].get('Date_Examen')
+                    if first_date:
+                        result['alternative_department_dates'] = get_earlier_dates_other_departments(
+                            crm_client,
+                            departement,
+                            first_date,
+                            limit=3
+                        )
+                        if result['alternative_department_dates']:
+                            logger.info(f"  📅 {len(result['alternative_department_dates'])} date(s) plus tôt dans d'autres départements")
 
         result['response_message'] = generate_propose_dates_message(result['next_dates'], departement)
-        logger.info(f"  ➡️ CAS 1: Date vide")
+        logger.info(f"  ➡️ CAS 1: Date vide (auto_assigned={result['auto_assigned']})")
         return result
 
     # Déterminer si la date est passée

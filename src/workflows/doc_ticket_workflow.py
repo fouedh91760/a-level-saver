@@ -1536,17 +1536,51 @@ Deux comptes ExamenT3P fonctionnels ont été détectés pour ce candidat, et le
         date_examen_vtc_result = {}
         if not skip_date_session_analysis:
             logger.info("  📅 Vérification date examen VTC...")
+
+            # Récupérer la préférence de session depuis le triage
+            triage_session_pref = None
+            if triage_result:
+                intent_parser = IntentParser(triage_result)
+                triage_session_pref = intent_parser.session_preference
+
             date_examen_vtc_result = analyze_exam_date_situation(
                 deal_data=deal_data,
                 threads=threads_data,
                 crm_client=self.crm_client,
-                examt3p_data=examt3p_data
+                examt3p_data=examt3p_data,
+                session_preference=triage_session_pref,
+                enriched_lookups=enriched_lookups
             )
 
             if date_examen_vtc_result.get('should_include_in_response'):
                 logger.info(f"  ➡️ CAS {date_examen_vtc_result['case']}: {date_examen_vtc_result['case_description']}")
             else:
                 logger.info(f"  ✅ Date examen VTC OK (CAS {date_examen_vtc_result['case']})")
+
+            # ================================================================
+            # AUTO-ASSIGNATION: Appliquer les mises à jour CRM si détectées
+            # ================================================================
+            if date_examen_vtc_result.get('auto_assigned') and date_examen_vtc_result.get('crm_updates'):
+                crm_updates = date_examen_vtc_result['crm_updates']
+                logger.info(f"  🔄 AUTO-ASSIGNATION détectée - Mises à jour CRM à appliquer: {list(crm_updates.keys())}")
+
+                if deal_id:
+                    try:
+                        self.crm_client.update_deal(deal_id, crm_updates)
+                        logger.info(f"  ✅ Mises à jour CRM appliquées: {crm_updates}")
+
+                        # Log détaillé des assignations
+                        if crm_updates.get('Date_examen_VTC'):
+                            logger.info(f"     → Date_examen_VTC: {date_examen_vtc_result.get('auto_assigned_exam_date')}")
+                        if crm_updates.get('Session'):
+                            session_name = date_examen_vtc_result.get('auto_assigned_session', {}).get('Name', 'N/A')
+                            logger.info(f"     → Session: {session_name}")
+                        if crm_updates.get('Preference_horaire'):
+                            logger.info(f"     → Preference_horaire: {crm_updates.get('Preference_horaire')}")
+                    except Exception as e:
+                        logger.error(f"  ❌ Erreur lors de la mise à jour CRM: {e}")
+                else:
+                    logger.warning("  ⚠️ Pas de deal_id - impossible d'appliquer les mises à jour CRM")
 
             # ================================================================
             # ENRICHISSEMENT: Si intention date-related avec mois/lieu spécifiques
@@ -2473,6 +2507,11 @@ L'équipe CAB Formations"""
             # Force majeure (examen manqué)
             'force_majeure_possible': date_examen_vtc_result.get('force_majeure_possible', True),  # Default True pour backward compat
             'days_since_exam': date_examen_vtc_result.get('days_since_exam'),
+
+            # Auto-assignation date/session (CAS 1 avec date vide)
+            'auto_assigned': date_examen_vtc_result.get('auto_assigned', False),
+            'auto_assigned_exam_date': date_examen_vtc_result.get('auto_assigned_exam_date'),
+            'auto_assigned_session': date_examen_vtc_result.get('auto_assigned_session'),
 
             # Données de recherche par mois/lieu (REPORT_DATE intelligent)
             'no_date_for_requested_month': date_examen_vtc_result.get('no_date_for_requested_month', False),

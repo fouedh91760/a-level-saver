@@ -920,6 +920,19 @@ class TemplateEngine:
             'dates_already_communicated': context.get('dates_already_communicated', False),
             'dates_proposed_recently': context.get('dates_proposed_recently', False),
 
+            # ===== AUTO-ASSIGNATION DATE/SESSION =====
+            # Quand la date d'examen était vide, on auto-assigne:
+            # - Scénario A: prochaine date + session compatible selon préférence
+            # - Scénario B: date après fin de session confirmée
+            'auto_assigned': context.get('auto_assigned', False),
+            'auto_assigned_exam_date': self._format_date(context.get('auto_assigned_exam_date', '')),
+            'auto_assigned_exam_date_raw': context.get('auto_assigned_exam_date', ''),
+            'auto_assigned_session': context.get('auto_assigned_session'),
+            'auto_assigned_session_name': context.get('auto_assigned_session', {}).get('Name', '') if context.get('auto_assigned_session') else '',
+            'auto_assigned_session_start': self._format_date(context.get('auto_assigned_session', {}).get('Date_d_but', '')) if context.get('auto_assigned_session') else '',
+            'auto_assigned_session_end': self._format_date(context.get('auto_assigned_session', {}).get('Date_fin', '')) if context.get('auto_assigned_session') else '',
+            'auto_assigned_session_type': context.get('auto_assigned_session', {}).get('session_type', '') if context.get('auto_assigned_session') else '',
+
             # Date precedemment communiquee (pour mode clarification)
             'previously_communicated_date': context.get('cab_proposals', {}).get('last_proposed_exam_date', ''),
             'date_changed_since_last_comm': self._check_date_changed(

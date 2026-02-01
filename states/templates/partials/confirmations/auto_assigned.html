@@ -1,0 +1,19 @@
+<!-- Partial: Confirmation de l'auto-assignation date d'examen et session -->
+{{#if auto_assigned}}
+<b>Votre inscription est confirmée</b><br>
+<br>
+{{#if auto_assigned_exam_date}}
+→ <b>Date d'examen</b> : {{auto_assigned_exam_date}}<br>
+{{/if}}
+{{#if auto_assigned_session}}
+→ <b>Session de formation</b> : {{#if session_preference_soir}}Cours du soir{{else}}{{#if session_preference_jour}}Cours du jour{{else}}Formation{{/if}}{{/if}} du {{auto_assigned_session_start}} au {{auto_assigned_session_end}}<br>
+{{/if}}
+<br>
+<i>Ces informations ont été enregistrées dans votre dossier.</i><br>
+{{#if auto_assigned_session}}
+<br>
+<b>Prochaines étapes :</b><br>
+→ Vous recevrez un email de confirmation avec les détails de votre formation.<br>
+→ Pensez à vous connecter à la plateforme e-learning pour commencer votre préparation.<br>
+{{/if}}
+{{/if}}

@@ -162,6 +162,14 @@
 {{/if}}
 {{/unless}}
 
+<!-- =====================================================================
+     SECTION 1.5: CONFIRMATION AUTO-ASSIGNATION
+     (Si date et/ou session ont été auto-assignées)
+     ===================================================================== -->
+{{#if auto_assigned}}
+{{> partials/confirmations/auto_assigned}}
+{{/if}}
+
 <!-- SECTION PROSPECT : Rappel inscription (seulement si prospect NON uber) -->
 {{#if show_prospect_rappel}}
 {{> partials/prospect/rappel_inscription}}
