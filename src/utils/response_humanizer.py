@@ -211,23 +211,9 @@ def _validate_humanized_response(original: str, humanized: str) -> Dict[str, Any
     if missing_dates:
         issues.append(f"Dates manquantes: {missing_dates}")
 
-    # Extraire les URLs
-    url_pattern = r'https?://[^\s<>"\']+(?=[<\s"\']|$)'
-    original_urls = set(re.findall(url_pattern, original))
-    humanized_urls = set(re.findall(url_pattern, humanized))
-
-    missing_urls = original_urls - humanized_urls
-    if missing_urls:
-        issues.append(f"URLs manquantes: {missing_urls}")
-
-    # Extraire les emails
-    email_pattern = r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}'
-    original_emails = set(re.findall(email_pattern, original))
-    humanized_emails = set(re.findall(email_pattern, humanized))
-
-    missing_emails = original_emails - humanized_emails
-    if missing_emails:
-        issues.append(f"Emails manquants: {missing_emails}")
+    # URLs et emails : on laisse l'humanizer décider de les garder ou non
+    # car il peut juger que certains liens sont redondants en contexte
+    # (ex: lien exament3p.fr quand le candidat vient d'envoyer ses identifiants)
 
     # Extraire les numéros CMA/département (cross-département)
     # Pattern: "CMA 34", "CMA 75", "CMA 06", etc.
