@@ -1,4 +1,13 @@
 <!-- Partial: Réponse à l'intention REPORT_DATE -->
+{{#if deadline_passed_auto_reschedule}}
+<!-- CAS 8: Deadline passée avant paiement - Report automatique -->
+<b>Concernant votre date d'examen</b><br>
+La date d'examen initialement prevue etait le <b>{{original_exam_date}}</b>. Les inscriptions pour cette session sont desormais cloturees (depuis le {{original_date_cloture}}).<br>
+<br>
+Votre dossier est <b>complet</b> et en attente de paiement. Lors du reglement des frais d'inscription, vous serez automatiquement inscrit a la prochaine date disponible : le <b>{{new_exam_date}}</b>.<br>
+<br>
+<b>Aucune action n'est requise de votre part.</b> Nous vous tiendrons informe de la suite du processus.<br>
+{{else}}
 {{#if report_bloque}}
 <!-- Clôture passée - options limitées -->
 <b>Concernant votre demande de changement de date</b><br>
@@ -7,9 +16,9 @@ Votre examen est prevu le <b>{{date_examen}}</b>. Malheureusement, la date limit
 {{#if mentions_force_majeure}}
 <b>Demande de report pour force majeure</b><br>
 Pour que votre demande soit etudiee par la CMA, merci de nous transmettre un justificatif a <b>doc@cab-formations.fr</b> :<br>
-• Certificat medical<br>
-• Certificat de deces d'un proche<br>
-• Tout document attestant de l'impossibilite de vous presenter<br>
+- Certificat medical<br>
+- Certificat de deces d'un proche<br>
+- Tout document attestant de l'impossibilite de vous presenter<br>
 <br>
 <b>C'est la CMA qui statue sur l'acceptation ou le refus des demandes de report.</b> En cas de refus, des frais de reinscription de 241€ seront a prevoir.<br>
 {{else}}
@@ -47,6 +56,7 @@ Merci de nous indiquer la nouvelle date souhaitee et nous verifierons sa disponi
 Nous pouvons effectuer le changement. Merci de nous indiquer la nouvelle date souhaitee.<br>
 {{else}}
 La date de cloture des inscriptions est passee. Un changement n'est possible qu'avec un justificatif de force majeure (certificat medical, etc.).<br>
+{{/if}}
 {{/if}}
 {{/if}}
 {{/if}}

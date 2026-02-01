@@ -1,5 +1,7 @@
 <!-- Partial: Reconnaissance du contexte de communication precedente -->
 <!-- Affiche un message de reconnaissance quand le candidat fait reference a un echange precedent -->
+<!-- NOTE: Desactive pour deadline_passed_auto_reschedule car le partial report_date gere deja l'intro -->
+{{#unless deadline_passed_auto_reschedule}}
 {{#if references_previous_communication}}
 {{#if is_clarification_mode}}
 <!-- Mode clarification: le candidat questionne une incoherence -->
@@ -14,3 +16,4 @@ Nous comprenons votre interrogation suite aux informations recues.<br>
 {{/if}}
 {{/if}}
 {{/if}}
+{{/unless}}

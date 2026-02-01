@@ -2467,6 +2467,8 @@ L'équipe CAB Formations"""
             'deadline_passed_reschedule': date_examen_vtc_result.get('deadline_passed_reschedule', False),
             'new_exam_date': date_examen_vtc_result.get('new_exam_date'),
             'new_exam_date_cloture': date_examen_vtc_result.get('new_exam_date_cloture'),
+            'original_exam_date': date_examen_vtc_result.get('original_exam_date'),
+            'original_date_cloture': date_examen_vtc_result.get('original_date_cloture'),
 
             # Force majeure (examen manqué)
             'force_majeure_possible': date_examen_vtc_result.get('force_majeure_possible', True),  # Default True pour backward compat

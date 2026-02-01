@@ -586,6 +586,10 @@ def analyze_exam_date_situation(
         result['should_include_in_response'] = True
         result['deadline_passed_reschedule'] = True  # Flag pour mise à jour CRM
 
+        # Conserver les dates originales pour le template
+        result['original_exam_date'] = date_examen_str
+        result['original_date_cloture'] = result['date_cloture']
+
         # Récupérer la prochaine date disponible
         if crm_client:
             if departement:

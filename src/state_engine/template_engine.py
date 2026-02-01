@@ -790,6 +790,8 @@ class TemplateEngine:
             'deadline_passed_reschedule': context.get('deadline_passed_reschedule', False),
             'new_exam_date': self._format_date(context.get('new_exam_date', '')) if context.get('new_exam_date') else '',
             'new_exam_date_cloture': self._format_date(context.get('new_exam_date_cloture', '')) if context.get('new_exam_date_cloture') else '',
+            'original_exam_date': self._format_date(context.get('original_exam_date', '')) if context.get('original_exam_date') else '',
+            'original_date_cloture': self._format_date(context.get('original_date_cloture', '')) if context.get('original_date_cloture') else '',
 
             # Flags temporels pour templates (comparateurs Handlebars non supportés)
             'exam_within_7_days': context.get('exam_within_7_days', False),
@@ -983,12 +985,14 @@ class TemplateEngine:
         report_possible = result.get('report_possible', False)
         report_bloque = result.get('report_bloque', False)
         report_force_majeure = result.get('report_force_majeure', False)
-        is_report_intention = report_possible or report_bloque or report_force_majeure
+        deadline_passed_auto = result.get('deadline_passed_auto_reschedule', False)
+        is_report_intention = report_possible or report_bloque or report_force_majeure or deadline_passed_auto
 
         # FIX: Section 0 override pour éviter duplication
         # Si report_possible/bloque/force_majeure est actif, désactiver intention_report_date
         # car partials/report/*.html gère déjà l'intention REPORT_DATE
-        if is_report_intention:
+        # NOTE: deadline_passed_auto_reschedule garde intention_report_date=True car le partial l'utilise
+        if report_possible or report_bloque or report_force_majeure:
             result['intention_report_date'] = False
 
         # Calculer show_dates_section (CENTRALISÉ - Section 4)
@@ -1799,12 +1803,18 @@ class TemplateEngine:
         intent_context = context.get('intent_context', {})
         mentions_force_majeure = intent_context.get('mentions_force_majeure', False)
 
+        # CAS SPECIAL: deadline_passed_reschedule (CAS 8)
+        # Le candidat n'a pas demandé de report, la deadline est juste passée avant paiement
+        # → Pas besoin d'action du candidat, report automatique lors du paiement
+        deadline_passed_auto_reschedule = context.get('deadline_passed_reschedule', False)
+
         report_bloque = False
         report_possible = False
         report_force_majeure = False
 
-        # Seulement si l'intention est REPORT_DATE
-        if primary_intent == 'REPORT_DATE':
+        # Seulement si l'intention est REPORT_DATE ET PAS de deadline_passed_reschedule
+        # (car deadline_passed_reschedule a son propre traitement)
+        if primary_intent == 'REPORT_DATE' and not deadline_passed_auto_reschedule:
             if can_modify:
                 report_possible = True
             elif mentions_force_majeure:
@@ -1822,6 +1832,7 @@ class TemplateEngine:
             'report_bloque': report_bloque,
             'report_possible': report_possible,
             'report_force_majeure': report_force_majeure,
+            'deadline_passed_auto_reschedule': deadline_passed_auto_reschedule,
             'show_session_info': show_session_info,
         }
 
