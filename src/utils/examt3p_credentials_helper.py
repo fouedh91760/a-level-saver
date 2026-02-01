@@ -632,6 +632,9 @@ def get_credentials_with_validation(
                     result['personal_account_warning'] = True
                     result['personal_account_email'] = identifiant_threads
                     result['cab_account_email'] = identifiant_crm
+                    # Ajouter la date de paiement pour l'inclure dans le message
+                    paiement_cma = data_crm.get('paiement_cma', {})
+                    result['cab_payment_date'] = paiement_cma.get('date', '')
                     # Pas de changement d'identifiants, on garde le compte CRM
 
                 elif not crm_paid and threads_paid:

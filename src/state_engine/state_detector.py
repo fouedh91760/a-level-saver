@@ -350,6 +350,7 @@ class StateDetector:
             'personal_account_warning': examt3p_data.get('personal_account_warning', False),
             'personal_account_email': examt3p_data.get('personal_account_email', ''),
             'cab_account_email': examt3p_data.get('cab_account_email', ''),
+            'cab_payment_date': examt3p_data.get('cab_payment_date', ''),
             'statut_dossier_examt3p': examt3p_data.get('statut_dossier', ''),
             # Flags pour EXAMT3P_DOWN (A2)
             'extraction_failed': examt3p_data.get('extraction_failed', False),
@@ -504,7 +505,8 @@ class StateDetector:
                 'position': 'before_signature',
                 'priority': 'warning',
                 'personal_account_email': context.get('personal_account_email', ''),
-                'cab_account_email': context.get('cab_account_email', '')
+                'cab_account_email': context.get('cab_account_email', ''),
+                'cab_payment_date': context.get('cab_payment_date', '')
             })
 
         return alerts

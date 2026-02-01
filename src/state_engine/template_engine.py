@@ -785,6 +785,7 @@ class TemplateEngine:
             'can_choose_other_department': context.get('can_choose_other_department', False) or not context.get('compte_existe', True),
             'session_assigned': context.get('session_assigned', False),
             'compte_existe': context.get('compte_existe', False),
+            'personal_account_warning': context.get('personal_account_warning', False),
             'can_modify_exam_date': context.get('can_modify_exam_date', True),
             'cloture_passed': context.get('cloture_passed', False),
             'deadline_passed_reschedule': context.get('deadline_passed_reschedule', False),
@@ -2134,7 +2135,8 @@ class TemplateEngine:
             if self.pybars_renderer:
                 alert_context = {
                     'personal_account_email': alert.get('personal_account_email', ''),
-                    'cab_account_email': alert.get('cab_account_email', '')
+                    'cab_account_email': alert.get('cab_account_email', ''),
+                    'cab_payment_date': alert.get('cab_payment_date', '')
                 }
                 # Le partial est déjà chargé par pybars_renderer, on peut l'appeler via {{> warnings/personal_account_warning}}
                 # Mais pour une alerte standalone, on charge et rend directement
