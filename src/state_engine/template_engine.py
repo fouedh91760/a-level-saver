@@ -981,6 +981,11 @@ class TemplateEngine:
             'is_no_match': context.get('is_no_match', False),
             'closest_session_before': self._format_session_for_template(context.get('closest_session_before')),
             'closest_session_after': self._format_session_for_template(context.get('closest_session_after')),
+            # Sessions par type (pour proposer jour ET soir quand pas de préférence)
+            'closest_session_before_jour': self._format_session_for_template(context.get('closest_session_before_jour')),
+            'closest_session_before_soir': self._format_session_for_template(context.get('closest_session_before_soir')),
+            'closest_session_after_jour': self._format_session_for_template(context.get('closest_session_after_jour')),
+            'closest_session_after_soir': self._format_session_for_template(context.get('closest_session_after_soir')),
             # Dates de la session choisie (pour compatibilité)
             'session_date_debut': self._format_date(enriched_lookups.get('session_date_debut', '')),
             'session_date_fin': self._format_date(enriched_lookups.get('session_date_fin', '')),

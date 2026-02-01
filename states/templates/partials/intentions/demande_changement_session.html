@@ -64,11 +64,28 @@ Ces sessions pourraient convenir si vous avez une certaine flexibilité sur vos 
 Malheureusement, aucune session {{#if session_preference}}{{preference_horaire_text}}{{/if}} ne correspond à vos dates ({{requested_dates_raw}}).<br>
 <br>
 <b>Alternatives disponibles :</b><br>
+{{#if session_preference}}
+{{!-- Si préférence jour/soir exprimée, afficher seulement ce type --}}
 {{#if closest_session_before}}
 → Avant vos dates : <b>{{closest_session_before.session_type_label}}</b> du {{closest_session_before.date_debut}} au {{closest_session_before.date_fin}}<br>
 {{/if}}
 {{#if closest_session_after}}
 → Après vos dates : <b>{{closest_session_after.session_type_label}}</b> du {{closest_session_after.date_debut}} au {{closest_session_after.date_fin}}<br>
+{{/if}}
+{{else}}
+{{!-- Pas de préférence: proposer les deux types (jour ET soir) --}}
+{{#if closest_session_before_jour}}
+→ <b>{{closest_session_before_jour.session_type_label}}</b> du {{closest_session_before_jour.date_debut}} au {{closest_session_before_jour.date_fin}} (avant vos dates)<br>
+{{/if}}
+{{#if closest_session_before_soir}}
+→ <b>{{closest_session_before_soir.session_type_label}}</b> du {{closest_session_before_soir.date_debut}} au {{closest_session_before_soir.date_fin}} (avant vos dates)<br>
+{{/if}}
+{{#if closest_session_after_jour}}
+→ <b>{{closest_session_after_jour.session_type_label}}</b> du {{closest_session_after_jour.date_debut}} au {{closest_session_after_jour.date_fin}} (après vos dates)<br>
+{{/if}}
+{{#if closest_session_after_soir}}
+→ <b>{{closest_session_after_soir.session_type_label}}</b> du {{closest_session_after_soir.date_debut}} au {{closest_session_after_soir.date_fin}} (après vos dates)<br>
+{{/if}}
 {{/if}}
 {{#unless closest_session_before}}{{#unless closest_session_after}}
 Aucune session n'est disponible à proximité de vos dates pour le moment.<br>

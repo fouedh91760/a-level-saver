@@ -542,16 +542,15 @@ def analyze_session_situation(
         return result
 
     # 3.5. Si session DÉJÀ ASSIGNÉE et PAS dans le passé → NE PAS proposer de nouvelles sessions
-    # SAUF si allow_change=True ET préférence ≠ session actuelle (changement de session demandé)
+    # SAUF si allow_change=True (DEMANDE_CHANGEMENT_SESSION ou CONFIRMATION_SESSION avec changement)
     if current_session and not result['current_session_is_past']:
         session_name = current_session.get('name', str(current_session)) if isinstance(current_session, dict) else str(current_session)
 
-        # Récupérer le type de session actuel depuis enriched_lookups
-        current_type = enriched_lookups.get('session_type') if enriched_lookups else None
-
-        # Si allow_change ET préférence différente → proposer des sessions pour changement
-        if allow_change and preference and current_type and preference != current_type:
-            logger.info(f"  🔄 Changement de session demandé: {current_type} → {preference}")
+        # Si allow_change=True → TOUJOURS proposer des sessions alternatives
+        # (le candidat veut explicitement changer de session)
+        if allow_change:
+            current_type = enriched_lookups.get('session_type') if enriched_lookups else None
+            logger.info(f"  🔄 Changement de session demandé (allow_change=True, type actuel: {current_type})")
             # Continuer pour proposer des sessions
         else:
             logger.info(f"  ✅ Session déjà assignée ({session_name}) et valide → Pas de proposition")
@@ -754,6 +753,10 @@ def match_sessions_by_date_range(
         'overlap_matches': [],
         'closest_before': None,
         'closest_after': None,
+        'closest_before_jour': None,  # Pour proposer les deux types si pas de préférence
+        'closest_before_soir': None,
+        'closest_after_jour': None,
+        'closest_after_soir': None,
         'all_in_month': [],
         'sessions_proposees': []
     }
@@ -866,13 +869,23 @@ def match_sessions_by_date_range(
         # Sinon, garder pour alternatives
         result['all_in_month'].append(session)
 
-        # Trouver la session la plus proche avant les dates demandées
+        # Trouver la session la plus proche avant les dates demandées (par type)
         if session_end < start_date:
+            s_type = session['session_type']
+            key_before = f'closest_before_{s_type}'
+            if not result[key_before] or session_end > datetime.strptime(result[key_before].get('Date_fin', '1900-01-01'), "%Y-%m-%d"):
+                result[key_before] = session
+            # Aussi mettre à jour closest_before global (le plus proche tous types)
             if not result['closest_before'] or session_end > datetime.strptime(result['closest_before'].get('Date_fin', '1900-01-01'), "%Y-%m-%d"):
                 result['closest_before'] = session
 
-        # Trouver la session la plus proche après les dates demandées
+        # Trouver la session la plus proche après les dates demandées (par type)
         if session_start > end_date:
+            s_type = session['session_type']
+            key_after = f'closest_after_{s_type}'
+            if not result[key_after] or session_start < datetime.strptime(result[key_after].get('Date_d_but', '2100-01-01'), "%Y-%m-%d"):
+                result[key_after] = session
+            # Aussi mettre à jour closest_after global (le plus proche tous types)
             if not result['closest_after'] or session_start < datetime.strptime(result['closest_after'].get('Date_d_but', '2100-01-01'), "%Y-%m-%d"):
                 result['closest_after'] = session
 

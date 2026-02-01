@@ -1996,6 +1996,11 @@ Deux comptes ExamenT3P fonctionnels ont été détectés pour ce candidat, et le
                     'sessions_proposees': match_result.get('sessions_proposees', []),
                     'closest_before': match_result.get('closest_before'),
                     'closest_after': match_result.get('closest_after'),
+                    # Sessions par type (jour/soir) pour proposer les deux quand pas de préférence
+                    'closest_before_jour': match_result.get('closest_before_jour'),
+                    'closest_before_soir': match_result.get('closest_before_soir'),
+                    'closest_after_jour': match_result.get('closest_after_jour'),
+                    'closest_after_soir': match_result.get('closest_after_soir'),
                 }
 
                 logger.info(f"  🎯 Résultat matching: {match_result.get('match_type')} ({len(match_result.get('sessions_proposees', []))} session(s))")
@@ -2014,7 +2019,7 @@ Deux comptes ExamenT3P fonctionnels ont été détectés pour ce candidat, et le
                     threads=threads_data,
                     crm_client=self.crm_client,
                     triage_session_preference=triage_session_pref,
-                    allow_change=(detected_intent == 'CONFIRMATION_SESSION'),
+                    allow_change=(detected_intent in ['CONFIRMATION_SESSION', 'DEMANDE_CHANGEMENT_SESSION']),
                     enriched_lookups=enriched_lookups
                 )
 
@@ -2702,6 +2707,11 @@ L'équipe CAB Formations"""
             'has_sessions_proposees': len(session_data.get('sessions_proposees', [])) > 0,
             'closest_session_before': session_data.get('closest_before'),
             'closest_session_after': session_data.get('closest_after'),
+            # Sessions par type (jour/soir) pour proposer les deux quand pas de préférence
+            'closest_session_before_jour': session_data.get('closest_before_jour'),
+            'closest_session_before_soir': session_data.get('closest_before_soir'),
+            'closest_session_after_jour': session_data.get('closest_after_jour'),
+            'closest_session_after_soir': session_data.get('closest_after_soir'),
             # Flags booléens pour conditions template (pybars3 ne supporte pas eq)
             'is_exact_match': session_data.get('match_type') == 'EXACT',
             'is_overlap_match': session_data.get('match_type') == 'OVERLAP',
