@@ -1898,10 +1898,9 @@ class TemplateEngine:
                 date_debut_formatted = self._format_date(date_debut) if date_debut else ''
                 date_fin_formatted = self._format_date(date_fin) if date_fin else ''
 
-                # Extraire les horaires si disponibles
-                horaires = session.get('Type_de_cours', '')
-                if isinstance(horaires, dict):
-                    horaires = horaires.get('name', '')
+                # Horaires fixes (ne pas utiliser les données CRM)
+                # Cours du jour: 8h30-17h30 | Cours du soir: 18h-22h
+                horaires = '8h30-17h30' if session_type == 'jour' else '18h-22h' if session_type == 'soir' else ''
 
                 # Déterminer si c'est la première session de cette date d'examen
                 is_first_of_exam = not any(

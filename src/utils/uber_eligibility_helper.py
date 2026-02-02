@@ -280,10 +280,10 @@ def generate_prospect_message() -> str:
 
 Nos formations de 40 heures en visio-conférence se déroulent à **horaires fixes** selon un planning établi. Nous proposons **deux types de sessions** pour nous adapter au mieux à vos contraintes :
 
-📅 **Cours du jour** : 8h30 - 16h30
+📅 **Cours du jour** : 8h30 - 17h30 (pause 1h le midi)
    → Durée : **1 semaine** (du lundi au vendredi)
 
-🌙 **Cours du soir** : 18h00 - 22h00
+🌙 **Cours du soir** : 18h - 22h
    → Durée : **2 semaines** (soirées du lundi au vendredi)
 
 **Ce que comprend l'offre à 20€ :**
