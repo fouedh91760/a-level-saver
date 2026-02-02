@@ -757,6 +757,7 @@ class TemplateEngine:
             'evalbox_pret_a_payer': evalbox in ['Pret a payer', 'Pret a payer par cheque'],
             'evalbox_valide_cma': evalbox == 'VALIDE CMA',
             'evalbox_refus_cma': evalbox == 'Refusé CMA',
+            'evalbox_documents_refuses': evalbox in ['Documents refusés', 'Documents manquants'],
             'evalbox_convoc_recue': evalbox == 'Convoc CMA reçue',
             'no_evalbox_status': not evalbox or evalbox in ['None', '', 'N/A'],
             # Flag pour avertissement modification identifiants (true = paiement non effectué)

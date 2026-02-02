@@ -1,0 +1,13 @@
+<!-- Partial: Statut DOCUMENTS REFUSÉS (gestion interne CAB avant ExamT3P) -->
+<b style="color: #c0392b;">Attention :</b> Certains documents de votre dossier ont été <b>refusés</b>.<br>
+Merci de nous renvoyer les documents corrigés pour que nous puissions finaliser votre inscription à l'examen.<br>
+<br>
+{{#if has_pieces_refusees}}
+<b>Documents à corriger :</b><br>
+{{#each pieces_refusees_details}}
+• <b>{{this.nom}}</b><br>
+&nbsp;&nbsp;→ Motif : {{this.motif}}<br>
+&nbsp;&nbsp;→ Solution : {{this.solution}}<br>
+{{/each}}
+<br>
+{{/if}}

@@ -17,6 +17,34 @@ SYSTEM_EMAILS_TO_IGNORE = [
     'admin@cab-formations.fr',
 ]
 
+# Domaines internes CAB - si l'expéditeur est de ce domaine, c'est peut-être un forward
+INTERNAL_DOMAINS = [
+    '@cab-formations.fr',
+    '@formalogistics.fr',
+]
+
+# Patterns pour détecter un message transféré
+FORWARD_PATTERNS = [
+    r'---------- Forwarded message ---------',
+    r'---------- Message transféré ---------',
+    r'----- Forwarded Message -----',
+    r'----- Message transféré -----',
+    r'Begin forwarded message:',
+    r'Début du message transféré :',
+]
+
+# Patterns pour extraire l'email de l'expéditeur original dans un forward
+# Note: Les espaces autour de < > sont fréquents dans les forwards
+FORWARD_FROM_PATTERNS = [
+    r'De\s*:\s*[^<]*<\s*([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})\s*>',  # De : Nom < email@domain.com >
+    r'From\s*:\s*[^<]*<\s*([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})\s*>',  # From : Nom < email@domain.com >
+    r'De\s*:\s*([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})',  # De : email@domain.com
+    r'From\s*:\s*([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})',  # From : email@domain.com
+    r'&lt;\s*([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})\s*&gt;',  # HTML encoded < email >
+    r'&lt;[^>]*mailto:([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})',  # &lt;<a href="mailto:email">
+    r'href=["\']mailto:([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})["\']',  # href="mailto:email"
+]
+
 try:
     from business_rules import BusinessRules
     logger.info("Loaded custom business rules")
@@ -149,12 +177,58 @@ Always respond in JSON format with the following structure:
 
         return None
 
+    def _is_internal_email(self, email: str) -> bool:
+        """Check if an email belongs to an internal CAB domain."""
+        if not email:
+            return False
+        email_lower = email.lower()
+        return any(domain in email_lower for domain in INTERNAL_DOMAINS)
+
+    def _is_forwarded_message(self, content: str) -> bool:
+        """Check if the content contains a forwarded message pattern."""
+        if not content:
+            return False
+        for pattern in FORWARD_PATTERNS:
+            if re.search(pattern, content, re.IGNORECASE):
+                return True
+        return False
+
+    def _extract_forwarded_email(self, content: str) -> Optional[str]:
+        """
+        Extract the original sender's email from a forwarded message.
+
+        Looks for patterns like:
+        - De : Nom <email@domain.com>
+        - From : Nom <email@domain.com>
+        """
+        if not content:
+            return None
+
+        # First check if this is a forwarded message
+        if not self._is_forwarded_message(content):
+            return None
+
+        # Try to extract email from forward header
+        for pattern in FORWARD_FROM_PATTERNS:
+            match = re.search(pattern, content, re.IGNORECASE)
+            if match:
+                email = match.group(1).lower().strip()
+                # Validate it's not an internal email
+                if not self._is_internal_email(email):
+                    logger.info(f"📧 Extracted forwarded email: {email}")
+                    return email
+
+        return None
+
     def _extract_email_from_threads(self, threads: List[Dict[str, Any]]) -> Optional[str]:
         """
         Extract email from the LAST thread in the list (most recent).
 
         Threads are usually ordered chronologically, so the last one is the most recent.
         We prioritize customer emails over agent responses.
+
+        Special handling: If the sender is an internal CAB employee who forwarded
+        a customer email, extract the original customer's email from the forwarded content.
         """
         if not threads:
             return None
@@ -174,15 +248,38 @@ Always respond in JSON format with the following structure:
                     if email.lower() in [e.lower() for e in SYSTEM_EMAILS_TO_IGNORE]:
                         logger.info(f"Skipping system email: {email}")
                         continue
+
+                    # Check if this is an internal employee forwarding a customer email
+                    if self._is_internal_email(email):
+                        content = thread.get("content") or thread.get("plainText") or ""
+                        forwarded_email = self._extract_forwarded_email(content)
+                        if forwarded_email:
+                            logger.info(f"📧 Internal email {email} forwarded customer email from: {forwarded_email}")
+                            return forwarded_email
+                        else:
+                            logger.info(f"⚠️ Internal email {email} but no forwarded customer found - skipping")
+                            continue
+
                     logger.info(f"Extracted email from thread: {email}")
                     return email
 
-        # Fallback: try any thread (but still skip system emails)
+        # Fallback: try any thread (but still skip system emails and check for forwards)
         for thread in threads:
             email = self._extract_email_from_thread(thread)
             if email:
                 if email.lower() in [e.lower() for e in SYSTEM_EMAILS_TO_IGNORE]:
                     continue
+
+                # Check if this is an internal employee forwarding a customer email
+                if self._is_internal_email(email):
+                    content = thread.get("content") or thread.get("plainText") or ""
+                    forwarded_email = self._extract_forwarded_email(content)
+                    if forwarded_email:
+                        logger.info(f"📧 Internal email {email} forwarded customer email from: {forwarded_email} (fallback)")
+                        return forwarded_email
+                    else:
+                        continue
+
                 logger.info(f"Extracted email from thread (fallback): {email}")
                 return email
 

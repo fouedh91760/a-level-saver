@@ -644,7 +644,10 @@ Le candidat demande sa convocation mais la date d'examen dans Zoho CRM est dans 
                     # Récupérer le ticket pour le département et l'email destinataire
                     ticket = self.desk_client.get_ticket(ticket_id)
                     department = ticket.get('departmentId') or ticket.get('department', {}).get('name', '')
-                    to_email = ticket.get('email')
+
+                    # Utiliser l'email du client extrait (ex: forward) si disponible
+                    # Sinon fallback sur l'email du ticket
+                    to_email = triage_result.get('email_searched') or ticket.get('email')
 
                     # Mapping département → email expéditeur
                     dept_email_map = {
@@ -840,6 +843,11 @@ Le candidat demande sa convocation mais la date d'examen dans Zoho CRM est dans 
         linking_result = self.deal_linker.process({"ticket_id": ticket_id})
         all_deals = linking_result.get('all_deals', [])
         selected_deal = linking_result.get('selected_deal') or linking_result.get('deal') or {}
+
+        # TOUJOURS stocker l'email utilisé pour la recherche (pour destinataire brouillon si forward)
+        # Cet email peut être différent de ticket.email si c'est un forward interne
+        if linking_result.get('email'):
+            triage_result['email_searched'] = linking_result.get('email')
 
         # Rule #2.5: VÉRIFICATION DOUBLON UBER 20€
         # Si le candidat a déjà bénéficié de l'offre Uber 20€, il ne peut pas en bénéficier à nouveau
