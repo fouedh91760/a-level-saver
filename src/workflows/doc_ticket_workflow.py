@@ -862,10 +862,57 @@ Le candidat demande sa convocation mais la date d'examen dans Zoho CRM est dans 
             logger.info("🚫 DOUBLON UBER → Workflow spécifique (pas de gratuité)")
             return triage_result
 
-        # Rule #2.6: CANDIDAT NON TROUVÉ - CLARIFICATION NÉCESSAIRE
+        # Rule #2.6: CANDIDAT NON TROUVÉ - Vérifier si demande d'info/CPF avant clarification
         # Si c'est un nouveau ticket et qu'on ne trouve pas le candidat dans le CRM,
-        # demander des informations pour l'identifier
+        # vérifier d'abord si c'est une demande d'information (pas un dossier en cours)
         if linking_result.get('needs_clarification'):
+            # Keywords indiquant une demande d'information (pas un candidat existant)
+            # Ces personnes doivent être redirigées vers Contact, pas DOC
+            info_request_keywords = [
+                # CPF / Compte Formation
+                "cpf", "compte cpf", "mon compte cpf",
+                "compte formation", "mon compte formation",
+                "formation cpf",
+                # Demandes d'information générales
+                "renseignement", "renseignements",
+                "information sur", "informations sur",
+                "je souhaite savoir", "je voulais savoir",
+                "serait-il possible", "est-il possible",
+                "comment s'inscrire", "comment m'inscrire",
+                "tarif", "prix", "coût", "cout",
+                "disponibilité", "disponibilites",
+            ]
+
+            # Vérifier si le contenu indique une demande d'info
+            content_to_check = (subject + ' ' + last_thread_content).lower()
+            is_info_request = any(kw in content_to_check for kw in info_request_keywords)
+
+            if is_info_request:
+                # C'est une demande d'information → Router vers Contact
+                logger.info(f"📋 Candidat non trouvé MAIS demande d'information détectée → Contact")
+                triage_result['action'] = 'ROUTE'
+                triage_result['target_department'] = 'Contact'
+                triage_result['reason'] = "Demande d'information (CPF/renseignement) - candidat non inscrit"
+                triage_result['method'] = 'info_request_routing'
+                triage_result['email_searched'] = linking_result.get('email')
+
+                # Auto-transfer vers Contact
+                if auto_transfer:
+                    try:
+                        logger.info(f"🔄 Transfert automatique vers Contact...")
+                        transfer_success = self.dispatcher._reassign_ticket(ticket_id, 'Contact')
+                        if transfer_success:
+                            logger.info(f"✅ Ticket transféré vers Contact")
+                            triage_result['transferred'] = True
+                        else:
+                            logger.warning(f"⚠️ Échec transfert vers Contact")
+                    except Exception as e:
+                        logger.error(f"Erreur transfert: {e}")
+
+                logger.info("🔄 ROUTE → Contact (demande d'info, pas de dossier en cours)")
+                return triage_result
+
+            # Sinon, demander clarification comme avant
             logger.warning(f"⚠️ CANDIDAT NON TROUVÉ - Clarification nécessaire")
             triage_result['action'] = 'NEEDS_CLARIFICATION'
             triage_result['reason'] = f"Candidat non trouvé dans le CRM avec l'email {linking_result.get('email', 'inconnu')}"
@@ -2611,12 +2658,18 @@ L'équipe CAB Formations"""
         }
 
         # MULTI-ÉTATS: Utiliser detect_all_states pour collecter tous les états
+        # Récupérer les données de cohérence formation/examen pour FM-1
+        training_exam_consistency_data = analysis_result.get('training_exam_consistency_result', {})
+        session_data = analysis_result.get('session_data', {})
+
         detected_states = self.state_detector.detect_all_states(
             deal_data=deal_data,
             examt3p_data=examt3p_data,
             triage_result=triage_result,
             linking_result=linking_result,
             threads_data=threads_data,
+            session_data=session_data,
+            training_exam_consistency_data=training_exam_consistency_data,
             enriched_lookups=enriched_lookups
         )
 

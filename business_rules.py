@@ -248,11 +248,13 @@ class BusinessRules:
                 "location de véhicule",
                 "louer un véhicule",
                 "louer véhicule",
-                # CPF
+                # CPF / Compte Formation
                 "cpf",
                 "formation cpf",
                 "mon compte cpf",
                 "compte cpf",
+                "compte formation",
+                "mon compte formation",
                 # Taxi / autres métiers
                 "taxi",
                 "ambulance",
