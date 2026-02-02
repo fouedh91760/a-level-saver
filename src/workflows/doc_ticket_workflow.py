@@ -1270,9 +1270,10 @@ Deux comptes ExamenT3P fonctionnels ont été détectés pour ce candidat, et le
                 examt3p_data['extraction_error'] = str(e)
 
         elif credentials_result.get('credentials_found'):
-            # Identifiants trouvés mais connexion échouée
+            # Identifiants trouvés mais connexion échouée (mot de passe changé par le candidat)
             logger.warning(f"  ❌ Identifiants trouvés mais connexion échouée: {credentials_result.get('connection_error')}")
             examt3p_data['extraction_error'] = f"Connexion échouée: {credentials_result.get('connection_error')}"
+            examt3p_data['credentials_login_failed'] = True  # Flag pour template: mot de passe changé
 
         else:
             # Identifiants non trouvés
@@ -2667,6 +2668,7 @@ L'équipe CAB Formations"""
             'deal_data': deal_data,
             'contact_data': contact_data,  # Données du contact (First_Name, Last_Name)
             'examt3p_data': examt3p_data,
+            'credentials_invalid': examt3p_data.get('credentials_login_failed', False),  # Mot de passe changé par candidat
             'date_examen_vtc_data': date_examen_vtc_result,
             'date_examen_vtc_value': date_examen_vtc_value,  # Date réelle extraite du lookup
             'session_data': session_data,

@@ -711,6 +711,7 @@ class TemplateEngine:
             'identifiant_examt3p': examt3p_data.get('identifiant', ''),
             'mot_de_passe_examt3p': examt3p_data.get('mot_de_passe', ''),
             'connection_test_success': examt3p_data.get('connection_test_success', False),
+            'credentials_login_failed': examt3p_data.get('credentials_login_failed', False),
 
             # Dates
             'date_examen': date_examen_formatted or '',
@@ -971,6 +972,10 @@ class TemplateEngine:
             # Choix remboursement CMA (pour ERREUR_PAIEMENT_CMA)
             'remboursement_cma_choice_remboursement': intent_context.get('remboursement_cma_choice') == 'remboursement',
             'remboursement_cma_choice_conserver': intent_context.get('remboursement_cma_choice') == 'conserver',
+
+            # Permis probatoire (pour PERMIS_PROBATOIRE)
+            'probation_completed': intent_context.get('probation_status') == 'completed',
+            'probation_pending': intent_context.get('probation_status') == 'pending',
 
             # ===== MATCHING DATES SPÉCIFIQUES (DEMANDE_CHANGEMENT_SESSION) =====
             # Variables pour le template intelligent qui gère les demandes avec dates précises

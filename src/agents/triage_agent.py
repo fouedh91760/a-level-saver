@@ -260,7 +260,11 @@ INTENTIONS POSSIBLES (par ordre de spécificité - préfère les intentions spé
 - DEMANDE_SUPPRESSION_DONNEES: Demande RGPD de suppression
   Exemples: "supprimer mes données", "droit à l'oubli"
 - PERMIS_PROBATOIRE: Question sur le permis probatoire (jeune permis < 3 ans)
-  Exemples: "permis probatoire", "jeune permis", "moins de 3 ans de permis", "fin de probation"
+  Exemples: "permis probatoire", "jeune permis", "moins de 3 ans de permis", "fin de probation", "j'ai atteint 3 ans"
+  ⚠️ IMPORTANT: Ajouter dans intent_context.probation_status:
+    - "completed": le candidat ANNONCE qu'il a atteint les 3 ans (ex: "j'ai atteint les 3 ans", "j'ai maintenant 3 ans de permis") → il est PRÊT, pas besoin de lui demander la date
+    - "pending": le candidat n'a PAS encore 3 ans et DEMANDE quand il pourra s'inscrire
+    - "question": question générale sur le permis probatoire
 - PERMIS_RENOUVELLEMENT: Permis en cours de renouvellement, abîmé, volé ou perdu
   Exemples: "nouveau permis", "renouvellement permis", "permis abîmé", "permis volé", "permis perdu", "en attente de mon permis", "ANTS", "récépissé"
   ⚠️ Réponse: Ils peuvent utiliser l'ancien permis (même abîmé) + récépissé ANTS pour s'inscrire à l'examen
@@ -449,7 +453,8 @@ Réponds UNIQUEMENT en JSON valide:
             "wrong_type": "jour" | "soir" | null,
             "wrong_dates": "YYYY-MM-DD - YYYY-MM-DD" | null,
             "wrong_dates_raw": "texte original" | null
-        } | null
+        } | null,
+        "probation_status": "completed" | "pending" | "question" | null
     }
 }
 
