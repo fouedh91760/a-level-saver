@@ -2703,6 +2703,10 @@ L'équipe CAB Formations"""
             'auto_assigned_exam_date': date_examen_vtc_result.get('auto_assigned_exam_date'),
             'auto_assigned_session': date_examen_vtc_result.get('auto_assigned_session'),
 
+            # Auto-report (CAS 2: date passée + non validé → nouvelle date sélectionnée)
+            'auto_report': date_examen_vtc_result.get('auto_report', False),
+            'auto_report_date': date_examen_vtc_result.get('auto_report_date'),
+
             # Données de recherche par mois/lieu (REPORT_DATE intelligent)
             'no_date_for_requested_month': date_examen_vtc_result.get('no_date_for_requested_month', False),
             'requested_month_name': date_examen_vtc_result.get('requested_month_name', ''),

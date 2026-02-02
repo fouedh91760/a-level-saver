@@ -1063,9 +1063,14 @@ class TemplateEngine:
             logger.info(f"📅 show_dates_section={context['show_dates_section']} (défini par matrice - priorité absolue)")
         elif date_case == 2:
             # CAS SPÉCIAL: date passée + non validé → proposer nouvelles dates
-            # (seulement si la matrice n'a pas défini de flag)
-            result['show_dates_section'] = bool(context.get('next_dates', []))
-            logger.info(f"📅 show_dates_section={result['show_dates_section']} (CAS 2: date passée non validée)")
+            # SAUF si auto-report a déjà sélectionné une date ET session déjà assignée
+            session_exists_for_auto_report = bool(enriched_lookups.get('session_name')) or bool(deal_data.get('Session'))
+            if context.get('auto_report') and session_exists_for_auto_report:
+                result['show_dates_section'] = False
+                logger.info("📅 show_dates_section=False (CAS 2 + auto_report + session existante → pas besoin de confirmation)")
+            else:
+                result['show_dates_section'] = bool(context.get('next_dates', []))
+                logger.info(f"📅 show_dates_section={result['show_dates_section']} (CAS 2: date passée non validée)")
         elif context.get('suppress_next_dates'):
             result['show_dates_section'] = False
             logger.info("📅 show_dates_section=False (suppress_next_dates)")

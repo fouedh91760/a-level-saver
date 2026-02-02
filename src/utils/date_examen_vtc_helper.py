@@ -865,6 +865,8 @@ def analyze_exam_date_situation(
                     first_next = result['next_dates'][0]
                     result['auto_report_date'] = first_next.get('Date_Examen')
                     result['auto_report_session_id'] = first_next.get('id')
+                    # IMPORTANT: Mettre à jour date_cloture avec la NOUVELLE clôture (pas l'ancienne)
+                    result['date_cloture'] = first_next.get('Date_Cloture_Inscription')
                     logger.info(f"  ✅ Auto-report détecté: {date_examen_str} → {result['auto_report_date']}")
 
                 # Si pas de compte ExamT3P, chercher des dates plus tôt dans d'autres départements
