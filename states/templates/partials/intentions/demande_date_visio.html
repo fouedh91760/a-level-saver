@@ -1,10 +1,9 @@
 <!-- Partial: Réponse à l'intention DEMANDE_DATE_VISIO -->
 <!-- Candidat demande accès à ses 40 heures de formation visio -->
-<!-- NOTE: Si session_confirmed=true (via CONFIRMATION_SESSION), ce partial ne doit PAS redemander de choisir -->
-{{#unless session_confirmed}}
-{{#unless intention_confirmation_session}}
+<!-- Pattern: Si session assignée → afficher dates, sinon → proposer choix -->
 <b>Concernant vos 40 heures de formation en visioconférence</b><br>
 {{#if session_assigned}}
+<!-- Session déjà assignée - rappeler les dates (comme question_session.html) -->
 Votre session de formation est confirmée :<br>
 {{#if session_is_jour}}
 &nbsp;&nbsp;→ <b>Cours du jour</b> : du {{session_date_debut}} au {{session_date_fin}} (8h30-17h30)<br>
@@ -14,6 +13,8 @@ Votre session de formation est confirmée :<br>
 <br>
 Vous recevrez le lien d'invitation par email avant le début de la formation.<br>
 {{else}}
+{{#unless intention_confirmation_session}}
+<!-- Pas de session assignée et pas en cours de confirmation → proposer choix -->
 {{#if has_sessions_proposees}}
 <!-- Sessions disponibles - le candidat doit choisir -->
 Vos 40 heures de formation se déroulent en visioconférence. Voici les sessions disponibles :<br>
@@ -36,6 +37,5 @@ Pour l'examen du {{this.date_examen_formatted}} :<br>
 Pour accéder à vos 40 heures de formation, nous devons d'abord confirmer votre date d'examen.<br>
 Les sessions de formation sont planifiées en fonction de la date d'examen choisie.<br>
 {{/if}}
+{{/unless}}
 {{/if}}
-{{/unless}}
-{{/unless}}

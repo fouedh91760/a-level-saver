@@ -793,13 +793,18 @@ Le candidat demande sa convocation mais la date d'examen dans Zoho CRM est dans 
 
         for thread in threads:
             direction = thread.get('direction')
+            status = thread.get('status', '')
 
-            # Arrêter si on trouve une réponse CAB (les messages avant sont "anciens")
+            # Ignorer les drafts (status: DRAFT) - ce ne sont pas des réponses envoyées
+            if status == 'DRAFT':
+                continue
+
+            # Arrêter si on trouve une réponse CAB ENVOYÉE
             if direction == 'out':
                 first_cab_response_seen = True
                 continue
 
-            # Si on a déjà vu une réponse CAB, on arrête (messages trop vieux)
+            # Si on a déjà vu une réponse CAB envoyée, on arrête (messages trop vieux)
             if first_cab_response_seen:
                 break
 
