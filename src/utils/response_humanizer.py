@@ -29,6 +29,7 @@ INTERDIT - NE JAMAIS FAIRE (CRITIQUE) :
 - NE JAMAIS supprimer une liste d'options/alternatives proposées dans l'email
 - Le message du candidat sert à STRUCTURER la réponse (répondre d'abord à sa question), PAS à créer du contenu
 - Le message du candidat peut contenir des dates DIFFÉRENTES de celles de l'email - utilise UNIQUEMENT les dates de l'email
+- NE JAMAIS utiliser les HORAIRES du message du candidat - le candidat peut se tromper ! Utilise UNIQUEMENT les horaires de l'email à reformuler (8h30-17h30 pour cours du jour, 18h-22h pour cours du soir)
 
 CLARIFICATION : Tu PEUX utiliser le message du candidat pour :
 - Identifier sa question principale et y répondre EN PREMIER avec les infos de l'email
@@ -44,6 +45,7 @@ PRÉSERVER EXACTEMENT (ne jamais modifier) :
 - Les montants
 - Les numéros de département et CMA (CMA 34, CMA 75, département 67, etc.)
 - Les noms de région
+- Les HORAIRES DE FORMATION : "8h30-17h30" (jour) et "18h-22h" (soir) - NE JAMAIS modifier ces horaires
 
 DATES DE CLÔTURE (CRITIQUE) :
 - Chaque date d'examen a une date de clôture d'inscription associée
@@ -205,7 +207,9 @@ Fusionne les sections, ajoute des transitions naturelles, garde toutes les infor
 
 ⚠️ ATTENTION CRITIQUE - TENTATIVE 2/2 :
 Tu DOIS obligatoirement conserver ces dates exactes dans ta réponse : {dates_str}
-Ne reformule PAS les dates, garde-les au format DD/MM/YYYY."""
+Ne reformule PAS les dates, garde-les au format DD/MM/YYYY.
+Tu DOIS conserver les horaires EXACTS de formation : 8h30-17h30 pour les cours du jour, 18h-22h pour les cours du soir.
+NE JAMAIS modifier ces horaires (pas de "8h30 à 16h", pas de "9h-17h", etc.)."""
                 logger.info(f"🔄 Retry humanization (attempt {attempt + 1}/{max_attempts}) - dates requises: {dates_str}")
 
             response = client.messages.create(
@@ -295,6 +299,24 @@ def _validate_humanized_response(original: str, humanized: str) -> Dict[str, Any
     missing_cmas = original_cmas - humanized_cmas
     if missing_cmas:
         issues.append(f"CMA manquants: {missing_cmas}")
+
+    # Valider les horaires de formation (CRITIQUE - ne jamais modifier)
+    # Horaires fixes: 8h30-17h30 (jour), 18h-22h (soir)
+    if '8h30-17h30' in original or '8h30 à 17h30' in original:
+        # Vérifier que l'horaire jour est préservé
+        has_jour_hours = ('8h30-17h30' in humanized or '8h30 à 17h30' in humanized or
+                         '8h30-17h30' in humanized.replace(' ', '') or
+                         '8 h 30' in humanized and '17 h 30' in humanized)
+        if not has_jour_hours:
+            issues.append("Horaires jour modifiés (doit être 8h30-17h30)")
+
+    if '18h-22h' in original or '18h à 22h' in original:
+        # Vérifier que l'horaire soir est préservé
+        has_soir_hours = ('18h-22h' in humanized or '18h à 22h' in humanized or
+                         '18h-22h' in humanized.replace(' ', '') or
+                         '18 h' in humanized and '22 h' in humanized)
+        if not has_soir_hours:
+            issues.append("Horaires soir modifiés (doit être 18h-22h)")
 
     return {
         'valid': len(issues) == 0,
