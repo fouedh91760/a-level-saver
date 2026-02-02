@@ -1,10 +1,19 @@
 <!-- Partial: Reponse intention PERMIS_PROBATOIRE -->
 <!-- Note: Les dates sont affichées dans Section 4 centralisée -->
 {{#if probation_completed}}
+{{#if evalbox_refus_cma}}
+<!-- Candidat a atteint 3 ans ET son dossier était refusé (probablement à cause du permis) -->
+<b>Bonne nouvelle concernant votre permis !</b><br>
+Vous avez maintenant terminé votre période probatoire (3 ans de permis). C'était très probablement la raison pour laquelle votre dossier avait été refusé par la CMA.<br>
+<br>
+Nous allons pouvoir relancer votre inscription avec votre permis désormais valide pour l'examen VTC.<br>
+<br>
+{{else}}
 <!-- Candidat a atteint 3 ans de permis - prêt à s'inscrire -->
 <b>Votre permis probatoire</b><br>
 Félicitations ! Vous avez terminé votre période probatoire et pouvez désormais vous inscrire à l'examen VTC.<br>
 <br>
+{{/if}}
 {{else}}
 <b>Concernant votre période probatoire</b><br>
 Pour passer l'examen VTC, vous devez avoir terminé votre période de probation de permis de conduire (3 ans, ou 2 ans si conduite accompagnée).<br>

@@ -1,6 +1,14 @@
 <!-- Partial: Réponse à l'intention DOCUMENT_QUESTION -->
 <!-- Gère les questions sur les documents requis, formats, alternatives -->
+{{#if evalbox_refus_cma}}
+<!-- Candidat a déjà soumis ses documents et ils ont été refusés - pas besoin de relister -->
+{{#unless credentials_login_failed}}
+<b>Vos documents refusés</b><br>
+Vous avez déjà transmis votre dossier et certaines pièces ont été refusées par la CMA. Pour voir les motifs de refus et corriger vos documents, connectez-vous sur <a href="https://www.exament3p.fr">exament3p.fr</a>.<br>
+{{/unless}}
+{{else}}
 <b>Concernant votre question sur les documents</b><br>
 Voici les documents acceptés pour votre inscription à l'examen VTC :<br>
 {{> partials/common/liste_documents_requis}}
 <i>Conseil : Vérifiez que vos scans sont lisibles et que les quatre coins du document sont visibles.</i><br>
+{{/if}}
