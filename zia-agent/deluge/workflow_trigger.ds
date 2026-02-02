@@ -1,0 +1,181 @@
+// ============================================================
+// CAB Formations - Zia Agent Workflow Trigger
+// ============================================================
+// Ce script Deluge déclenche l'agent Zia pour traiter un ticket
+// À configurer dans : Zoho Desk > Setup > Automation > Workflow Rules
+// ============================================================
+
+// --- CONFIGURATION ---
+// Remplacez ces valeurs par vos identifiants réels
+zia_org_id = "VOTRE_ORG_ID";  // Trouvable dans Zia Agents > Settings
+zia_agent_id = "VOTRE_AGENT_ID";  // ID de l'agent créé
+zia_agent_version_id = "VOTRE_VERSION_ID";  // Version de l'agent
+zia_session_id = zoho.currenttime.toString("yyyyMMddHHmmss") + ticket.get("id");  // Session unique
+
+// IDs des départements CAB Formations
+dept_contact = "799478000000006907";
+dept_pedagogie = "799478000001601380";
+dept_doc = "799478000004394715";
+dept_backoffice = "799478000001594039";
+
+// --- RÉCUPÉRATION DES INFORMATIONS DU TICKET ---
+ticket_id = ticket.get("id");
+ticket_number = ticket.get("ticketNumber");
+contact_email = ticket.get("email");
+contact_name = ticket.get("contactName");
+subject = ticket.get("subject");
+department_id = ticket.get("departmentId");
+
+info "=== Traitement du ticket #" + ticket_number + " ===";
+info "Email: " + contact_email;
+info "Sujet: " + subject;
+
+// --- CONSTRUCTION DE LA REQUÊTE VERS ZIA AGENTS ---
+headerMap = Map();
+headerMap.put("X-ZIAAGENTS-ORG", zia_org_id);
+headerMap.put("X-ZIAAGENTS-AGENT-ID", zia_agent_id);
+headerMap.put("X-ZIAAGENTS-AGENT-SESSION-ID", zia_session_id);
+headerMap.put("x-ziaagents-agent-version-id", zia_agent_version_id);
+headerMap.put("Content-Type", "application/json");
+
+// Requête pour l'agent
+query = "Analyse le ticket #" + ticket_number + " et génère une réponse appropriée. ";
+query = query + "L'email de l'expéditeur est: " + contact_email + ". ";
+query = query + "Le sujet du ticket est: " + subject;
+
+// Arguments système pour les outils
+systemArgs = Map();
+
+// Arguments pour getLatestThread
+getLatestThreadArgs = Map();
+getLatestThreadArgs.put("ticket_id", ticket_id);
+systemArgs.put("getLatestThread", getLatestThreadArgs);
+
+// Arguments pour searchContactByEmail
+searchContactArgs = Map();
+searchContactArgs.put("email", contact_email);
+systemArgs.put("searchContactByEmail", searchContactArgs);
+
+// Arguments pour moveTicket (sera utilisé si nécessaire)
+moveTicketArgs = Map();
+moveTicketArgs.put("ticket_id", ticket_id);
+systemArgs.put("moveTicket", moveTicketArgs);
+
+// Corps de la requête
+bodyMap = Map();
+bodyMap.put("query", query);
+bodyMap.put("systemArgs", systemArgs);
+
+// --- APPEL À L'API ZIA AGENTS ---
+info "Appel de l'agent Zia...";
+
+try 
+{
+    response = invokeurl
+    [
+        url: "https://ziaagents.zoho.eu/ziaagents/api/v1/agents/query"
+        type: POST
+        parameters: bodyMap.toString()
+        headers: headerMap
+        connection: "ziaagents_connection"  // Nom de la connexion à créer
+    ];
+    
+    info "Réponse de l'agent: " + response;
+    
+    // --- TRAITEMENT DE LA RÉPONSE ---
+    if(response != null && response.get("status") == "success")
+    {
+        agent_response = response.get("response");
+        
+        // Parsing de la réponse JSON de l'agent
+        if(agent_response != null)
+        {
+            // Extraire l'email de réponse
+            response_email = agent_response.get("response_email");
+            
+            // Extraire les actions sur le ticket
+            ticket_action = agent_response.get("ticket_action");
+            
+            // Extraire les mises à jour CRM
+            crm_updates = agent_response.get("crm_updates");
+            
+            // --- ENVOI DE LA RÉPONSE EMAIL ---
+            if(response_email != null && response_email != "")
+            {
+                info "Envoi de la réponse email...";
+                
+                replyBody = Map();
+                replyBody.put("channel", "EMAIL");
+                replyBody.put("contentType", "html");
+                replyBody.put("content", response_email);
+                replyBody.put("isForward", false);
+                
+                // Utiliser l'API Zoho Desk pour envoyer la réponse
+                reply_response = zoho.desk.sendReply(ticket_id, replyBody, "zohodesk_connection");
+                info "Réponse envoyée: " + reply_response;
+            }
+            
+            // --- DÉPLACEMENT DU TICKET SI NÉCESSAIRE ---
+            if(ticket_action != null)
+            {
+                move_to_dept = ticket_action.get("move_to_department");
+                if(move_to_dept != null && move_to_dept != "" && move_to_dept != department_id)
+                {
+                    info "Déplacement du ticket vers le département: " + move_to_dept;
+                    
+                    moveBody = Map();
+                    moveBody.put("departmentId", move_to_dept);
+                    
+                    move_response = zoho.desk.moveTicket(ticket_id, moveBody, "zohodesk_connection");
+                    info "Ticket déplacé: " + move_response;
+                }
+            }
+            
+            // --- MISE À JOUR DU CRM ---
+            if(crm_updates != null)
+            {
+                contact_id = crm_updates.get("contact_id");
+                fields_to_update = crm_updates.get("fields_to_update");
+                
+                if(contact_id != null && fields_to_update != null && fields_to_update.size() > 0)
+                {
+                    info "Mise à jour du contact CRM: " + contact_id;
+                    
+                    // Construire le payload de mise à jour
+                    updateData = List();
+                    updateRecord = Map();
+                    
+                    for each field in fields_to_update.keys()
+                    {
+                        value = fields_to_update.get(field);
+                        if(value != null && value != "")
+                        {
+                            updateRecord.put(field, value);
+                        }
+                    }
+                    
+                    if(updateRecord.size() > 0)
+                    {
+                        updateData.add(updateRecord);
+                        
+                        updateBody = Map();
+                        updateBody.put("data", updateData);
+                        
+                        crm_response = zoho.crm.updateRecord("Contacts", contact_id, updateBody, "zohocrm_connection");
+                        info "CRM mis à jour: " + crm_response;
+                    }
+                }
+            }
+        }
+    }
+    else
+    {
+        info "Erreur ou pas de réponse de l'agent";
+    }
+}
+catch (e)
+{
+    info "Erreur lors de l'appel à l'agent: " + e;
+}
+
+info "=== Fin du traitement du ticket #" + ticket_number + " ===";

@@ -1,0 +1,96 @@
+openapi: 3.0.1
+info:
+  title: Get ExamT3P Data for Contact
+  description: |
+    Récupère les données du dossier ExamT3P pour un candidat.
+    Cet outil appelle l'API interne CAB Formations qui synchronise avec ExamT3P.
+  version: v1
+servers:
+  - url: https://api.cab-formations.fr
+security:
+  - ApiKey: []
+paths:
+  /examt3p/candidate/{email}:
+    get:
+      summary: Get ExamT3P data for a candidate by email
+      operationId: getExamT3PData
+      parameters:
+        - name: email
+          in: path
+          description: Email address of the candidate
+          required: true
+          schema:
+            type: string
+            format: email
+      responses:
+        "200":
+          description: ExamT3P data retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  compte_existe:
+                    type: boolean
+                    description: Whether the ExamT3P account exists
+                  identifiant:
+                    type: string
+                    description: ExamT3P login (usually email)
+                  mot_de_passe:
+                    type: string
+                    description: ExamT3P password
+                  statut_dossier:
+                    type: string
+                    description: |
+                      Status of the file in ExamT3P:
+                      - En cours de composition
+                      - En attente de paiement
+                      - En cours d'instruction
+                      - Incomplet
+                      - Valide
+                      - En attente de convocation
+                  paiement_cma:
+                    type: object
+                    properties:
+                      status:
+                        type: string
+                        enum: [pending, paid, failed]
+                      date:
+                        type: string
+                        format: date
+                      amount:
+                        type: number
+                  documents:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        type:
+                          type: string
+                        status:
+                          type: string
+                          enum: [pending, validated, rejected]
+                        rejection_reason:
+                          type: string
+                  departement:
+                    type: string
+                    description: Department number (e.g., "75", "93")
+                  num_dossier_cma:
+                    type: string
+                    description: CMA file number
+                  date_depot_cma:
+                    type: string
+                    format: date
+                  date_cloture:
+                    type: string
+                    format: date
+        "404":
+          description: Candidate not found in ExamT3P
+        "401":
+          description: Unauthorized
+components:
+  securitySchemes:
+    ApiKey:
+      type: apiKey
+      in: header
+      name: X-API-Key

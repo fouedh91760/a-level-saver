@@ -1,0 +1,70 @@
+openapi: 3.0.1
+info:
+  title: Move Ticket to Another Department in Zoho Desk
+  description: Déplace un ticket vers un autre département dans Zoho Desk
+  version: v1
+servers:
+  - url: https://desk.zoho.eu
+security:
+  - OAuth2:
+      - Desk.tickets.UPDATE
+paths:
+  /api/v1/tickets/{ticket_id}/move:
+    post:
+      summary: Move a ticket to another department
+      operationId: moveTicket
+      parameters:
+        - name: ticket_id
+          in: path
+          description: The unique ID of the ticket to move
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - departmentId
+              properties:
+                departmentId:
+                  type: string
+                  description: |
+                    ID of the target department. Available departments:
+                    - Contact: 799478000000006907
+                    - Pédagogie: 799478000001601380
+                    - DOC: 799478000004394715
+                    - Back-Office: 799478000001594039
+                  example: "799478000000006907"
+      responses:
+        "200":
+          description: Ticket moved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  ticketNumber:
+                    type: string
+                  departmentId:
+                    type: string
+        "400":
+          description: Bad Request
+        "401":
+          description: Unauthorized
+        "404":
+          description: Ticket or Department not found
+components:
+  securitySchemes:
+    OAuth2:
+      type: oauth2
+      flows:
+        authorizationCode:
+          authorizationUrl: https://accounts.zoho.eu/oauth/v2/auth
+          tokenUrl: https://accounts.zoho.eu/oauth/v2/token
+          scopes:
+            Desk.tickets.UPDATE: Permission to update Zoho Desk tickets

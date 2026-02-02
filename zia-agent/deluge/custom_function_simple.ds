@@ -1,0 +1,56 @@
+// ============================================================
+// CAB Formations - Zia Agent Custom Function (Version Simplifiée)
+// ============================================================
+// Script simplifié pour déclencher l'agent Zia depuis Zoho Desk
+// À utiliser dans : Zoho Desk > Setup > Automation > Custom Functions
+// ============================================================
+
+// --- PARAMÈTRES D'ENTRÉE ---
+// ticket_id : ID du ticket (passé automatiquement par le workflow)
+// org_id : ID de l'organisation Zoho Desk
+
+// --- CONFIGURATION ZIA AGENTS ---
+// IMPORTANT: Remplacez ces valeurs par vos identifiants
+zia_org = "VOTRE_ZIA_ORG_ID";
+zia_agent = "VOTRE_ZIA_AGENT_ID";
+zia_version = "VOTRE_ZIA_VERSION_ID";
+
+// Générer un ID de session unique
+session_id = zoho.currenttime.toString("yyyyMMddHHmmssSSS") + "_" + ticket_id;
+
+// --- HEADERS POUR L'API ZIA AGENTS ---
+headers = Map();
+headers.put("X-ZIAAGENTS-ORG", zia_org);
+headers.put("X-ZIAAGENTS-AGENT-ID", zia_agent);
+headers.put("X-ZIAAGENTS-AGENT-SESSION-ID", session_id);
+headers.put("x-ziaagents-agent-version-id", zia_version);
+
+// --- RÉCUPÉRER LES INFOS DU TICKET ---
+ticket_info = zoho.desk.getRecordById("tickets", org_id, ticket_id, "zohodesk");
+email = ticket_info.get("email");
+subject = ticket_info.get("subject");
+ticket_number = ticket_info.get("ticketNumber");
+
+// --- CONSTRUIRE LA REQUÊTE ---
+body = Map();
+body.put("query", "Traite le ticket #" + ticket_number + " de " + email + " avec le sujet: " + subject);
+
+// Arguments pour les outils
+system_args = Map();
+system_args.put("getLatestThread", {"ticket_id": ticket_id});
+system_args.put("searchContactByEmail", {"email": email});
+system_args.put("moveTicket", {"ticket_id": ticket_id});
+body.put("systemArgs", system_args);
+
+// --- APPELER L'AGENT ZIA ---
+response = invokeurl
+[
+    url: "https://ziaagents.zoho.eu/ziaagents/api/v1/agents/query"
+    type: POST
+    parameters: body.toString()
+    headers: headers
+    connection: "ziaagents"
+];
+
+info response;
+return response;

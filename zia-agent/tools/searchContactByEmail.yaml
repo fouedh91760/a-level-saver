@@ -1,0 +1,77 @@
+openapi: 3.0.1
+info:
+  title: Search Contact by Email in Zoho CRM
+  description: Recherche un contact dans Zoho CRM par son adresse email
+  version: v1
+servers:
+  - url: https://www.zohoapis.eu/crm/v2
+security:
+  - OAuth2:
+      - ZohoCRM.modules.contacts.READ
+paths:
+  /Contacts/search:
+    get:
+      summary: Search contact by email address
+      operationId: searchContactByEmail
+      parameters:
+        - name: email
+          in: query
+          description: Email address to search for
+          required: true
+          schema:
+            type: string
+        - name: fields
+          in: query
+          description: Fields to return in the response
+          required: false
+          schema:
+            type: string
+            default: "id,Full_Name,First_Name,Last_Name,Email,Phone,Mobile,Account_Name,Mailing_Street,Mailing_City,Mailing_Zip"
+      responses:
+        "200":
+          description: Contact found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                        Full_Name:
+                          type: string
+                        First_Name:
+                          type: string
+                        Last_Name:
+                          type: string
+                        Email:
+                          type: string
+                        Phone:
+                          type: string
+                        Mobile:
+                          type: string
+                        Account_Name:
+                          type: object
+                          properties:
+                            id:
+                              type: string
+                            name:
+                              type: string
+        "204":
+          description: No contact found
+        "401":
+          description: Unauthorized
+components:
+  securitySchemes:
+    OAuth2:
+      type: oauth2
+      flows:
+        authorizationCode:
+          authorizationUrl: https://accounts.zoho.eu/oauth/v2/auth
+          tokenUrl: https://accounts.zoho.eu/oauth/v2/token
+          scopes:
+            ZohoCRM.modules.contacts.READ: Permission to read Zoho CRM contacts

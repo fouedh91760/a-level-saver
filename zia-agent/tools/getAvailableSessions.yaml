@@ -1,0 +1,89 @@
+openapi: 3.0.1
+info:
+  title: Get Available Training Sessions
+  description: |
+    Récupère les sessions de formation disponibles pour un département donné.
+    Les sessions sont filtrées par date de clôture (futures uniquement).
+  version: v1
+servers:
+  - url: https://api.cab-formations.fr
+security:
+  - ApiKey: []
+paths:
+  /sessions/available:
+    get:
+      summary: Get available training sessions
+      operationId: getAvailableSessions
+      parameters:
+        - name: departement
+          in: query
+          description: Department number to filter sessions (e.g., "75", "93")
+          required: false
+          schema:
+            type: string
+        - name: type
+          in: query
+          description: Session type filter (jour or soir)
+          required: false
+          schema:
+            type: string
+            enum: [jour, soir]
+        - name: limit
+          in: query
+          description: Maximum number of sessions to return
+          required: false
+          schema:
+            type: integer
+            default: 6
+      responses:
+        "200":
+          description: Available sessions retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  sessions:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                          description: Session ID (e.g., "CDJ-31-03-2026")
+                        nom:
+                          type: string
+                          description: Session name
+                        type:
+                          type: string
+                          enum: [jour, soir]
+                        date_debut:
+                          type: string
+                          format: date
+                          description: Session start date
+                        date_fin:
+                          type: string
+                          format: date
+                          description: Session end date
+                        date_examen:
+                          type: string
+                          format: date
+                          description: Exam date
+                        date_cloture:
+                          type: string
+                          format: date
+                          description: Registration deadline
+                        departement:
+                          type: string
+                          description: Department number
+                        places_disponibles:
+                          type: integer
+                          description: Number of available spots
+        "401":
+          description: Unauthorized
+components:
+  securitySchemes:
+    ApiKey:
+      type: apiKey
+      in: header
+      name: X-API-Key
