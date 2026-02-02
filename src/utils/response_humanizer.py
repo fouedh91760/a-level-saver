@@ -177,8 +177,17 @@ NOTRE PRÉCÉDENT MESSAGE AU CANDIDAT (éviter de répéter ces infos) :
 
 """
 
-        # Construire le prompt utilisateur
-        user_prompt = f"""Reformule cet email pour le rendre naturel et fluide.
+        # Extraire les dates pour le prompt de retry
+        date_pattern = r'\d{2}/\d{2}/\d{4}'
+        critical_dates = set(re.findall(date_pattern, template_response))
+
+        # Retry loop (max 2 tentatives)
+        max_attempts = 2
+        for attempt in range(max_attempts):
+            is_retry = attempt > 0
+
+            # Prompt de base
+            base_prompt = f"""Reformule cet email pour le rendre naturel et fluide.
 {previous_context}
 MESSAGE DU CANDIDAT (contexte) :
 {candidate_message[:800]}
@@ -189,37 +198,60 @@ EMAIL À REFORMULER :
 Fusionne les sections, ajoute des transitions naturelles, garde toutes les informations factuelles.
 {"IMPORTANT : Évite de répéter les informations déjà communiquées dans notre précédent message." if previous_response else ""}"""
 
-        response = client.messages.create(
-            model="claude-sonnet-4-20250514",
-            max_tokens=2000,
-            system=HUMANIZE_SYSTEM_PROMPT,
-            messages=[{"role": "user", "content": user_prompt}]
-        )
+            # Prompt renforcé pour le retry
+            if is_retry:
+                dates_str = ', '.join(sorted(critical_dates))
+                base_prompt += f"""
 
-        humanized = response.content[0].text.strip()
+⚠️ ATTENTION CRITIQUE - TENTATIVE 2/2 :
+Tu DOIS obligatoirement conserver ces dates exactes dans ta réponse : {dates_str}
+Ne reformule PAS les dates, garde-les au format DD/MM/YYYY."""
+                logger.info(f"🔄 Retry humanization (attempt {attempt + 1}/{max_attempts}) - dates requises: {dates_str}")
 
-        # Nettoyage des sauts de ligne excessifs
-        humanized = _cleanup_line_breaks(humanized)
+            response = client.messages.create(
+                model="claude-sonnet-4-20250514",
+                max_tokens=2000,
+                system=HUMANIZE_SYSTEM_PROMPT,
+                messages=[{"role": "user", "content": base_prompt}]
+            )
 
-        # Validation : vérifier que les données critiques sont préservées
-        validation_result = _validate_humanized_response(template_response, humanized)
+            humanized = response.content[0].text.strip()
 
-        if not validation_result['valid']:
-            logger.warning(f"Humanization validation failed: {validation_result['issues']}")
-            logger.warning("Falling back to template response")
-            return {
-                'humanized_response': template_response,
-                'original_response': template_response,
-                'was_humanized': False,
-                'validation_failed': True,
-                'validation_issues': validation_result['issues'],
-            }
+            # Nettoyage des sauts de ligne excessifs
+            humanized = _cleanup_line_breaks(humanized)
 
-        logger.info("✅ Response humanized successfully")
+            # Validation : vérifier que les données critiques sont préservées
+            validation_result = _validate_humanized_response(template_response, humanized)
+
+            if validation_result['valid']:
+                logger.info(f"✅ Response humanized successfully (attempt {attempt + 1}/{max_attempts})")
+                return {
+                    'humanized_response': humanized,
+                    'original_response': template_response,
+                    'was_humanized': True,
+                    'attempts': attempt + 1,
+                }
+
+            # Validation failed
+            logger.warning(f"Humanization validation failed (attempt {attempt + 1}/{max_attempts}): {validation_result['issues']}")
+
+            # Si c'est la dernière tentative, fallback
+            if attempt == max_attempts - 1:
+                logger.warning("Max attempts reached. Falling back to template response")
+                return {
+                    'humanized_response': template_response,
+                    'original_response': template_response,
+                    'was_humanized': False,
+                    'validation_failed': True,
+                    'validation_issues': validation_result['issues'],
+                    'attempts': max_attempts,
+                }
+
+        # Should not reach here, but safety fallback
         return {
-            'humanized_response': humanized,
+            'humanized_response': template_response,
             'original_response': template_response,
-            'was_humanized': True,
+            'was_humanized': False,
         }
 
     except Exception as e:

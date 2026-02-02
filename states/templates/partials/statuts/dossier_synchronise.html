@@ -1,6 +1,6 @@
 <!-- Partial: Statut DOSSIER SYNCHRONISÉ -->
 <!-- Terminologie ExamT3P : "en cours d'instruction" (jamais "Dossier Synchronisé") -->
-Votre dossier est <b>en cours d'instruction</b> par la CMA (Chambre des Métiers et de l'Artisanat).<br>
+Votre inscription est <b>en cours</b>, sous réserve de validation par la CMA (Chambre des Métiers et de l'Artisanat).<br>
 {{#if num_dossier}}
 → N° de dossier : {{num_dossier}}<br>
 {{/if}}
@@ -16,6 +16,23 @@ Les frais d'inscription (241€) ont été réglés par CAB Formations dans le c
 <b>Ce qui se passe actuellement :</b><br>
 La CMA vérifie la conformité de vos documents. Ce processus prend généralement 5 à 10 jours ouvrés.<br>
 <br>
-{{#unless cloture_passed}}
-<b>⚠️ Important :</b> La CMA peut demander des corrections sur certains documents. Dans ce cas, vous recevrez un email et devrez corriger{{#if date_cloture}} <b>avant le {{date_cloture}}</b> (date limite d'inscription){{/if}}.<br>
-{{/unless}}
+{{#if cloture_passed}}
+<!-- Clôture passée : report automatique si refus -->
+<b>⚠️ Important :</b> Si la CMA demande des corrections sur certains documents, votre dossier sera <b>automatiquement reporté</b> sur la prochaine date d'examen disponible (les inscriptions pour le {{date_examen}} sont clôturées).<br>
+{{else}}
+<!-- Clôture pas encore passée : correction possible -->
+<b>⚠️ Important :</b> Si la CMA demande des corrections sur certains documents, vous recevrez un email et devrez corriger{{#if date_cloture}} <b>avant le {{date_cloture}}</b> (date limite d'inscription){{/if}}.<br>
+{{/if}}
+<br>
+<!-- Encourager à vérifier le dossier sur ExamT3P -->
+{{#if compte_existe}}
+<b>Vérifiez votre dossier :</b> Vous pouvez suivre l'état de vos documents sur <a href="https://www.exament3p.fr">exament3p.fr</a> :<br>
+→ Identifiant : {{identifiant_examt3p}}<br>
+{{#if mot_de_passe_examt3p}}
+→ Mot de passe : {{mot_de_passe_examt3p}}<br>
+{{else}}
+→ Mot de passe : celui reçu par email lors de la création de votre compte<br>
+{{/if}}
+<br>
+<i>Vous pouvez ajouter des pièces complémentaires si nécessaire, mais vous ne pouvez pas supprimer celles déjà envoyées.</i><br>
+{{/if}}

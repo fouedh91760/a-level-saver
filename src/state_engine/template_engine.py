@@ -1016,6 +1016,9 @@ class TemplateEngine:
             'formation_manquee_needs_refresh': context.get('training_exam_consistency_data', {}).get('needs_refresh_session', False),
             'session_manquee_dates': self._format_session_dates_from_name(enriched_lookups.get('session_name', '')),
 
+            # ===== FORMATION MANQUÉE + FORCE MAJEURE (FM-1) =====
+            'missed_training_force_majeure': context.get('missed_training_force_majeure', False),
+
             # Flags pour le template master (architecture modulaire)
             # Sections à afficher (peuvent être désactivées via context_flags de la matrice)
             'show_statut_section': context.get('show_statut_section', True),  # Par défaut True, sauf si désactivé
@@ -2214,9 +2217,15 @@ class TemplateEngine:
         Conditions:
         - show_sessions_section est True (session vide + sessions disponibles)
         - La réponse ne contient pas déjà une demande de session
+        - Aucune session n'est déjà assignée au candidat
 
         Permet aux templates legacy de proposer le choix de session.
         """
+        # Ne pas injecter si une session est déjà assignée
+        if placeholder_data.get('session_assigned'):
+            logger.info("📚 Pas d'injection de choix session (session déjà assignée)")
+            return response_text
+
         # Vérifier si on doit afficher les sessions
         if not placeholder_data.get('show_sessions_section'):
             return response_text
