@@ -7,7 +7,7 @@
 {{#if session_assigned}}
 Votre session de formation est confirmée :<br>
 {{#if session_is_jour}}
-&nbsp;&nbsp;→ <b>Cours du jour</b> : du {{session_date_debut}} au {{session_date_fin}} (9h-17h)<br>
+&nbsp;&nbsp;→ <b>Cours du jour</b> : du {{session_date_debut}} au {{session_date_fin}} (8h30-17h30)<br>
 {{else}}
 &nbsp;&nbsp;→ <b>Cours du soir</b> : du {{session_date_debut}} au {{session_date_fin}} (18h-22h)<br>
 {{/if}}
@@ -23,7 +23,7 @@ Vos 40 heures de formation se déroulent en visioconférence. Voici les sessions
 Pour l'examen du {{this.date_examen_formatted}} :<br>
 {{/if}}
 {{#if this.is_jour}}
-&nbsp;&nbsp;→ <b>Cours du jour</b> : du {{this.date_debut}} au {{this.date_fin}} (formation intensive sur 1 semaine, 9h-17h)<br>
+&nbsp;&nbsp;→ <b>Cours du jour</b> : du {{this.date_debut}} au {{this.date_fin}} (formation intensive sur 1 semaine, 8h30-17h30)<br>
 {{/if}}
 {{#if this.is_soir}}
 &nbsp;&nbsp;→ <b>Cours du soir</b> : du {{this.date_debut}} au {{this.date_fin}} (formation sur 2 semaines, 18h-22h)<br>

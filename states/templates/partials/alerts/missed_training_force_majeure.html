@@ -1,0 +1,64 @@
+<!-- Partial: MISSED_TRAINING_FORCE_MAJEURE (FM-1) -->
+<!-- Sous-cas A: Examen dans le futur / Sous-cas B: Examen passé -->
+
+{{#if is_force_majeure_medical}}
+<b>Nous comprenons votre situation</b><br>
+Nous avons bien pris connaissance de votre situation et espérons sincèrement que vous allez mieux.<br>
+<br>
+{{/if}}
+{{#if is_force_majeure_deces}}
+<b>Nous comprenons votre situation</b><br>
+Nous avons pris connaissance de votre situation et vous présentons nos sincères condoléances.<br>
+<br>
+{{/if}}
+{{#if is_force_majeure_other}}
+<b>Nous comprenons votre situation</b><br>
+Nous avons bien pris note des circonstances exceptionnelles que vous traversez.<br>
+<br>
+{{/if}}
+
+{{#if examen_pas_encore_passe}}
+<!-- SOUS-CAS A: Examen dans le futur -->
+<b>Concernant votre inscription à l'examen du {{date_examen_formatted}}</b><br>
+Votre formation n'a pas pu être suivie, mais votre inscription à l'examen VTC reste valide.<br>
+<br>
+<b>La seule option pour reporter votre examen est la force majeure.</b><br>
+<br>
+Pour demander un report auprès de la CMA, merci de nous transmettre :<br>
+<ul>
+{{#if is_force_majeure_medical}}<li>Un <b>certificat médical</b> attestant de votre impossibilité de vous présenter le {{date_examen_formatted}}</li>{{/if}}
+{{#if is_force_majeure_deces}}<li>Un <b>certificat ou avis de décès</b></li>{{/if}}
+{{#if is_force_majeure_other}}<li>Tout <b>document justifiant</b> votre impossibilité de vous présenter</li>{{/if}}
+</ul>
+<br>
+<b>Important :</b> Le justificatif doit couvrir <b>la date de l'examen</b> ({{date_examen_formatted}}), pas uniquement la période de formation.<br>
+<br>
+<b>Procédure :</b><br>
+1. Envoyez votre justificatif par email à <b>doc@cab-formations.fr</b><br>
+2. Nous transmettrons votre demande à la CMA<br>
+3. Si accepté, vous serez reporté sur la prochaine date disponible{{#if next_exam_date_formatted}} ({{next_exam_date_formatted}}){{/if}}<br>
+4. Nous pourrons ensuite reprogrammer votre formation<br>
+<br>
+<i>Note : C'est la CMA qui statue sur l'acceptation ou le refus des demandes de report. En cas de refus, des frais de réinscription de 241 euros seront à prévoir.</i><br>
+{{else}}
+<!-- SOUS-CAS B: Examen passé (traitement tardif) -->
+<b>Point sur votre situation</b><br>
+Nous constatons que :<br>
+- Votre formation n'a pas pu être suivie pour raison de force majeure<br>
+- La date d'examen prévue était le <b>{{date_examen_formatted}}</b><br>
+<br>
+<b>Afin de vous accompagner au mieux, nous avons besoin de quelques informations :</b><br>
+<br>
+1. <b>Avez-vous pu passer votre examen le {{date_examen_formatted}} ?</b><br>
+&nbsp;&nbsp;&nbsp;→ Si oui, nous attendons vos résultats.<br>
+<br>
+2. <b>Si vous n'avez pas pu vous présenter, avez-vous demandé un report à la CMA ?</b><br>
+&nbsp;&nbsp;&nbsp;→ Si oui, merci de nous transmettre la confirmation de la CMA.<br>
+<br>
+3. <b>Si aucune demande de report n'a été faite :</b><br>
+&nbsp;&nbsp;&nbsp;→ Il est peut-être encore possible de régulariser la situation.<br>
+&nbsp;&nbsp;&nbsp;→ Merci de nous transmettre <b>d'urgence</b> un justificatif (certificat médical couvrant le {{date_examen_formatted}}) à <b>doc@cab-formations.fr</b>.<br>
+<br>
+<i>Note : Sans justificatif valide accepté par la CMA, une réinscription avec frais de 241 euros sera nécessaire pour une nouvelle date d'examen.</i><br>
+{{/if}}
+<br>
