@@ -1,7 +1,19 @@
 <!-- Partial: Réponse à l'intention QUESTION_SESSION -->
-<!-- Note: Les sessions sont affichées dans Section 4 centralisée -->
+<!-- Candidat pose une question sur les sessions de formation -->
 {{#if show_session_info}}
-<b>Concernant les sessions de formation</b><br>
+<b>Concernant votre formation en visioconférence</b><br>
+{{#if session_assigned}}
+<!-- Session déjà assignée - rappeler les dates -->
+Votre session de formation est confirmée :<br>
+{{#if session_is_jour}}
+→ <b>Cours du jour</b> : du {{session_date_debut}} au {{session_date_fin}} (8h30-17h30, pause 1h le midi)<br>
+{{else}}
+→ <b>Cours du soir</b> : du {{session_date_debut}} au {{session_date_fin}} (18h-22h)<br>
+{{/if}}
+<br>
+La formation se déroule en visioconférence. Vous recevrez le lien d'invitation par email quelques jours avant le début de la formation.<br>
+{{else}}
+<!-- Pas de session assignée - infos génériques -->
 {{#if session_preference_soir}}
 Les <b>cours du soir</b> que vous souhaitez se déroulent de 18h à 22h.<br>
 C'est idéal pour les personnes en activité professionnelle.<br>
@@ -14,6 +26,7 @@ La formation est intensive sur 1 semaine (5 jours du lundi au vendredi).<br>
 Nous proposons deux types de sessions :<br>
 → <b>Cours du jour</b> : formation intensive sur 1 semaine (8h30-17h30, pause 1h le midi)<br>
 → <b>Cours du soir</b> : formation sur 2 semaines pour les personnes en activité (18h-22h)<br>
+{{/if}}
 {{/if}}
 {{/if}}
 {{/if}}
