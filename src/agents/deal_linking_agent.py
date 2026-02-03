@@ -688,6 +688,8 @@ Emails alternatifs trouvés:"""
 
         # Step 1.5: PRIORITÉ #1 - Vérifier si le ticket a déjà un lien vers une opportunité
         cf_opportunite = ticket.get('cf', {}).get('cf_opportunite') or ticket.get('cf_opportunite')
+        deal_already_linked = False
+
         if cf_opportunite:
             logger.info(f"  📎 Ticket déjà lié à une opportunité: {cf_opportunite}")
             # Extraire l'ID du deal depuis l'URL ou la valeur
@@ -707,6 +709,7 @@ Emails alternatifs trouvés:"""
                         result["deals_found"] = 1
                         result["routing_explanation"] = "Deal trouvé via champ cf_opportunite du ticket"
                         result["link_source"] = "cf_opportunite"
+                        deal_already_linked = True
 
                         # Vérifier doublon Uber même pour les tickets déjà liés
                         # (au cas où le lien a été fait manuellement sans vérification)
@@ -746,7 +749,7 @@ Emails alternatifs trouvés:"""
                             except Exception as e:
                                 logger.warning(f"  ⚠️ Erreur calcul département: {e}")
 
-                        return result
+                        # NOTE: On ne retourne PAS ici - on continue pour extraire l'email du forward
                 except Exception as e:
                     logger.warning(f"  ⚠️ Erreur récupération deal depuis cf_opportunite: {e}")
                     # Continuer avec la recherche normale
@@ -771,6 +774,10 @@ Emails alternatifs trouvés:"""
 
         if not email:
             logger.warning(f"No email found for ticket {ticket_id} (neither in threads nor contact)")
+            # Si le deal est déjà lié, on retourne quand même (le draft utilisera l'email du ticket en fallback)
+            if deal_already_linked:
+                logger.info(f"  ⚠️ Deal déjà lié mais pas d'email client trouvé - le draft utilisera l'email du ticket")
+                return result
             result["routing_explanation"] = "No email found - cannot link to CRM deals"
             result["success"] = True  # Success but no deal found
             return result
@@ -778,6 +785,12 @@ Emails alternatifs trouvés:"""
         result["email_found"] = True
         result["email"] = email
         logger.info(f"Email extracted: {email}")
+
+        # Si le deal est déjà lié via cf_opportunite, on a juste besoin de l'email pour le draft
+        # Pas besoin de refaire la recherche de contacts/deals
+        if deal_already_linked:
+            logger.info(f"  ✅ Deal déjà lié + email extrait ({email}) - retour anticipé")
+            return result
 
         # Step 4: Search ALL contacts with this email
         contacts = self._search_contacts_by_email(email)
