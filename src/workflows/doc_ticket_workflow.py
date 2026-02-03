@@ -306,19 +306,22 @@ class DOCTicketWorkflow:
             logger.info("✅ ANALYSIS → Données extraites")
 
             # ================================================================
-            # CHECK: DEMANDE_CONVOCATION + Date passée → Traitement manuel
+            # CHECK: Date d'examen passée → Traitement manuel obligatoire
             # ================================================================
-            # Si le candidat demande sa convocation mais l'examen est passé,
-            # c'est une incohérence qui nécessite un traitement manuel
+            # Si la date d'examen est dans le passé (Zoho CRM ou ExamT3P),
+            # on stoppe le workflow pour éviter les incohérences de dates.
+            # Un humain doit vérifier: examen passé? résultat? nouvelle inscription?
             detected_intent = triage_result.get('detected_intent', '')
             secondary_intents = triage_result.get('secondary_intents', [])
             all_intents = [detected_intent] + secondary_intents
 
             date_case = date_examen_vtc_result.get('case')
-            date_passee_cases = [2, 7, 8]  # CAS 2, 7, 8 = date d'examen dans le passé
+            # CAS 2, 7 = date d'examen dans le passé → traitement manuel requis
+            # NOTE: CAS 8 = clôture passée mais examen FUTUR → on peut traiter automatiquement
+            date_passee_cases = [2, 7]
 
-            if 'DEMANDE_CONVOCATION' in all_intents and date_case in date_passee_cases:
-                logger.warning("🚨 INCOHÉRENCE DÉTECTÉE: Demande de convocation + date d'examen passée")
+            if date_case in date_passee_cases:
+                logger.warning(f"🚨 DATE D'EXAMEN PASSÉE DÉTECTÉE (CAS {date_case}) → Traitement manuel requis")
 
                 # Récupérer les infos pour la note
                 deal_data = analysis_result.get('deal_data', {})
@@ -410,16 +413,16 @@ RÉSUMÉ (3-4 phrases, en français):"""
                     examt3p_status = f"Erreur: {str(e)[:100]}"
 
                 # Créer le draft avec note manuelle enrichie
-                manual_note = f"""<b>⚠️ À TRAITER MANUELLEMENT</b><br>
+                manual_note = f"""<b>⚠️ À TRAITER MANUELLEMENT - DATE D'EXAMEN PASSÉE</b><br>
 <br>
-Le candidat demande sa convocation mais la date d'examen dans Zoho CRM est dans le passé.<br>
+La date d'examen dans Zoho CRM est dans le passé. Le workflow a été stoppé pour éviter d'envoyer des informations incohérentes au candidat.<br>
 <br>
 <hr>
 <b>📋 INFORMATIONS CANDIDAT</b><br>
 <b>Nom:</b> {prenom} {nom}<br>
 <b>Date d'examen CRM:</b> {date_examen}<br>
 <b>Evalbox:</b> {evalbox}<br>
-<b>Intention détectée:</b> DEMANDE_CONVOCATION<br>
+<b>Intention détectée:</b> {detected_intent}<br>
 <br>
 <hr>
 <b>💬 RÉSUMÉ DES ÉCHANGES</b><br>
@@ -457,8 +460,8 @@ Le candidat demande sa convocation mais la date d'examen dans Zoho CRM est dans 
                     logger.error(f"❌ Erreur création draft manuel: {e}")
                     result['draft_created'] = False
 
-                result['workflow_stage'] = 'STOPPED_MANUAL_CONVOCATION'
-                result['reason'] = f'Demande convocation + date passée ({date_examen}) - Traitement manuel requis'
+                result['workflow_stage'] = 'STOPPED_EXAM_DATE_PASSED'
+                result['reason'] = f'Date examen passée ({date_examen}) - CAS {date_case} - Traitement manuel requis'
                 result['success'] = True
                 return result
 
@@ -1986,9 +1989,23 @@ Deux comptes ExamenT3P fonctionnels ont été détectés pour ce candidat, et le
                 exam_dates_for_session = next_dates if next_dates else []
                 logger.info(f"  📚 CAS 2 (date passée non validée) → next_dates par défaut")
         elif has_assigned_date and detected_intent == 'CONFIRMATION_SESSION':
-            # CAS 1: Candidat confirme sa session → utiliser SA date assignée
-            exam_dates_for_session = [date_examen_info]
-            logger.info(f"  📚 CONFIRMATION_SESSION + date assignée ({date_examen_info.get('Date_Examen')}) → sessions pour cette date uniquement")
+            # Vérifier si la clôture de la date actuelle est passée (CAS 8)
+            if date_case == 8 and date_examen_vtc_result.get('deadline_passed_reschedule'):
+                # CAS 8 + CONFIRMATION_SESSION: La clôture est passée
+                # → Utiliser la NOUVELLE date proposée, pas l'ancienne
+                new_exam_date = date_examen_vtc_result.get('new_exam_date')
+                if new_exam_date and next_dates:
+                    exam_dates_for_session = [d for d in next_dates if d.get('Date_Examen') == new_exam_date]
+                    logger.info(f"  📚 CONFIRMATION_SESSION + CLÔTURE PASSÉE (CAS 8)")
+                    logger.info(f"     → Ancienne date: {date_examen_info.get('Date_Examen')} (clôture passée)")
+                    logger.info(f"     → Nouvelle date: {new_exam_date} → sessions pour cette date")
+                else:
+                    exam_dates_for_session = next_dates if next_dates else []
+                    logger.warning(f"  📚 CONFIRMATION_SESSION + CAS 8: pas de nouvelle date trouvée, utilisation next_dates")
+            else:
+                # CAS normal: Candidat confirme sa session → utiliser SA date assignée
+                exam_dates_for_session = [date_examen_info]
+                logger.info(f"  📚 CONFIRMATION_SESSION + date assignée ({date_examen_info.get('Date_Examen')}) → sessions pour cette date uniquement")
         elif detected_intent == 'REPORT_DATE':
             # CAS 2: REPORT_DATE → charger les dates SPÉCIFIQUES au département et exclure la date actuelle
             current_date = date_examen_info.get('Date_Examen') if date_examen_info else None
@@ -2025,6 +2042,11 @@ Deux comptes ExamenT3P fonctionnels ont été détectés pour ce candidat, et le
             # CAS 6: Formation manquée + examen futur → proposer sessions de rafraîchissement
             exam_dates_for_session = [date_examen_info]
             logger.info(f"  📚 FORMATION MANQUÉE + examen futur → recherche sessions de rafraîchissement pour {date_examen_info.get('Date_Examen')}")
+        elif detected_intent == 'DEMANDE_CHANGEMENT_SESSION' and has_assigned_date:
+            # CAS 7: Demande de changement de session avec date d'examen assignée
+            # → proposer sessions alternatives avant cette date d'examen
+            exam_dates_for_session = [date_examen_info]
+            logger.info(f"  📚 DEMANDE_CHANGEMENT_SESSION + date assignée → recherche sessions avant {date_examen_info.get('Date_Examen')}")
         else:
             exam_dates_for_session = []
 
@@ -2045,10 +2067,25 @@ Deux comptes ExamenT3P fonctionnels ont été détectés pour ce candidat, et le
             # Récupérer la préférence du TriageAgent via IntentParser
             triage_session_pref = intent.session_preference
 
+            # NOTE: Pas de blocage pour documents manquants ou credentials invalides
+            # Le candidat peut choisir sa session même avec un dossier incomplet
+            # La complétion des documents est un processus séparé
+            session_confirmation_blocked = False
+            session_blocking_reason = None
+
+            if session_confirmation_blocked:
+                # Ne pas proposer de sessions - créer un session_data minimal avec la raison du blocage
+                session_data = {
+                    'session_preference': triage_session_pref,
+                    'proposed_options': [],
+                    'sessions_proposees': [],
+                    'session_confirmation_blocked': True,
+                    'session_blocking_reason': session_blocking_reason,
+                }
             # ================================================================
             # NOUVEAU: Matching par dates spécifiques demandées
             # ================================================================
-            if intent.has_date_range_request:
+            elif intent.has_date_range_request:
                 from src.utils.session_helper import match_sessions_by_date_range
 
                 requested_dates = intent.requested_training_dates
@@ -2158,12 +2195,16 @@ Deux comptes ExamenT3P fonctionnels ont été détectés pour ce candidat, et le
                 logger.info("  ⚠️ PLAINTE SESSION détectée - vérification de l'erreur...")
                 from src.utils.session_helper import verify_session_complaint
 
+                # Récupérer la date d'examen pour chercher des sessions alternatives
+                exam_date_for_complaint = date_examen_info.get('Date_Examen') if date_examen_info else None
+
                 complaint_verification = verify_session_complaint(
                     crm_client=self.crm_client,
                     claimed_session=intent.claimed_session,
                     assigned_session=deal_data.get('Session'),
                     enriched_lookups=enriched_lookups,
-                    session_preference=intent.session_preference
+                    session_preference=intent.session_preference,
+                    exam_date=exam_date_for_complaint
                 )
 
                 # Stocker les résultats dans session_data
@@ -2175,6 +2216,10 @@ Deux comptes ExamenT3P fonctionnels ont été détectés pour ce candidat, et le
                 session_data['complaint_alternatives'] = complaint_verification.get('alternatives', [])
                 session_data['assigned_session_info'] = complaint_verification.get('assigned_session_info', {})
                 session_data['claimed_session_info'] = complaint_verification.get('claimed_session_info', {})
+                # Nouvelles variables pour proposer TOUTES les sessions quand pas de type spécifié
+                session_data['has_all_sessions'] = complaint_verification.get('has_all_sessions', False)
+                session_data['all_sessions_jour'] = complaint_verification.get('all_sessions_jour', [])
+                session_data['all_sessions_soir'] = complaint_verification.get('all_sessions_soir', [])
 
                 if complaint_verification.get('is_cab_error'):
                     logger.info(f"  ✅ ERREUR CAB CONFIRMÉE: {complaint_verification.get('verification_details')}")
@@ -2729,6 +2774,20 @@ L'équipe CAB Formations"""
         # DEBUG: Vérifier session_data avant l'injection dans le contexte
         logger.info(f"  🔍 DEBUG session_data: has_date_range={session_data.get('has_date_range_request')}, match_type={session_data.get('match_type')}, closest_before={session_data.get('closest_before') is not None}")
 
+        # ================================================================
+        # Extraire sessions_proposees depuis proposed_options si non déjà défini
+        # ================================================================
+        # proposed_options est une structure imbriquée retournée par analyze_session_situation()
+        # sessions_proposees doit être une liste plate pour le template
+        if not session_data.get('sessions_proposees') and session_data.get('proposed_options'):
+            sessions_flat = []
+            for option in session_data.get('proposed_options', []):
+                sessions_list = option.get('sessions', [])
+                sessions_flat.extend(sessions_list)
+            session_data['sessions_proposees'] = sessions_flat
+            if sessions_flat:
+                logger.info(f"  📚 Sessions extraites de proposed_options: {len(sessions_flat)} session(s)")
+
         detected_state.context_data.update({
             # Données brutes
             'deal_data': deal_data,
@@ -2819,6 +2878,17 @@ L'équipe CAB Formations"""
             'has_complaint_alternatives': len(session_data.get('complaint_alternatives', [])) > 0,
             'assigned_session_info': session_data.get('assigned_session_info', {}),
             'claimed_session_info': session_data.get('claimed_session_info', {}),
+            # Toutes les sessions (jour + soir) quand le candidat a des contraintes sur les deux types
+            'has_all_sessions': session_data.get('has_all_sessions', False),
+            'all_sessions_jour': session_data.get('all_sessions_jour', []),
+            'all_sessions_soir': session_data.get('all_sessions_soir', []),
+
+            # Blocage confirmation session (documents manquants ou credentials invalides)
+            # NOTE: La clôture passée (CAS 8) n'est PAS un blocage - on redirige vers la nouvelle date
+            'session_confirmation_blocked': session_data.get('session_confirmation_blocked', False),
+            'session_blocking_reason': session_data.get('session_blocking_reason'),
+            'session_blocked_documents_manquants': session_data.get('session_blocking_reason') == 'documents_manquants',
+            'session_blocked_credentials_invalides': session_data.get('session_blocking_reason') == 'credentials_invalides',
 
             # Session confirmée par le candidat (CONFIRMATION_SESSION avec dates)
             'session_confirmed': analysis_result.get('session_confirmed', False),

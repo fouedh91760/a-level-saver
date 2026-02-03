@@ -1,5 +1,32 @@
 <!-- Partial: Réponse à l'intention CONFIRMATION_SESSION -->
 <!-- Note: Les dates et sessions sont affichées dans Section 4 centralisée (si pas de session_confirmed) -->
+{{#if deadline_passed_reschedule}}
+<!-- CAS 8: Clôture passée → redirect vers nouvelle date -->
+<b>Concernant votre choix de session</b><br>
+Nous avons bien noté votre préférence{{#if session_preference_jour}} pour les <b>cours du jour</b>{{/if}}{{#if session_preference_soir}} pour les <b>cours du soir</b>{{/if}}.<br>
+<br>
+<b style="color: #c0392b;">⚠️ Important :</b> La date limite d'inscription pour l'examen du <b>{{original_exam_date}}</b> est <b>dépassée</b>.<br>
+<br>
+Vous êtes automatiquement repositionné(e) sur l'examen du <b>{{new_exam_date}}</b>{{#if new_exam_date_cloture}} (date limite d'inscription : <b>{{new_exam_date_cloture}}</b>){{/if}}.<br>
+<br>
+Voici les sessions de formation disponibles pour cette nouvelle date :<br>
+{{else}}
+{{#if session_confirmation_blocked}}
+<!-- CAS BLOQUÉ: Documents manquants ou credentials invalides -->
+<b>Concernant votre choix de session</b><br>
+Nous avons bien noté votre préférence{{#if session_preference_jour}} pour les <b>cours du jour</b>{{/if}}{{#if session_preference_soir}} pour les <b>cours du soir</b>{{/if}}.<br>
+<br>
+{{#if session_blocked_documents_manquants}}
+<b style="color: #c0392b;">⚠️ Action requise :</b> Votre dossier contient des <b>documents manquants ou refusés</b>. Pour que nous puissions finaliser votre inscription à la session de formation, merci de nous transmettre les documents demandés dans les plus brefs délais.<br>
+<br>
+Une fois votre dossier complet, nous confirmerons votre session de formation et vous recevrez le lien d'invitation à la visioconférence par email.<br>
+{{/if}}
+{{#if session_blocked_credentials_invalides}}
+<b style="color: #c0392b;">⚠️ Vérification en cours :</b> Nous ne pouvons pas encore confirmer votre session car nous devons d'abord vérifier l'état de votre dossier d'inscription à l'examen.<br>
+<br>
+Notre équipe va procéder à cette vérification et vous recontactera rapidement pour confirmer votre session de formation.<br>
+{{/if}}
+{{else}}
 <b>Concernant votre session de formation</b><br>
 {{#if session_confirmed}}
 Nous avons bien enregistré votre choix{{#if matched_session_name}} : <b>{{matched_session_name}}</b>{{/if}}{{#if matched_session_start}} du <b>{{matched_session_start}}</b> au <b>{{matched_session_end}}</b>{{/if}}.<br>
@@ -21,6 +48,8 @@ Dès que votre session sera confirmée, vous recevrez un email avec le lien d'in
 {{/if}}
 {{#if date_examen}}
 Votre examen est prévu le <b>{{date_examen}}</b>.<br>
+{{/if}}
+{{/if}}
 {{/if}}
 {{/if}}
 {{/if}}

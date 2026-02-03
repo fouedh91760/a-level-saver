@@ -706,21 +706,22 @@ def analyze_exam_date_situation(
     date_is_past = is_date_in_past(date_examen_str) if date_examen_str else False
 
     # ================================================================
-    # CAS 8 PRIORITAIRE: Deadline passée pour statuts "avant paiement"
+    # CAS 8 PRIORITAIRE: Deadline passée → report automatique
     # ================================================================
-    # Statuts où le paiement n'a pas encore été fait (donc report possible)
-    PRE_PAYMENT_STATUSES = [
-        'Dossier crée', 'Dossier créé',  # En cours de composition
-        'Pret a payer', 'Pret a payer par cheque',  # En attente de paiement
-        'Refusé CMA',  # Documents refusés, correction nécessaire
+    # Statuts où on NE PEUT PAS changer la date (déjà validé par CMA)
+    # Pour tous les autres statuts, si la clôture est passée, on redirige vers la prochaine date
+    BLOCKED_STATUSES_FOR_RESCHEDULE = [
+        'VALIDE CMA',  # Déjà validé par la CMA, trop tard
+        'Convoc CMA reçue',  # Convocation reçue, trop tard
+        'Refusé CMA',  # Géré par CAS 3 séparément
     ]
 
     date_cloture_is_past = is_date_in_past(result['date_cloture']) if result.get('date_cloture') else False
 
-    if evalbox_status in PRE_PAYMENT_STATUSES and date_cloture_is_past and not date_is_past:
+    if evalbox_status not in BLOCKED_STATUSES_FOR_RESCHEDULE and date_cloture_is_past and not date_is_past:
         # Date d'examen future mais deadline passée → report automatique sur prochaine session
         result['case'] = 8
-        result['case_description'] = "Deadline passée (avant paiement) - Report automatique sur prochaine session"
+        result['case_description'] = f"Deadline passée (evalbox: {evalbox_status}) - Report automatique sur prochaine session"
         result['should_include_in_response'] = True
         result['deadline_passed_reschedule'] = True  # Flag pour mise à jour CRM
 
