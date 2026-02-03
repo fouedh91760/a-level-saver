@@ -2,6 +2,8 @@
 <!-- Candidat demande accès à ses 40 heures de formation visio -->
 <!-- Pattern: Si session assignée → afficher dates, sinon → proposer choix -->
 <!-- Si session passée → proposer nouvelles sessions -->
+<!-- Si is_cab_error → skip (la correction est gérée par demande_changement_session.html) -->
+{{#unless is_cab_error}}
 <b>Concernant vos 40 heures de formation en visioconférence</b><br>
 {{#if session_assigned}}
 {{#if session_dates_passed}}
@@ -65,3 +67,4 @@ Les sessions de formation sont planifiées en fonction de la date d'examen chois
 {{/if}}
 {{/unless}}
 {{/if}}
+{{/unless}}
