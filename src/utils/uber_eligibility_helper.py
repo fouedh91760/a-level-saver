@@ -27,11 +27,11 @@ CAS GÉRÉS:
          → Candidat a payé mais pas envoyé ses documents
          → Expliquer l'offre + demander de finaliser inscription
 
-- CAS D: Compte_Uber = false (après vérification à Date_Dossier_recu + 2 jours)
+- CAS D: Compte_Uber = false (après vérification à Date_Dossier_recu + 4 jours)
          → Email inscription ≠ Email compte Uber Driver
          → Demander de vérifier l'email ou contacter Uber via l'app
 
-- CAS E: ELIGIBLE = false (après vérification à Date_Dossier_recu + 2 jours)
+- CAS E: ELIGIBLE = false (après vérification à Date_Dossier_recu + 4 jours)
          → Uber considère le candidat non éligible (raisons inconnues de CAB)
          → Demander de contacter Uber via l'app pour comprendre
 
@@ -46,8 +46,8 @@ ORDRE DE VÉRIFICATION:
 1. PROSPECT (Stage = EN ATTENTE)
 2. NOT_UBER (Amount ≠ 20€)
 3. CAS A (Date_Dossier_recu vide)
-4. CAS D (Compte_Uber = false, après J+2)
-5. CAS E (ELIGIBLE = false, après J+2)
+4. CAS D (Compte_Uber = false, après J+4)
+5. CAS E (ELIGIBLE = false, après J+4)
 6. CAS B (Test sélection non passé, si obligatoire)
 7. ÉLIGIBLE
 """
@@ -193,13 +193,13 @@ def analyze_uber_eligibility(deal_data: Dict[str, Any]) -> Dict[str, Any]:
 
     # ================================================================
     # VÉRIFICATION COMPTE UBER ET ÉLIGIBILITÉ
-    # La vérification manuelle se fait à Date_Dossier_recu + 2 jours
+    # La vérification manuelle se fait à Date_Dossier_recu + 4 jours
     # Avant ce délai, on ne sait pas encore → ne pas bloquer
     # ================================================================
     verification_done = False
     dossier_date = parse_date_flexible(date_dossier_recu, "Date_Dossier_recu")
     if dossier_date:
-        verification_date = dossier_date + timedelta(days=2)
+        verification_date = dossier_date + timedelta(days=4)
         today = datetime.now().date()
         verification_done = today >= verification_date
         logger.info(f"  📋 Vérification Uber: {'✅ Faite' if verification_done else '⏳ En attente'} (dossier: {dossier_date}, vérif: {verification_date})")
