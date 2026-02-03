@@ -542,6 +542,70 @@ if primary_intent == 'DEMANDE_CHANGEMENT_SESSION':
 
 ---
 
+## Cycle de Vie Evalbox et État ExamT3P
+
+### Chronologie des Statuts
+
+```
+N/A → Documents manquants → Documents refusés → Dossier créé → Pret a payer → Dossier Synchronisé → VALIDE CMA
+ │         │                      │                  │              │                │                    │
+ │         │                      │                  │              │                │                    └── Convoc CMA reçue
+ │         │                      │                  │              │                │                        (ou Refusé CMA)
+ │         │                      │                  │              │                │
+ │         └──────────────────────┘                  │              │                └── Paiement 241€ effectué
+ │              Pas de compte ExamT3P                │              │                    par CAB Formations
+ │              (dossier en cours chez CAB)          │              │
+ │                                                   │              └── Compte ExamT3P créé (OUI)
+ │                                                   │                  Documents transmis à la CMA
+ │                                                   │
+ │                                                   └── Compte ExamT3P potentiel
+ │                                                       (peut exister mais pas garanti)
+ │
+ └── Aucun traitement commencé
+```
+
+### Tableau de Référence : Evalbox × ExamT3P × Paiement
+
+| Evalbox | Compte ExamT3P | Paiement 241€ | Si clôture passée |
+|---------|----------------|---------------|-------------------|
+| `N/A` | ❌ Non | ❌ Non | **CAS 8** ✅ (report auto) |
+| `Documents manquants` | ❌ Non | ❌ Non | **CAS 8** ✅ (report auto) |
+| `Documents refusés` | ❌ Non | ❌ Non | **CAS 8** ✅ (report auto) |
+| `Dossier créé` | ⚠️ Potentiel | ❌ Non | **CAS 8** ✅ (report auto) |
+| `Pret a payer` | ✅ Oui | ❌ Non | **CAS 8** ✅ (report auto) |
+| **`Dossier Synchronisé`** | ✅ Oui | **✅ Oui** | **Vérifier date paiement** |
+| `VALIDE CMA` | ✅ Oui | ✅ Oui | **Bloqué** (modification impossible) |
+| `Convoc CMA reçue` | ✅ Oui | ✅ Oui | **Bloqué** (modification impossible) |
+| `Refusé CMA` | ✅ Oui | ✅ Oui | **CAS 3** (refus définitif) |
+
+### Règles Importantes
+
+1. **CAS 8 (Report automatique)** : Si clôture passée ET pas de paiement → le système reporte automatiquement sur la prochaine date d'examen.
+
+2. **Dossier Synchronisé = Paiement fait** : À ce stade, CAB Formations a payé les 241€ à la CMA. Si clôture passée, on vérifie la date du paiement :
+   - Paiement AVANT clôture → dossier était inscrit à temps → **PAS de CAS 8**
+   - Paiement APRÈS clôture → dossier inscrit trop tard → **CAS 8**
+
+3. **Statuts bloquants** (`VALIDE CMA`, `Convoc CMA reçue`) : La modification de date n'est plus possible sans force majeure.
+
+### Impact sur le Code
+
+```python
+# Dans date_examen_vtc_helper.py
+# Vérification AVANT de déclencher CAS 8
+if evalbox == 'Dossier Synchronisé' and date_cloture_is_past:
+    # Vérifier date paiement dans ExamT3P
+    date_paiement = examt3p_data.get('paiement_cma', {}).get('date')
+    if date_paiement and date_paiement <= date_cloture:
+        # Paiement fait avant clôture → PAS de CAS 8
+        pass
+    else:
+        # Paiement après clôture → CAS 8
+        case = 8
+```
+
+---
+
 ## DEBUGGING : Pistes d'Investigation
 
 ### 7. Template non affiché / Partial manquant
