@@ -718,8 +718,33 @@ def analyze_exam_date_situation(
 
     date_cloture_is_past = is_date_in_past(result['date_cloture']) if result.get('date_cloture') else False
 
-    if evalbox_status not in BLOCKED_STATUSES_FOR_RESCHEDULE and date_cloture_is_past and not date_is_past:
-        # Date d'examen future mais deadline passée → report automatique sur prochaine session
+    # ================================================================
+    # VÉRIFICATION DATE DE PAIEMENT (avant de déclencher CAS 8)
+    # Si le paiement a été fait AVANT la clôture, le candidat est inscrit
+    # → Pas de changement de date même si clôture passée
+    # ================================================================
+    paiement_avant_cloture = False
+    if examt3p_data and date_cloture_is_past:
+        paiement_cma = examt3p_data.get('paiement_cma', {})
+        date_paiement_str = paiement_cma.get('date')  # Format: "03/02/2026" ou "2026-02-03"
+
+        if date_paiement_str and result.get('date_cloture'):
+            try:
+                date_paiement = parse_date_flexible(date_paiement_str, "date_paiement_cma")
+                date_cloture = parse_date_flexible(result['date_cloture'], "date_cloture")
+
+                if date_paiement and date_cloture:
+                    paiement_avant_cloture = date_paiement <= date_cloture
+                    if paiement_avant_cloture:
+                        logger.info(f"  ✅ Paiement CMA fait le {date_paiement_str} (AVANT clôture {result['date_cloture']}) → Candidat inscrit")
+                    else:
+                        logger.info(f"  ⚠️ Paiement CMA fait le {date_paiement_str} (APRÈS clôture {result['date_cloture']}) → Report nécessaire")
+            except Exception as e:
+                logger.warning(f"  ⚠️ Erreur parsing dates paiement/clôture: {e}")
+
+    # CAS 8: Seulement si paiement fait APRÈS clôture (ou pas de paiement trouvé)
+    if evalbox_status not in BLOCKED_STATUSES_FOR_RESCHEDULE and date_cloture_is_past and not date_is_past and not paiement_avant_cloture:
+        # Date d'examen future mais deadline passée ET paiement après clôture → report automatique
         result['case'] = 8
         result['case_description'] = f"Deadline passée (evalbox: {evalbox_status}) - Report automatique sur prochaine session"
         result['should_include_in_response'] = True

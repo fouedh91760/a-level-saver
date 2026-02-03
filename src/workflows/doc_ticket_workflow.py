@@ -2771,6 +2771,17 @@ L'équipe CAB Formations"""
         contact_data = analysis_result.get('contact_data', {})
         date_examen_vtc_value = analysis_result.get('date_examen_vtc_value')
 
+        # ================================================================
+        # CAS 8: Si deadline passée → utiliser la NOUVELLE date d'examen
+        # Mettre à jour enriched_lookups AVANT la génération du template
+        # ================================================================
+        if date_examen_vtc_result.get('deadline_passed_reschedule') and date_examen_vtc_result.get('new_exam_date'):
+            new_exam_date = date_examen_vtc_result['new_exam_date']
+            logger.info(f"  📅 CAS 8: Mise à jour enriched_lookups avec nouvelle date: {new_exam_date}")
+            enriched_lookups['date_examen'] = new_exam_date
+            # Mettre à jour aussi date_examen_vtc_value pour cohérence
+            date_examen_vtc_value = new_exam_date
+
         # DEBUG: Vérifier session_data avant l'injection dans le contexte
         logger.info(f"  🔍 DEBUG session_data: has_date_range={session_data.get('has_date_range_request')}, match_type={session_data.get('match_type')}, closest_before={session_data.get('closest_before') is not None}")
 
