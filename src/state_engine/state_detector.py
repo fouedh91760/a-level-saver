@@ -330,15 +330,39 @@ class StateDetector:
             'secondary_intents': triage_result.get('secondary_intents', []),
             'intent_context': triage_result.get('intent_context', {}),
 
-            # Force majeure (extraites de intent_context pour les templates)
-            'mentions_force_majeure': triage_result.get('intent_context', {}).get('mentions_force_majeure', False),
-            'force_majeure_type': triage_result.get('intent_context', {}).get('force_majeure_type'),
+            # Force majeure (fusionnée: triage + helper)
+            # Source 1: TriageAgent (intent_context)
+            # Source 2: training_exam_consistency_helper
+            'mentions_force_majeure': (
+                triage_result.get('intent_context', {}).get('mentions_force_majeure', False) or
+                (training_exam_consistency_data.get('force_majeure_detected', False) if training_exam_consistency_data else False)
+            ),
+            'force_majeure_type': (
+                triage_result.get('intent_context', {}).get('force_majeure_type') or
+                (training_exam_consistency_data.get('force_majeure_type') if training_exam_consistency_data else None)
+            ),
             'force_majeure_details': triage_result.get('intent_context', {}).get('force_majeure_details', ''),
-            'is_force_majeure_deces': triage_result.get('intent_context', {}).get('force_majeure_type') == 'death',
-            'is_force_majeure_medical': triage_result.get('intent_context', {}).get('force_majeure_type') == 'medical',
-            'is_force_majeure_accident': triage_result.get('intent_context', {}).get('force_majeure_type') == 'accident',
-            'is_force_majeure_childcare': triage_result.get('intent_context', {}).get('force_majeure_type') == 'childcare',
-            'is_force_majeure_other': triage_result.get('intent_context', {}).get('force_majeure_type') == 'other',
+            # Flags de type (fusionnés)
+            'is_force_majeure_deces': (
+                triage_result.get('intent_context', {}).get('force_majeure_type') == 'death' or
+                (training_exam_consistency_data.get('force_majeure_type') == 'death' if training_exam_consistency_data else False)
+            ),
+            'is_force_majeure_medical': (
+                triage_result.get('intent_context', {}).get('force_majeure_type') == 'medical' or
+                (training_exam_consistency_data.get('force_majeure_type') == 'medical' if training_exam_consistency_data else False)
+            ),
+            'is_force_majeure_accident': (
+                triage_result.get('intent_context', {}).get('force_majeure_type') == 'accident' or
+                (training_exam_consistency_data.get('force_majeure_type') == 'accident' if training_exam_consistency_data else False)
+            ),
+            'is_force_majeure_childcare': (
+                triage_result.get('intent_context', {}).get('force_majeure_type') == 'childcare' or
+                (training_exam_consistency_data.get('force_majeure_type') == 'childcare' if training_exam_consistency_data else False)
+            ),
+            'is_force_majeure_other': (
+                triage_result.get('intent_context', {}).get('force_majeure_type') == 'other' or
+                (training_exam_consistency_data.get('force_majeure_type') == 'other' if training_exam_consistency_data else False)
+            ),
 
             # Deal linking
             'has_duplicate_uber_offer': linking_result.get('has_duplicate_uber_offer', False),
@@ -397,6 +421,10 @@ class StateDetector:
             # Préparer les données pour le template
             context['session_error_dates'] = session_error_data.get('session_name', '')
             context['session_error_correct_year'] = session_error_data.get('correct_year')
+
+        # Cohérence formation/examen (pour FM-1: MISSED_TRAINING_FORCE_MAJEURE)
+        context['has_consistency_issue'] = training_exam_consistency_data.get('has_consistency_issue', False) if training_exam_consistency_data else False
+        context['consistency_issue_type'] = training_exam_consistency_data.get('issue_type') if training_exam_consistency_data else None
 
         return context
 
@@ -548,11 +576,11 @@ class StateDetector:
         if not date_dossier:
             return False
 
-        # Vérification faite si J+2 passé (Zoho met 24-48h pour mettre à jour les champs)
+        # Vérification faite si J+4 passé (délai pour laisser le temps à la vérification manuelle)
         try:
             from datetime import timedelta
             dossier_date = datetime.strptime(str(date_dossier)[:10], '%Y-%m-%d').date()
-            verification_date = dossier_date + timedelta(days=2)
+            verification_date = dossier_date + timedelta(days=4)
             today = date.today()
 
             if today < verification_date:
@@ -574,11 +602,11 @@ class StateDetector:
         if not date_dossier:
             return False
 
-        # Vérification faite si J+2 passé (Zoho met 24-48h pour mettre à jour les champs)
+        # Vérification faite si J+4 passé (délai pour laisser le temps à la vérification manuelle)
         try:
             from datetime import timedelta
             dossier_date = datetime.strptime(str(date_dossier)[:10], '%Y-%m-%d').date()
-            verification_date = dossier_date + timedelta(days=2)
+            verification_date = dossier_date + timedelta(days=4)
             today = date.today()
 
             if today < verification_date:
@@ -625,6 +653,9 @@ class StateDetector:
             return self._match_blocking_state(state_name, detection, context)
         elif method == 'workflow':
             return self._match_workflow_state(state_name, detection, context)
+        elif method == 'combined':
+            # États combinés (plusieurs conditions simultanées)
+            return self._match_force_majeure_consistency_state(state_name, detection, context)
         elif method == 'fallback':
             return True  # État par défaut
 
@@ -906,6 +937,47 @@ class StateDetector:
         if state_name == 'SESSION_ASSIGNMENT_ERROR':
             if context.get('session_assignment_error') is True:
                 logger.info(f"⚠️ État {state_name} détecté: erreur de saisie session")
+                return True
+
+        return False
+
+    def _match_force_majeure_consistency_state(
+        self, state_name: str, detection: Dict, context: Dict
+    ) -> bool:
+        """
+        Match les états combinant force majeure + cohérence.
+
+        FM-1: Formation manquée pour force majeure
+        Priorité: Ces états doivent prendre le dessus sur les états date_examen
+        car ils représentent une situation exceptionnelle.
+
+        Sources de détection force majeure:
+        1. TriageAgent: mentions_force_majeure (dans intent_context)
+        2. training_exam_consistency_helper: force_majeure_detected
+        """
+        if state_name == 'MISSED_TRAINING_FORCE_MAJEURE':
+            has_consistency_issue = context.get('has_consistency_issue', False)
+            issue_type = context.get('consistency_issue_type')
+
+            # Source 1: TriageAgent
+            mentions_force_majeure = context.get('mentions_force_majeure', False)
+
+            # Source 2: training_exam_consistency_helper
+            consistency_data = context.get('training_exam_consistency_data', {})
+            force_majeure_from_helper = consistency_data.get('force_majeure_detected', False)
+
+            # Utiliser l'une ou l'autre source
+            has_force_majeure = mentions_force_majeure or force_majeure_from_helper
+
+            # Debug
+            logger.info(f"  🔍 FM-1 check: has_consistency_issue={has_consistency_issue}, issue_type={issue_type}")
+            logger.info(f"  🔍 FM-1 check: mentions_force_majeure={mentions_force_majeure}, force_majeure_from_helper={force_majeure_from_helper}")
+
+            if (has_consistency_issue and
+                issue_type == 'MISSED_TRAINING_IMMINENT_EXAM' and
+                has_force_majeure):
+                source = "triage" if mentions_force_majeure else "helper"
+                logger.info(f"  ⚠️ État {state_name} détecté: formation manquée + force majeure (source: {source})")
                 return True
 
         return False
