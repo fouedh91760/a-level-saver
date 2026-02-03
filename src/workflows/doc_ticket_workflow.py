@@ -857,6 +857,27 @@ La date d'examen dans Zoho CRM est dans le passé. Le workflow a été stoppé p
         if linking_result.get('email'):
             triage_result['email_searched'] = linking_result.get('email')
 
+        # Rule #2.4bis: DEMANDES RGPD - Priorité sur DUPLICATE_UBER
+        # Les demandes de suppression de données doivent être transférées au référent RGPD
+        detected_intent = triage_result.get('detected_intent', '')
+        if detected_intent == 'DEMANDE_SUPPRESSION_DONNEES':
+            logger.info("🔒 DEMANDE RGPD DÉTECTÉE → Routage vers Contact + note référent RGPD")
+            triage_result['action'] = 'ROUTE'
+            triage_result['target_department'] = 'Contact'
+            triage_result['reason'] = 'Demande RGPD (suppression données) - Transférer au référent RGPD'
+            triage_result['rgpd_referent'] = 'jc@cab-formations.fr'
+            # Ajouter une note sur le ticket
+            try:
+                self.desk_client.add_ticket_comment(
+                    ticket_id,
+                    "⚠️ DEMANDE RGPD - À TRANSFÉRER\n\nCe ticket contient une demande de suppression de données (article 17 RGPD).\n\n👉 Transférer à : jc@cab-formations.fr (Référent RGPD)",
+                    is_public=False
+                )
+                logger.info("  ✅ Note RGPD ajoutée sur le ticket")
+            except Exception as e:
+                logger.warning(f"  ⚠️ Impossible d'ajouter la note RGPD: {e}")
+            return triage_result
+
         # Rule #2.5: VÉRIFICATION DOUBLON UBER 20€
         # Si le candidat a déjà bénéficié de l'offre Uber 20€, il ne peut pas en bénéficier à nouveau
         if linking_result.get('has_duplicate_uber_offer'):

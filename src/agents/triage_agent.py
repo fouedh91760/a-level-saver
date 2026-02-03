@@ -79,6 +79,7 @@ RÈGLES DE TRIAGE:
    - Demande d'information sur une formation NON Uber (formation classique, TAXI, etc.)
    - ⚠️ JAMAIS pour les prospects Uber 20€ même en EN ATTENTE - ils restent dans DOC !
    - Demande de suppression de données (RGPD, droit à l'oubli, destruction données)
+     → Intention DEMANDE_SUPPRESSION_DONNEES → Note automatique: "Transférer à jc@cab-formations.fr (Référent RGPD)"
 
 IMPORTANT - DISTINCTION DOCUMENTS:
 - "J'ai téléchargé mes documents SUR EXAMT3P" = GO (ENVOIE_DOCUMENTS - il l'a fait lui-même)
@@ -257,8 +258,12 @@ INTENTIONS POSSIBLES (par ordre de spécificité - préfère les intentions spé
 **Autres intentions:**
 - QUESTION_PROCESSUS: Question sur le processus
   Exemples: "comment ça marche", "prochaines étapes", "c'est quoi la suite"
-- DEMANDE_SUPPRESSION_DONNEES: Demande RGPD de suppression
-  Exemples: "supprimer mes données", "droit à l'oubli"
+- DEMANDE_SUPPRESSION_DONNEES: Demande RGPD de suppression de compte/données
+  Exemples: "supprimer mes données", "droit à l'oubli", "effacer mon compte", "article 17 RGPD",
+            "droit à l'effacement", "supprimer mon compte", "destruction de mes données",
+            "exercer mon droit RGPD", "suppression de compte"
+  ⚠️ PRIORITÉ ABSOLUE: Toujours détecter cette intention, même si DUPLICATE_UBER
+  → Action: ROUTE vers Contact (référent RGPD)
 - PERMIS_PROBATOIRE: Question sur le permis probatoire (jeune permis < 3 ans)
   Exemples: "permis probatoire", "jeune permis", "moins de 3 ans de permis", "fin de probation", "j'ai atteint 3 ans"
   ⚠️ IMPORTANT: Ajouter dans intent_context.probation_status:
