@@ -25,6 +25,8 @@ import logging
 from datetime import datetime, date
 from typing import Dict, Optional, List, Any
 
+from src.utils.date_utils import parse_date_flexible
+
 logger = logging.getLogger(__name__)
 
 
