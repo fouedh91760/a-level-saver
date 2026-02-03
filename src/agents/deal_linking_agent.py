@@ -724,6 +724,17 @@ Emails alternatifs trouvés:"""
                                 result["duplicate_deals"] = deals_20_won
                                 logger.warning(f"  ⚠️ DOUBLON UBER détecté: {len(deals_20_won)} opportunités 20€ GAGNÉ")
 
+                            # Check for offer already used (Resultat filled = exam taken)
+                            COMPLETED_RESULTAT_VALUES = ['ADMISSIBLE', 'NON ADMISSIBLE', 'NON ADMIS']
+                            if len(deals_20_won) == 1 and not result["has_duplicate_uber_offer"]:
+                                deal = deals_20_won[0]
+                                resultat = deal.get('Resultat', '')
+                                if resultat and resultat.upper() in [r.upper() for r in COMPLETED_RESULTAT_VALUES]:
+                                    result["has_duplicate_uber_offer"] = True
+                                    result["duplicate_deals"] = deals_20_won
+                                    result["offer_already_used"] = True
+                                    logger.warning(f"  ⚠️ OFFRE DÉJÀ UTILISÉE: Resultat='{resultat}'")
+
                             # Calculer le département recommandé même pour les tickets déjà liés
                             # (pour gérer les cas comme "examen pratique" qui doivent aller vers Contact)
                             try:
@@ -973,6 +984,23 @@ Emails alternatifs trouvés:"""
                 logger.warning(f"⚠️ DOUBLON UBER 20€ DÉTECTÉ: {len(deals_20_won)} opportunités 20€ GAGNÉ pour ce contact")
                 for d in deals_20_won:
                     logger.warning(f"   - {d.get('Deal_Name')} (ID: {d.get('id')}, Closing: {d.get('Closing_Date')})")
+
+            # ==================================================================
+            # DÉTECTION OFFRE DÉJÀ UTILISÉE (Resultat rempli = examen passé)
+            # Si le seul deal 20€ GAGNÉ a un Resultat (ADMISSIBLE, NON ADMISSIBLE, NON ADMIS)
+            # cela signifie que le candidat a déjà passé l'examen avec cette offre
+            # ==================================================================
+            COMPLETED_RESULTAT_VALUES = ['ADMISSIBLE', 'NON ADMISSIBLE', 'NON ADMIS']
+            if len(deals_20_won) == 1 and not result["has_duplicate_uber_offer"]:
+                deal = deals_20_won[0]
+                resultat = deal.get('Resultat', '')
+                if resultat and resultat.upper() in [r.upper() for r in COMPLETED_RESULTAT_VALUES]:
+                    # Le candidat a déjà utilisé cette offre (examen déjà passé)
+                    result["has_duplicate_uber_offer"] = True
+                    result["duplicate_deals"] = deals_20_won
+                    result["offer_already_used"] = True  # Flag spécifique pour ce cas
+                    logger.warning(f"⚠️ OFFRE DÉJÀ UTILISÉE: Le deal a Resultat='{resultat}' (examen déjà passé)")
+                    logger.warning(f"   - {deal.get('Deal_Name')} (ID: {deal.get('id')}, Resultat: {resultat})")
 
             # PRIORITÉ 2 : Deals 20€ GAGNÉ (candidats payés en cours de traitement)
             if not selected_deal:
