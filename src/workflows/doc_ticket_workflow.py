@@ -2050,16 +2050,43 @@ Deux comptes ExamenT3P fonctionnels ont été détectés pour ce candidat, et le
         else:
             exam_dates_for_session = []
 
+        # ================================================================
+        # CAS 6b: Session passée (enriched_lookups) + examen futur
+        # ================================================================
+        # Détecte le cas où deal_data['Session'] est null mais les dates viennent du lookup Session1
+        # Ce cas n'est pas détecté par training_exam_consistency car il regarde deal_data['Session']
+        if not exam_dates_for_session and has_assigned_date and enriched_lookups.get('session_date_fin'):
+            from datetime import datetime as dt_local
+            try:
+                session_end = dt_local.strptime(enriched_lookups['session_date_fin'], '%Y-%m-%d').date()
+                exam_date_str = date_examen_info.get('Date_Examen', '') if date_examen_info else ''
+                exam_date_parsed = dt_local.strptime(exam_date_str, '%Y-%m-%d').date() if exam_date_str else None
+                today_local = dt_local.now().date()
+                if session_end < today_local and exam_date_parsed and exam_date_parsed > today_local:
+                    exam_dates_for_session = [date_examen_info]
+                    logger.info(f"  📚 CAS 6b: SESSION PASSÉE (fin: {session_end}) + examen futur ({exam_date_parsed}) → recherche nouvelles sessions")
+            except (ValueError, TypeError) as e:
+                logger.debug(f"  ⚠️ CAS 6b: Erreur parsing dates session/examen: {e}")
+
         # Pour REPORT_DATE, toujours chercher les sessions des dates alternatives
         is_report_date = detected_intent == 'REPORT_DATE'
         is_session_change_request = detected_intent == 'DEMANDE_CHANGEMENT_SESSION'
         is_session_complaint = is_session_change_request and intent.is_complaint
         # Pour DEMANDE_CHANGEMENT_SESSION avec dates spécifiques, on n'a pas besoin de exam_dates_for_session
         has_specific_dates = intent.has_date_range_request if is_session_change_request else False
+        # Détecter si la session assignée est passée (pour CAS 6b)
+        session_is_passed = False
+        if enriched_lookups.get('session_date_fin'):
+            try:
+                from datetime import datetime as dt_check
+                session_end_check = dt_check.strptime(enriched_lookups['session_date_fin'], '%Y-%m-%d').date()
+                session_is_passed = session_end_check < dt_check.now().date()
+            except (ValueError, TypeError):
+                pass
         should_analyze_sessions = (
             not skip_date_session_analysis
             and (exam_dates_for_session or has_specific_dates or is_session_complaint)  # Permettre le matching même sans dates d'examen, ou sur plainte
-            and (date_examen_vtc_result.get('should_include_in_response') or session_is_empty or is_report_date or is_session_change_request or has_session_assignment_error)
+            and (date_examen_vtc_result.get('should_include_in_response') or session_is_empty or is_report_date or is_session_change_request or has_session_assignment_error or session_is_passed)
         )
 
         if should_analyze_sessions:

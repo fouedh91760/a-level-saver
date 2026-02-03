@@ -1,9 +1,34 @@
 <!-- Partial: Réponse à l'intention DEMANDE_DATE_VISIO -->
 <!-- Candidat demande accès à ses 40 heures de formation visio -->
 <!-- Pattern: Si session assignée → afficher dates, sinon → proposer choix -->
+<!-- Si session passée → proposer nouvelles sessions -->
 <b>Concernant vos 40 heures de formation en visioconférence</b><br>
 {{#if session_assigned}}
-<!-- Session déjà assignée - rappeler les dates (comme question_session.html) -->
+{{#if session_dates_passed}}
+<!-- Session assignée mais PASSÉE - proposer nouvelles sessions -->
+Nous constatons que votre session de formation initialement prévue (du {{session_date_debut}} au {{session_date_fin}}) est terminée.<br>
+<br>
+{{#if has_sessions_proposees}}
+Pour vous permettre de suivre la formation avant votre examen, voici les prochaines sessions disponibles :<br>
+<br>
+{{#each sessions_proposees}}
+{{#if this.is_first_of_exam}}
+Pour l'examen du {{this.date_examen_formatted}} :<br>
+{{/if}}
+{{#if this.is_jour}}
+&nbsp;&nbsp;→ <b>Cours du jour</b> : du {{this.date_debut}} au {{this.date_fin}} (formation intensive sur 1 semaine, 8h30-17h30)<br>
+{{/if}}
+{{#if this.is_soir}}
+&nbsp;&nbsp;→ <b>Cours du soir</b> : du {{this.date_debut}} au {{this.date_fin}} (formation sur 2 semaines, 18h-22h)<br>
+{{/if}}
+{{/each}}
+<br>
+<b>Merci de nous confirmer votre choix de session</b> (jour ou soir) pour que nous puissions vous réinscrire.<br>
+{{else}}
+Merci de nous contacter pour que nous puissions vous proposer une nouvelle session avant votre examen.<br>
+{{/if}}
+{{else}}
+<!-- Session déjà assignée et FUTURE - rappeler les dates -->
 Votre session de formation est confirmée :<br>
 {{#if session_is_jour}}
 &nbsp;&nbsp;→ <b>Cours du jour</b> : du {{session_date_debut}} au {{session_date_fin}} (8h30-17h30)<br>
@@ -12,6 +37,7 @@ Votre session de formation est confirmée :<br>
 {{/if}}
 <br>
 Vous recevrez le lien d'invitation par email avant le début de la formation.<br>
+{{/if}}
 {{else}}
 {{#unless intention_confirmation_session}}
 <!-- Pas de session assignée et pas en cours de confirmation → proposer choix -->
