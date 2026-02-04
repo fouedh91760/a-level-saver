@@ -681,10 +681,34 @@ def sync_exam_date_from_examt3p(
     # Les dates sont différentes
     logger.info(f"  📊 Dates différentes: CRM={crm_date or 'VIDE'} → ExamT3P={examt3p_date}")
 
-    # NOTE: PAS DE RÈGLE DE BLOCAGE ICI
-    # ExamT3P est la SOURCE DE VÉRITÉ - on synchronise toujours vers le CRM
-    # Les règles de blocage (VALIDE CMA + clôture passée) s'appliquent uniquement
-    # aux demandes de report manuelles (candidat qui demande un changement de date)
+    # ================================================================
+    # 2b. VÉRIFIER RÈGLE DE BLOCAGE (VALIDE CMA + date ExamT3P passée)
+    # ================================================================
+    # Si le dossier est VALIDE CMA ET que la date ExamT3P est dans le passé,
+    # on NE DOIT PAS écraser la date CRM car c'est probablement une erreur
+    # de synchronisation (la CMA a validé pour une date future dans le CRM).
+    current_evalbox = deal_data.get('Evalbox', '')
+
+    # Vérifier si la date ExamT3P est dans le passé
+    examt3p_date_is_past = False
+    try:
+        from datetime import datetime
+        # examt3p_date est au format dd/mm/yyyy
+        date_obj = datetime.strptime(examt3p_date, "%d/%m/%Y")
+        examt3p_date_is_past = date_obj.date() < datetime.now().date()
+    except Exception:
+        pass
+
+    if current_evalbox == 'VALIDE CMA' and examt3p_date_is_past:
+        logger.warning(f"  🔒 BLOCAGE SYNC DATE: Evalbox=VALIDE CMA + date ExamT3P passée ({examt3p_date})")
+        result['blocked'] = True
+        result['blocked_reason'] = (
+            f"Evalbox=VALIDE CMA et date ExamT3P ({examt3p_date}) est passée. "
+            f"La date CRM ({crm_date}) est protégée. "
+            f"Synchronisation bloquée pour éviter d'écraser une date future validée."
+        )
+        result['sync_performed'] = True
+        return result
 
     # ================================================================
     # 3. RÉCUPÉRER LE DÉPARTEMENT
