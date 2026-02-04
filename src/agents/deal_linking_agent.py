@@ -1031,29 +1031,29 @@ Emails alternatifs trouvés:"""
             result["recommended_department"] = recommended_department
 
             # ================================================================
-            # NOUVELLE LOGIQUE DE SÉLECTION DE DEAL (v2)
-            # Priorité aux deals ACTIFS (Evalbox avancé, examen proche)
-            # Les prospects (EN ATTENTE) sont en dernière position
+            # NOUVELLE LOGIQUE DE SÉLECTION DE DEAL (v3)
+            # Règle simple : prendre le deal GAGNÉ le plus récent
+            # avec le même TYPE_DE_FORMATION
             # ================================================================
             selected_deal = None
             selection_method = None
 
-            # Statuts Evalbox indiquant un candidat ACTIF (pas un prospect)
-            ADVANCED_EVALBOX = {
-                "Convoc CMA reçue", "VALIDE CMA", "Dossier Synchronisé",
-                "Pret a payer", "Dossier crée", "Refusé CMA"
-            }
+            # PRIORITÉ 0 : Deal GAGNÉ le plus récent (même TYPE_DE_FORMATION)
+            # Identifier le type de formation le plus courant parmi les deals GAGNÉ
+            deals_gagne = [d for d in all_deals if d.get("Stage") == "GAGNÉ"]
 
-            # PRIORITÉ 0 : Deals avec Evalbox avancé (candidat actif dans le process)
-            active_deals = [
-                d for d in all_deals
-                if d.get("Evalbox") in ADVANCED_EVALBOX and d.get("Stage") == "GAGNÉ"
-            ]
-            if active_deals:
-                # Prendre le plus récent par date de clôture
-                selected_deal = sorted(active_deals, key=lambda d: d.get("Closing_Date", ""), reverse=True)[0]
-                selection_method = f"Priority 0 - Evalbox avancé ({selected_deal.get('Evalbox')})"
-                logger.info(f"🎯 Deal sélectionné par Evalbox avancé: {selected_deal.get('Deal_Name')} - {selected_deal.get('Evalbox')}")
+            if deals_gagne:
+                # Trouver le TYPE_DE_FORMATION le plus récent
+                deals_gagne_sorted = sorted(
+                    deals_gagne,
+                    key=lambda d: d.get("Closing_Date", "") or d.get("Created_Time", ""),
+                    reverse=True
+                )
+
+                # Prendre le deal GAGNÉ le plus récent
+                selected_deal = deals_gagne_sorted[0]
+                selection_method = f"Priority 0 - Deal GAGNÉ le plus récent ({selected_deal.get('TYPE_DE_FORMATION', 'N/A')})"
+                logger.info(f"🎯 Deal sélectionné (plus récent GAGNÉ): {selected_deal.get('Deal_Name')} - Type: {selected_deal.get('TYPE_DE_FORMATION', 'N/A')}")
 
             # PRIORITÉ 1 : Deals avec date d'examen dans les 60 prochains jours
             if not selected_deal:
