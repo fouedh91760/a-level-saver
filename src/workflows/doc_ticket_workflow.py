@@ -941,6 +941,60 @@ La date d'examen dans Zoho CRM est dans le passé. Le workflow a été stoppé p
                 logger.info("🔄 ROUTE → Contact (demande d'info, pas de dossier en cours)")
                 return triage_result
 
+            # Rule #2.6b: DEMANDE HORS PÉRIMÈTRE VTC - Router vers Contact
+            # Si le contenu indique clairement une demande sans rapport avec la formation VTC,
+            # ne pas demander de clarification (inutile) - router vers Contact pour traitement manuel
+            out_of_scope_keywords = [
+                # Formations CACES / Logistique (pas VTC)
+                "caces", "nacelle", "cariste", "chariot élévateur", "chariot elevateur",
+                "engin de chantier", "grue", "magasinier", "préparateur de commandes",
+                # Permis poids lourd / Transport marchandises
+                "permis poids lourd", "poids lourd", "permis c", "permis d", "permis ec",
+                "fimo", "fco", "transport de marchandises", "conducteur routier",
+                # Formations réglementaires / Sécurité
+                "habilitation électrique", "habilitation electrique", "habilitations électriques",
+                "sst", "sauveteur secouriste", "secouriste du travail",
+                "travail en hauteur", "échafaudage", "echafaudage",
+                "amiante", "ss3", "ss4",
+                "aipr", "autorisation d'intervention",
+                # Taxi (différent de VTC)
+                "examen taxi", "carte taxi", "licence taxi", "formation taxi",
+                # Prospection commerciale / Pub / Recrutement
+                "devis pour", "partenariat", "collaboration commerciale",
+                "offre commerciale", "proposition commerciale",
+                "offre d'emploi", "opportunité", "opportunite", "poste à pourvoir",
+                "recrutement", "candidature",
+                # Erreur de destinataire évidente
+                "mauvais destinataire", "erreur de mail", "pas pour vous",
+            ]
+
+            is_out_of_scope = any(kw in content_to_check for kw in out_of_scope_keywords)
+
+            if is_out_of_scope:
+                # Demande hors périmètre VTC → Router vers Contact (un humain décidera)
+                logger.info(f"🚫 Candidat non trouvé ET demande HORS PÉRIMÈTRE VTC détectée → Contact")
+                triage_result['action'] = 'ROUTE'
+                triage_result['target_department'] = 'Contact'
+                triage_result['reason'] = "Demande hors périmètre VTC (CACES/taxi/autre) - pas un candidat"
+                triage_result['method'] = 'out_of_scope_routing'
+                triage_result['email_searched'] = linking_result.get('email')
+
+                # Auto-transfer vers Contact
+                if auto_transfer:
+                    try:
+                        logger.info(f"🔄 Transfert automatique vers Contact...")
+                        transfer_success = self.dispatcher._reassign_ticket(ticket_id, 'Contact')
+                        if transfer_success:
+                            logger.info(f"✅ Ticket transféré vers Contact")
+                            triage_result['transferred'] = True
+                        else:
+                            logger.warning(f"⚠️ Échec transfert vers Contact")
+                    except Exception as e:
+                        logger.error(f"Erreur transfert: {e}")
+
+                logger.info("🔄 ROUTE → Contact (hors périmètre VTC, pas de clarification)")
+                return triage_result
+
             # Sinon, demander clarification comme avant
             logger.warning(f"⚠️ CANDIDAT NON TROUVÉ - Clarification nécessaire")
             triage_result['action'] = 'NEEDS_CLARIFICATION'
