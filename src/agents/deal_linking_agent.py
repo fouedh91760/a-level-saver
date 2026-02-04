@@ -1039,9 +1039,10 @@ Emails alternatifs trouvés:"""
             selection_method = None
 
             # Statuts Evalbox indiquant un candidat ACTIF (pas un prospect)
+            # NOTE: "Refusé CMA" = dossier rejeté, donc PAS actif
             ADVANCED_EVALBOX = {
                 "Convoc CMA reçue", "VALIDE CMA", "Dossier Synchronisé",
-                "Pret a payer", "Dossier crée", "Refusé CMA"
+                "Pret a payer", "Dossier crée"
             }
 
             # PRIORITÉ 0 : Deals avec Evalbox avancé (candidat actif dans le process)
@@ -1135,6 +1136,32 @@ Emails alternatifs trouvés:"""
                 selection_method = "Priority 1.5 - Formation payante après Uber"
                 logger.info(f"🎯 Deal sélectionné: formation payante {selected_deal.get('Deal_Name')} (€{selected_deal.get('Amount')})")
 
+            # PRIORITÉ 1.6 : Formation payante (>20€) plus récente que deal Uber
+            # Même si pas de doublon détecté, préférer la formation payante au deal Uber
+            if not selected_deal:
+                paid_formations = [
+                    d for d in all_deals
+                    if d.get("Stage") == "GAGNÉ" and (d.get("Amount") or 0) > 20
+                ]
+                if paid_formations and deals_20_won:
+                    # Prendre la formation payante la plus récente
+                    most_recent_paid = sorted(paid_formations, key=lambda d: d.get("Closing_Date", "") or d.get("Created_Time", ""), reverse=True)[0]
+                    most_recent_20 = sorted(deals_20_won, key=lambda d: d.get("Closing_Date", "") or d.get("Created_Time", ""), reverse=True)[0]
+
+                    # Si formation payante plus récente que deal 20€ → la sélectionner
+                    paid_date = most_recent_paid.get("Closing_Date", "") or most_recent_paid.get("Created_Time", "")
+                    uber_date = most_recent_20.get("Closing_Date", "") or most_recent_20.get("Created_Time", "")
+
+                    if paid_date >= uber_date:
+                        selected_deal = most_recent_paid
+                        selection_method = f"Priority 1.6 - Formation payante (€{most_recent_paid.get('Amount')}) plus récente que Uber"
+                        logger.info(f"🎯 Deal sélectionné: formation payante {selected_deal.get('Deal_Name')} (€{selected_deal.get('Amount')})")
+                elif paid_formations and not deals_20_won:
+                    # Pas de deal Uber, prendre la formation payante
+                    selected_deal = sorted(paid_formations, key=lambda d: d.get("Closing_Date", "") or d.get("Created_Time", ""), reverse=True)[0]
+                    selection_method = f"Priority 1.6 - Formation payante (€{selected_deal.get('Amount')})"
+                    logger.info(f"🎯 Deal sélectionné: formation payante {selected_deal.get('Deal_Name')}")
+
             # PRIORITÉ 2 : Deals 20€ GAGNÉ (candidats payés en cours de traitement)
             if not selected_deal:
                 if deals_20_won:
@@ -1143,7 +1170,7 @@ Emails alternatifs trouvés:"""
                     if result["has_duplicate_uber_offer"]:
                         selection_method += " [DOUBLON DÉTECTÉ]"
 
-            # PRIORITÉ 3 : Autres deals GAGNÉ
+            # PRIORITÉ 3 : Autres deals GAGNÉ (fallback)
             if not selected_deal:
                 other_won = [d for d in all_deals if d.get("Amount") != 20 and d.get("Stage") == "GAGNÉ"]
                 if other_won:
