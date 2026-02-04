@@ -352,7 +352,7 @@ class ExamenT3PPlaywright:
         - Photo floue / non conforme aux normes
         - Document illisible
         - Document expiré
-        - Justificatif de domicile de plus de 6 mois
+        - Justificatif de domicile de plus de 3 mois
         - Permis de conduire non valide
         - Signature non manuscrite
         - etc.
@@ -391,7 +391,7 @@ class ExamenT3PPlaywright:
             "Pièce d'identité": "Document non conforme ou illisible - veuillez fournir une copie lisible recto/verso",
             "Photo d'identité": "Photo non conforme aux normes (fond non uni, visage non centré, ou qualité insuffisante)",
             "Signature": "Signature non manuscrite ou non conforme - une signature manuscrite scannée est requise",
-            "Justificatif de domicile": "Document de plus de 6 mois ou non conforme - veuillez fournir un justificatif récent",
+            "Justificatif de domicile": "Document de plus de 3 mois ou non conforme - veuillez fournir un justificatif récent",
             "Permis de conduire": "Permis non valide ou illisible - veuillez fournir une copie lisible recto/verso",
         }
 
@@ -421,7 +421,7 @@ class ExamenT3PPlaywright:
                 "La signature doit être manuscrite (pas de signature électronique)."
             ),
             "Justificatif de domicile": (
-                "Fournissez un justificatif de domicile de moins de 6 mois à votre nom : "
+                "Fournissez un justificatif de domicile de moins de 3 mois à votre nom : "
                 "facture d'électricité, de gaz, d'eau, de téléphone fixe ou mobile, "
                 "ou avis d'imposition. Le document doit être complet et lisible."
             ),
