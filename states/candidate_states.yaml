@@ -493,6 +493,45 @@ states:
     crm_updates: null
 
 # =============================================================================
+# ÉTATS FORCE MAJEURE + COHÉRENCE (Priorité 290-299)
+# Ces états combinent force majeure + problème de cohérence
+# Priorité SUPÉRIEURE aux états Date Examen pour prendre le dessus
+# =============================================================================
+
+  # ---------------------------------------------------------------------------
+  # FM-1: Formation manquée + Force majeure
+  # ---------------------------------------------------------------------------
+  MISSED_TRAINING_FORCE_MAJEURE:
+    id: "FM-1"
+    priority: 290  # < 310 (EXAM_PASSED_AWAITING_RESULTS) pour prendre le dessus
+    severity: "BLOCKING"  # Stoppe la détection des autres états
+    description: "Formation manquée pour raison de force majeure (maladie, etc.)"
+    category: "force_majeure_consistency"
+
+    detection:
+      method: "combined"
+      conditions:
+        all_of:
+          - "has_consistency_issue == true"
+          - "consistency_issue_type == 'MISSED_TRAINING_IMMINENT_EXAM'"
+          - "mentions_force_majeure == true"
+
+    workflow:
+      action: "RESPOND"
+
+    response:
+      template: "response_master.html"
+      blocks_required:
+        - "salutation"
+        - "comprehension_situation"
+        - "options_ou_questions"
+        - "signature"
+      ai_section: "personnalisation"
+      ai_instructions: "Montrer de l'empathie pour la situation. 2 phrases max."
+
+    crm_updates: null  # Attente de clarification avant mise à jour
+
+# =============================================================================
 # ÉTATS DATE EXAMEN (Priorité 300-399)
 # =============================================================================
 

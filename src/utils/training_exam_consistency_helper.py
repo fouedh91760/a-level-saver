@@ -195,15 +195,21 @@ def detect_missed_training_in_threads(threads: List[Dict]) -> Optional[Dict]:
     from src.utils.text_utils import get_clean_thread_content
 
     # Patterns indiquant une formation manquée
+    # IMPORTANT: Ces patterns doivent matcher UNIQUEMENT le message du candidat,
+    # pas les mails de confirmation CAB qui contiennent des liens comme "Rejoindre le webinaire"
     patterns = [
-        (r"n'ai\s+pas\s+pu\s+(?:assister|participer|suivre)", "impossibilité"),
-        (r"pas\s+pu\s+(?:assister|participer|suivre)", "impossibilité"),
+        (r"n'ai\s+pas\s+pu\s+(?:assister|participer|suivre|rejoindre)", "impossibilité"),
+        (r"pas\s+pu\s+(?:assister|participer|suivre|rejoindre)", "impossibilité"),
+        (r"je\s+n'ai\s+pas\s+(?:pu\s+)?(?:assister|participer|suivre|rejoindre)", "impossibilité"),
         (r"manqu[ée]\s+(?:la\s+)?(?:formation|session|cours)", "formation manquée"),
+        (r"j'ai\s+manqu[ée]", "formation manquée"),
         (r"absent[e]?\s+(?:à|de)\s+(?:la\s+)?(?:formation|session)", "absence"),
         (r"(?:état\s+de\s+)?sant[ée].*(?:pas\s+permis|emp[êe]ch[ée])", "raison médicale"),
         (r"hospitalis[ée]", "hospitalisation"),
-        (r"maladie", "maladie"),
-        (r"(?:ne\s+)?(?:pas\s+)?(?:pouvoir\s+)?rejoindre.*(?:formation|webinaire)", "impossibilité de rejoindre"),
+        # Note: "maladie" seul est trop large, il faut un contexte de formation manquée
+        (r"(?:pour\s+cause\s+de\s+|à\s+cause\s+de\s+(?:ma\s+)?)?maladie.*(?:pas\s+pu|manqu|absent)", "maladie"),
+        # SUPPRIMÉ: le pattern "rejoindre.*webinaire" qui matchait les liens de confirmation
+        # (r"(?:ne\s+)?(?:pas\s+)?(?:pouvoir\s+)?rejoindre.*(?:formation|webinaire)", "impossibilité de rejoindre"),
         (r"dossier\s+m[ée]dical", "dossier médical"),
         (r"certificat\s+m[ée]dical", "certificat médical"),
     ]

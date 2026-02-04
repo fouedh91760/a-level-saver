@@ -70,6 +70,60 @@ except ImportError:
             return True
 
 
+def _check_has_paid_formation_after_uber(all_deals: List[Dict], deals_20_won: List[Dict]) -> Dict[str, Any]:
+    """
+    Vérifie si le candidat a une formation payante (>20€) plus récente que son offre Uber 20€.
+
+    Si oui, le candidat a souscrit une formation après avoir utilisé l'offre Uber,
+    donc on doit traiter ses documents normalement (pas de blocage doublon).
+
+    Args:
+        all_deals: Tous les deals du candidat
+        deals_20_won: Les deals 20€ GAGNÉ (doublons détectés)
+
+    Returns:
+        {
+            'has_paid_formation': bool,  # True si formation payante plus récente
+            'paid_formation_deal': dict or None,  # Le deal de la formation payante
+            'override_duplicate': bool  # True si on doit ignorer le doublon
+        }
+    """
+    result = {
+        'has_paid_formation': False,
+        'paid_formation_deal': None,
+        'override_duplicate': False
+    }
+
+    if not deals_20_won:
+        return result
+
+    # Trouver la date du deal 20€ le plus récent
+    most_recent_20 = max(deals_20_won, key=lambda d: d.get('Closing_Date', '') or '')
+    date_20_recent = most_recent_20.get('Closing_Date', '')
+
+    # Chercher un deal avec montant > 20€ et GAGNÉ, plus récent que le deal 20€
+    deals_paid_formation = [
+        d for d in all_deals
+        if d.get('Stage') == 'GAGNÉ'
+        and d.get('Amount') is not None
+        and float(d.get('Amount', 0)) > 25  # Plus de 25€ pour éviter les variations de l'offre 20€
+        and (d.get('Closing_Date', '') or '') > date_20_recent
+    ]
+
+    if deals_paid_formation:
+        # Prendre le plus récent
+        most_recent_paid = max(deals_paid_formation, key=lambda d: d.get('Closing_Date', '') or '')
+        result['has_paid_formation'] = True
+        result['paid_formation_deal'] = most_recent_paid
+        result['override_duplicate'] = True
+        logger.info(f"  ✅ FORMATION PAYANTE DÉTECTÉE après offre Uber:")
+        logger.info(f"     → Deal: {most_recent_paid.get('Deal_Name')} (€{most_recent_paid.get('Amount')})")
+        logger.info(f"     → Date: {most_recent_paid.get('Closing_Date')}")
+        logger.info(f"     → Le doublon Uber sera ignoré, documents à traiter normalement")
+
+    return result
+
+
 class DealLinkingAgent(BaseAgent):
     """
     Agent specialized in maintaining ticket-deal links via custom fields.
@@ -713,10 +767,37 @@ Emails alternatifs trouvés:"""
 
                         # Vérifier doublon Uber même pour les tickets déjà liés
                         # (au cas où le lien a été fait manuellement sans vérification)
-                        # On a besoin du contact pour ça
+                        # IMPORTANT: Chercher par EMAIL pour trouver les deals sur tous les contacts
+                        # du même candidat (cas de contacts dupliqués dans le CRM)
                         contact_id = deal_data.get('Contact_Name', {}).get('id')
+                        all_deals = []
                         if contact_id:
-                            all_deals = self._get_deals_for_contacts([contact_id])
+                            # D'abord récupérer l'email du contact
+                            try:
+                                crm_client = self._get_crm_client()
+                                contact_data = crm_client.get_contact(contact_id)
+                                contact_email = contact_data.get('Email', '').lower().strip() if contact_data else None
+
+                                if contact_email:
+                                    # Chercher TOUS les contacts avec cet email
+                                    all_contacts = self._search_contacts_by_email(contact_email)
+                                    all_contact_ids = [c.get('id') for c in all_contacts if c.get('id')]
+
+                                    # S'assurer que le contact_id actuel est inclus
+                                    if contact_id not in all_contact_ids:
+                                        all_contact_ids.append(contact_id)
+
+                                    # Récupérer les deals de TOUS ces contacts
+                                    all_deals = self._get_deals_for_contacts(all_contact_ids)
+                                    logger.info(f"  📧 Recherche par email {contact_email}: {len(all_contacts)} contact(s), {len(all_deals)} deal(s)")
+                                else:
+                                    # Fallback: recherche par contact_id uniquement
+                                    all_deals = self._get_deals_for_contacts([contact_id])
+                            except Exception as e:
+                                logger.warning(f"  ⚠️ Erreur recherche par email: {e}")
+                                all_deals = self._get_deals_for_contacts([contact_id])
+
+                        if all_deals:
                             result["all_deals"] = all_deals
                             result["deals_found"] = len(all_deals)
 
@@ -737,6 +818,24 @@ Emails alternatifs trouvés:"""
                                     result["duplicate_deals"] = deals_20_won
                                     result["offer_already_used"] = True
                                     logger.warning(f"  ⚠️ OFFRE DÉJÀ UTILISÉE: Resultat='{resultat}'")
+
+                            # ==================================================================
+                            # VÉRIFICATION FORMATION PAYANTE PLUS RÉCENTE
+                            # Si le candidat a une formation payante (>20€) après l'offre Uber,
+                            # on annule le flag doublon et on traite normalement
+                            # ==================================================================
+                            if result["has_duplicate_uber_offer"]:
+                                paid_check = _check_has_paid_formation_after_uber(all_deals, deals_20_won)
+                                if paid_check['override_duplicate']:
+                                    result["has_duplicate_uber_offer"] = False
+                                    result["has_paid_formation"] = True
+                                    result["paid_formation_deal"] = paid_check['paid_formation_deal']
+                                    # Mettre à jour le deal sélectionné vers la formation payante
+                                    result["selected_deal"] = paid_check['paid_formation_deal']
+                                    result["deal_id"] = paid_check['paid_formation_deal'].get('id')
+                                    result["deal"] = paid_check['paid_formation_deal']
+                                    logger.info("  ✅ Doublon Uber annulé: formation payante plus récente détectée")
+                                    logger.info(f"  🎯 Deal mis à jour: {paid_check['paid_formation_deal'].get('Deal_Name')} (€{paid_check['paid_formation_deal'].get('Amount')})")
 
                             # Calculer le département recommandé même pour les tickets déjà liés
                             # (pour gérer les cas comme "examen pratique" qui doivent aller vers Contact)
@@ -1014,6 +1113,27 @@ Emails alternatifs trouvés:"""
                     result["offer_already_used"] = True  # Flag spécifique pour ce cas
                     logger.warning(f"⚠️ OFFRE DÉJÀ UTILISÉE: Le deal a Resultat='{resultat}' (examen déjà passé)")
                     logger.warning(f"   - {deal.get('Deal_Name')} (ID: {deal.get('id')}, Resultat: {resultat})")
+
+            # ==================================================================
+            # VÉRIFICATION FORMATION PAYANTE PLUS RÉCENTE
+            # Si le candidat a une formation payante (>20€) après l'offre Uber,
+            # on annule le flag doublon et on traite normalement
+            # ==================================================================
+            if result["has_duplicate_uber_offer"]:
+                paid_check = _check_has_paid_formation_after_uber(all_deals, deals_20_won)
+                if paid_check['override_duplicate']:
+                    result["has_duplicate_uber_offer"] = False
+                    result["has_paid_formation"] = True
+                    result["paid_formation_deal"] = paid_check['paid_formation_deal']
+                    logger.info("✅ Doublon Uber annulé: formation payante plus récente détectée")
+
+            # PRIORITÉ 1.5 : Formation payante plus récente (après offre Uber utilisée)
+            # Si le candidat a utilisé l'offre Uber et a ensuite souscrit une formation payante,
+            # on sélectionne cette formation comme deal principal
+            if not selected_deal and result.get("has_paid_formation") and result.get("paid_formation_deal"):
+                selected_deal = result["paid_formation_deal"]
+                selection_method = "Priority 1.5 - Formation payante après Uber"
+                logger.info(f"🎯 Deal sélectionné: formation payante {selected_deal.get('Deal_Name')} (€{selected_deal.get('Amount')})")
 
             # PRIORITÉ 2 : Deals 20€ GAGNÉ (candidats payés en cours de traitement)
             if not selected_deal:

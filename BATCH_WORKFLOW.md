@@ -1,6 +1,142 @@
 # BATCH WORKFLOW - Traitement des Tickets DOC
 
-## Script Principal
+---
+
+## 🔄 BATCH AUTONOME CONTINU (PRIORITÉ)
+
+### ⚠️ IMPORTANT - À LIRE EN PREMIER
+
+Le batch autonome **tourne en arrière-plan sur la machine de l'utilisateur**, indépendamment de Claude Code.
+
+**Un `/clear` dans Claude Code NE STOPPE PAS le batch !**
+
+Le processus Python continue à tourner et à traiter les tickets.
+
+### Script Principal
+```
+run_workflow_continuous.py
+```
+
+### Fichiers de Suivi
+
+| Fichier | Description | Mise à jour |
+|---------|-------------|-------------|
+| `doc_tickets_pending.json` | Tickets restants à traiter | À chaque ticket traité |
+| `doc_tickets_processed.json` | Historique des tickets traités (avec résultats) | À chaque ticket traité |
+| `workflow_continuous_YYYYMMDD.log` | **LOG PRINCIPAL** - Progression en temps réel | Continue |
+
+### Vérifier si le Batch Tourne
+
+```bash
+# 1. Vérifier le processus Python
+tasklist | findstr python
+
+# 2. Voir la commande exacte du processus
+wmic process where "ProcessId=<PID>" get CommandLine
+
+# 3. Vérifier l'activité CPU (2 mesures à 3s d'intervalle)
+powershell -Command "Get-Process -Id <PID> | Select-Object CPU"; sleep 3; powershell -Command "Get-Process -Id <PID> | Select-Object CPU"
+```
+
+### Lire les Logs en Temps Réel
+
+```bash
+# Voir les 20 dernières lignes du log du jour
+tail -20 workflow_continuous_20260204.log
+
+# Suivre en temps réel (Ctrl+C pour arrêter)
+tail -f workflow_continuous_20260204.log
+```
+
+### Format du Log
+
+```
+[2026-02-04 20:27:28] [501/711] Ticket 198709000448451839: Re: Test de sélection réussi
+   🔐 Connexion en cours...
+   ✅ Connexion réussie
+   📋 Vue d'ensemble...
+   ...
+   ✅ Extraction complète terminée
+[2026-02-04 20:28:41]     [OK] COMPLETED | GO | N/A
+```
+
+- `[501/711]` = Ticket 501 sur 711 total
+- `[OK] COMPLETED` = Workflow terminé avec succès
+- `GO` = Action triage
+- `N/A` = Intention (ou nom de l'intention détectée)
+
+### Vérifier la Progression
+
+```bash
+# Nombre de tickets traités vs en attente
+python -c "import json; p=json.load(open('doc_tickets_processed.json', encoding='utf-8')); print(f'Traités: {len(p)}')"
+python -c "import json; p=json.load(open('doc_tickets_pending.json', encoding='utf-8')); print(f'En attente: {len(p)}')"
+
+# Dernière modification des fichiers
+stat doc_tickets_processed.json | grep -i modif
+```
+
+### Lancer le Batch Continu
+
+```bash
+# Lancer en arrière-plan (continue même si terminal fermé)
+python -u run_workflow_continuous.py > workflow_continuous_$(date +%Y%m%d).log 2>&1 &
+
+# Ou avec nohup pour survivre à la déconnexion
+nohup python -u run_workflow_continuous.py > workflow_continuous_$(date +%Y%m%d).log 2>&1 &
+```
+
+### Arrêter le Batch
+
+```bash
+# Trouver le PID
+tasklist | findstr python
+
+# Tuer le processus
+taskkill /F /PID <PID>
+```
+
+### Structure de `doc_tickets_processed.json`
+
+```json
+[
+  {
+    "id": "198709000448451839",
+    "ticketNumber": "1097090",
+    "subject": "Re: Test de sélection réussi - Examen VTC",
+    "email": "candidat@example.com",
+    "createdTime": "2026-01-28T19:33:03.000Z",
+    "status": "Open",
+    "processed_at": "2026-02-04T20:24:53.138278",
+    "deal_id": "1456177001581548182",
+    "success": true,
+    "workflow_stage": "COMPLETED",
+    "triage_action": "GO",
+    "primary_intent": "DEMANDE_DATE_EXAMEN",
+    "state_id": "D-5",
+    "draft_created": true,
+    "crm_updated": false,
+    "crm_updates": null,
+    "error": null
+  }
+]
+```
+
+### Valeurs Possibles de `workflow_stage`
+
+| Stage | Description |
+|-------|-------------|
+| `COMPLETED` | Workflow terminé, draft créé |
+| `STOPPED_AT_TRIAGE` | Routé vers autre département (ROUTE) ou SPAM |
+| `STOPPED_EXAM_DATE_PASSED` | Date d'examen passée, traitement manuel requis |
+| `STOPPED_NEEDS_CLARIFICATION` | Candidat non trouvé dans CRM |
+| `ERROR` | Erreur technique |
+
+---
+
+## 📦 BATCH MANUEL (run_workflow_batch.py)
+
+### Script Principal
 ```
 run_workflow_batch.py
 ```
@@ -154,18 +290,19 @@ print(f'Sauvegardé {len(ticket_list)} tickets')
 | Métrique | Valeur |
 |----------|--------|
 | Tickets initiaux | 859 |
-| Traités | 155 |
-| Restants | 704 |
+| Traités | 219 |
+| Restants | 640 |
 | Taux de succès | 100% |
-| Drafts créés | 111 |
+| Drafts créés | 151 |
 
-### Répartition par Action
+### Répartition par Action (cumul)
 | Action | Count | Description |
 |--------|-------|-------------|
-| GO | 97 | Workflow complet, draft créé |
-| ROUTE | 43 | Routé vers autre département (Refus CMA, Contact, etc.) |
-| NEEDS_CLARIFICATION | 13 | Candidat non trouvé, demande de clarification |
-| DUPLICATE_UBER | 2 | Doublon offre Uber 20€ |
+| GO | 132 | Workflow complet, draft créé |
+| ROUTE | 53 | Routé vers autre département (Refus CMA, Contact, etc.) |
+| NEEDS_CLARIFICATION | 17 | Candidat non trouvé, demande de clarification |
+| STOPPED_EXAM_DATE_PASSED | 14 | Date examen passée, traitement manuel |
+| DUPLICATE_UBER | 3 | Doublon offre Uber 20€ |
 
 ### Fichiers de Logs
 ```
@@ -175,6 +312,7 @@ data/batch_results_20260203_012331.json   (20 tickets)
 data/batch_results_20260203_020453.json   (50 tickets)
 data/batch_results_20260203_044706.json   (20 tickets)
 data/batch_results_20260203_055437.json   (50 tickets)
+data/batch_results_20260203_223731.json   (50 tickets) ← dernier batch
 ```
 
 ### Fix Appliqué : Date d'Examen Passée

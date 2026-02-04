@@ -913,7 +913,8 @@ def verify_session_complaint(
     claimed_session: Dict[str, Any],
     assigned_session: Dict[str, Any],
     enriched_lookups: Dict[str, Any],
-    session_preference: Optional[str] = None
+    session_preference: Optional[str] = None,
+    exam_date: Optional[str] = None
 ) -> Dict[str, Any]:
     """
     Vérifie si la plainte du candidat concernant une erreur d'inscription est justifiée.
@@ -985,10 +986,25 @@ def verify_session_complaint(
     claimed_dates_raw = claimed_session.get('claimed_dates_raw', '') if claimed_session else ''
     claimed_dates = claimed_session.get('claimed_dates', '') if claimed_session else ''
 
+    # IMPORTANT: On garde trace si claimed_type vient du candidat ou d'un fallback
+    # Si c'est un fallback sur session_preference, on ne peut PAS conclure à une erreur CAB
+    claimed_type_from_candidate = claimed_type is not None
+
+    # Détecter si le candidat a des contraintes horaires qui empêchent TOUT type de session
+    # Indices: "18h ne convient pas", "après 19h", "rentre du travail à", etc.
+    has_time_constraints = False
+    if claimed_dates_raw:
+        constraint_indicators = ['ne convient pas', 'après 19h', 'rentre du travail', '18h', '19h']
+        for indicator in constraint_indicators:
+            if indicator.lower() in claimed_dates_raw.lower():
+                has_time_constraints = True
+                logger.info(f"  ⚠️ Contraintes horaires détectées dans: '{claimed_dates_raw}'")
+                break
+
     # Fallback sur session_preference si claimed_type non spécifié
     if not claimed_type and session_preference:
         claimed_type = session_preference
-        logger.info(f"  ℹ️ Utilisation session_preference comme claimed_type: {claimed_type}")
+        logger.info(f"  ℹ️ Utilisation session_preference comme claimed_type: {claimed_type} (fallback, pas de réclamation explicite)")
 
     result['claimed_session_info'] = {
         'type': claimed_type,
@@ -1033,6 +1049,46 @@ def verify_session_complaint(
         result['error_type'] = 'NO_ERROR'
         result['verification_details'] = "La session assignée correspond à la demande"
         logger.info("  ✅ Pas de différence détectée - session assignée semble correcte")
+
+        # CAS SPÉCIAL: Le candidat veut changer de session (dates) mais pas de type mismatch
+        # → Proposer TOUTES les sessions pour qu'il puisse choisir d'autres dates
+        if exam_date:
+            logger.info(f"  🔍 Demande de changement de dates → recherche de TOUTES les sessions avant l'examen du {exam_date}...")
+
+            all_sessions = []
+            sessions_jour = []
+            sessions_soir = []
+
+            # Récupérer les sessions jour
+            sessions_jour = get_sessions_for_exam_date(
+                crm_client=crm_client,
+                exam_date=exam_date,
+                session_type='jour',
+                limit=3
+            )
+            if sessions_jour:
+                logger.info(f"  ✅ {len(sessions_jour)} session(s) JOUR trouvée(s)")
+                all_sessions.extend(sessions_jour)
+
+            # Récupérer les sessions soir
+            sessions_soir = get_sessions_for_exam_date(
+                crm_client=crm_client,
+                exam_date=exam_date,
+                session_type='soir',
+                limit=3
+            )
+            if sessions_soir:
+                logger.info(f"  ✅ {len(sessions_soir)} session(s) SOIR trouvée(s)")
+                all_sessions.extend(sessions_soir)
+
+            if all_sessions:
+                result['alternatives'] = all_sessions
+                result['all_sessions_jour'] = sessions_jour
+                result['all_sessions_soir'] = sessions_soir
+                result['has_all_sessions'] = True
+                result['verification_details'] = f"Session correcte mais le candidat souhaite d'autres dates. Sessions disponibles: {len(sessions_jour)} jour, {len(sessions_soir)} soir"
+                logger.info(f"  ✅ Total: {len(all_sessions)} session(s) alternatives proposée(s)")
+
         return result
 
     # 6. Vérifier si la session réclamée EXISTE dans les sessions disponibles
@@ -1088,11 +1144,104 @@ def verify_session_complaint(
                     result['alternatives'].append(match_result['closest_after'])
 
         else:
-            # Pas de dates spécifiques, vérifier juste le type
-            if type_mismatch:
-                # Le type est différent, c'est probablement une erreur
+            # Pas de dates spécifiques
+            # CAS SPÉCIAL: Si contraintes horaires détectées → proposer TOUTES les sessions
+            # Le candidat a des difficultés avec les deux types (jour ET soir)
+            if has_time_constraints and exam_date:
+                logger.info(f"  🕐 Contraintes horaires → proposer TOUTES les sessions")
+                result['is_cab_error'] = False
+                result['error_type'] = 'TIME_CONSTRAINTS'
+
+                all_sessions = []
+                sessions_jour = get_sessions_for_exam_date(crm_client, exam_date, 'jour', limit=3)
+                sessions_soir = get_sessions_for_exam_date(crm_client, exam_date, 'soir', limit=3)
+
+                if sessions_jour:
+                    logger.info(f"  ✅ {len(sessions_jour)} session(s) JOUR trouvée(s)")
+                    all_sessions.extend(sessions_jour)
+                if sessions_soir:
+                    logger.info(f"  ✅ {len(sessions_soir)} session(s) SOIR trouvée(s)")
+                    all_sessions.extend(sessions_soir)
+
+                if all_sessions:
+                    result['alternatives'] = all_sessions
+                    result['all_sessions_jour'] = sessions_jour
+                    result['all_sessions_soir'] = sessions_soir
+                    result['has_all_sessions'] = True
+                    result['verification_details'] = f"Contraintes horaires détectées. Sessions disponibles: {len(sessions_jour)} jour, {len(sessions_soir)} soir"
+                    logger.info(f"  ✅ Total: {len(all_sessions)} session(s) proposée(s)")
+
+            elif type_mismatch and claimed_type_from_candidate and not has_time_constraints:
+                # SEULEMENT si le candidat a EXPLICITEMENT réclamé un type différent
+                # ET pas de contraintes horaires détectées
+                # → C'est une vraie erreur CAB
                 result['is_cab_error'] = True
                 result['verification_details'] = f"Type de session différent: réclamé {claimed_type}, assigné {assigned_type}"
                 logger.info(f"  ⚠️ ERREUR CAB (type): {claimed_type} ≠ {assigned_type}")
+
+                # Chercher des sessions du type demandé comme alternatives
+                if exam_date:
+                    logger.info(f"  🔍 Recherche de sessions {claimed_type} avant l'examen du {exam_date}...")
+                    sessions = get_sessions_for_exam_date(
+                        crm_client=crm_client,
+                        exam_date=exam_date,
+                        session_type=claimed_type,
+                        limit=3
+                    )
+                    if sessions:
+                        # Proposer la première session comme correction, les autres comme alternatives
+                        result['matched_session'] = sessions[0]
+                        result['alternatives'] = sessions[:3]
+                        logger.info(f"  ✅ {len(sessions)} session(s) {claimed_type} trouvée(s) avant l'examen")
+                    else:
+                        logger.warning(f"  ⚠️ Aucune session {claimed_type} disponible avant l'examen")
+
+            elif exam_date and (not claimed_type_from_candidate or not claimed_type):
+                # CAS: Le candidat veut changer de session SANS avoir réclamé un type spécifique
+                # → Ce n'est PAS une erreur CAB, juste une demande de changement
+                # → Proposer TOUTES les sessions disponibles
+                # CAS SPÉCIAL: Pas de type réclamé mais le candidat veut changer de session
+                # → Proposer TOUTES les sessions (jour ET soir) pour que le candidat choisisse
+                logger.info(f"  🔍 Pas de type spécifié → recherche de TOUTES les sessions avant l'examen du {exam_date}...")
+
+                all_sessions = []
+                sessions_jour = []
+                sessions_soir = []
+
+                # Récupérer les sessions jour
+                sessions_jour = get_sessions_for_exam_date(
+                    crm_client=crm_client,
+                    exam_date=exam_date,
+                    session_type='jour',
+                    limit=3
+                )
+                if sessions_jour:
+                    logger.info(f"  ✅ {len(sessions_jour)} session(s) JOUR trouvée(s)")
+                    all_sessions.extend(sessions_jour)
+
+                # Récupérer les sessions soir
+                sessions_soir = get_sessions_for_exam_date(
+                    crm_client=crm_client,
+                    exam_date=exam_date,
+                    session_type='soir',
+                    limit=3
+                )
+                if sessions_soir:
+                    logger.info(f"  ✅ {len(sessions_soir)} session(s) SOIR trouvée(s)")
+                    all_sessions.extend(sessions_soir)
+
+                if all_sessions:
+                    # Pas d'erreur CAB, juste une demande de changement
+                    result['is_cab_error'] = False
+                    result['error_type'] = 'NO_ERROR'
+                    result['alternatives'] = all_sessions
+                    result['all_sessions_jour'] = sessions_jour
+                    result['all_sessions_soir'] = sessions_soir
+                    result['has_all_sessions'] = True  # Flag pour le template
+                    result['verification_details'] = f"Toutes les sessions disponibles avant l'examen: {len(sessions_jour)} jour, {len(sessions_soir)} soir"
+                    logger.info(f"  ✅ Total: {len(all_sessions)} session(s) proposée(s) (jour + soir)")
+                else:
+                    result['verification_details'] = "Aucune session disponible avant la date d'examen"
+                    logger.warning("  ⚠️ Aucune session disponible avant l'examen")
 
     return result

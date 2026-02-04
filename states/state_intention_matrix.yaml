@@ -1347,6 +1347,61 @@ matrix:
       examen_passe: true
       show_statut_section: true
 
+  # ===========================================================================
+  # MISSED_TRAINING_FORCE_MAJEURE (FM-1) × Intentions
+  # Formation manquée pour force majeure - priorité BLOCKING
+  # ===========================================================================
+
+  "MISSED_TRAINING_FORCE_MAJEURE:DEMANDE_LIEN_VISIO":
+    template: "response_master.html"
+    description: "Formation manquée FM + demande lien visio"
+    context_flags:
+      missed_training_force_majeure: true
+      intention_demande_lien_visio: true
+      show_statut_section: false
+      show_dates_section: false
+      show_sessions_section: false
+
+  "MISSED_TRAINING_FORCE_MAJEURE:DEMANDE_DATE_VISIO":
+    template: "response_master.html"
+    description: "Formation manquée FM + demande date visio"
+    context_flags:
+      missed_training_force_majeure: true
+      intention_demande_date_visio: true
+      show_statut_section: false
+      show_dates_section: false
+      show_sessions_section: false
+
+  "MISSED_TRAINING_FORCE_MAJEURE:QUESTION_GENERALE":
+    template: "response_master.html"
+    description: "Formation manquée FM + question générale"
+    context_flags:
+      missed_training_force_majeure: true
+      intention_question_generale: true
+      show_statut_section: false
+      show_dates_section: false
+      show_sessions_section: false
+
+  "MISSED_TRAINING_FORCE_MAJEURE:STATUT_DOSSIER":
+    template: "response_master.html"
+    description: "Formation manquée FM + statut dossier"
+    context_flags:
+      missed_training_force_majeure: true
+      intention_statut_dossier: true
+      show_statut_section: false
+      show_dates_section: false
+      show_sessions_section: false
+
+  "MISSED_TRAINING_FORCE_MAJEURE:REPORT_DATE":
+    template: "response_master.html"
+    description: "Formation manquée FM + demande de report"
+    context_flags:
+      missed_training_force_majeure: true
+      intention_report_date: true
+      show_statut_section: false
+      show_dates_section: false
+      show_sessions_section: false
+
   # EXAM_DATE_PAST_VALIDATED (examen passé) × Intentions
   "EXAM_DATE_PAST_VALIDATED:STATUT_DOSSIER":
     template: "response_master.html"

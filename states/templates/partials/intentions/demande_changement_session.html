@@ -26,6 +26,30 @@ Nous allons corriger votre inscription dans les plus brefs délais. Un conseille
 {{complaint_verification}}<br>
 <br>
 {{/if}}
+{{#if has_all_sessions}}
+<!-- CAS SPÉCIAL: Toutes les sessions proposées (contraintes sur les deux types) -->
+Nous comprenons que vous avez des contraintes horaires. Voici l'ensemble des sessions disponibles avant votre examen :<br>
+<br>
+{{#if all_sessions_jour}}
+<b>Sessions en journée (8h30 - 17h30) :</b><br>
+{{#each all_sessions_jour}}
+→ du {{this.date_debut}} au {{this.date_fin}}<br>
+{{/each}}
+<br>
+{{/if}}
+{{#if all_sessions_soir}}
+<b>Sessions en soirée (18h - 22h) :</b><br>
+{{#each all_sessions_soir}}
+→ du {{this.date_debut}} au {{this.date_fin}}<br>
+{{/each}}
+<br>
+{{/if}}
+<b>À noter :</b><br>
+→ Les sessions du <b>soir démarrent à 18h</b>, cet horaire n'est pas modifiable.<br>
+→ Les sessions de <b>jour</b> se déroulent de 8h30 à 17h30.<br>
+<br>
+Merci de nous indiquer quelle session vous conviendrait le mieux parmi celles proposées.<br>
+{{else}}
 {{#if has_complaint_alternatives}}
 Voici les sessions disponibles qui pourraient vous convenir :<br>
 {{#each complaint_alternatives}}
@@ -35,6 +59,7 @@ Voici les sessions disponibles qui pourraient vous convenir :<br>
 <b>Merci de nous confirmer si l'une de ces sessions vous convient.</b><br>
 {{else}}
 Pour modifier votre session, merci de nous préciser vos disponibilités et nous vous proposerons les options disponibles.<br>
+{{/if}}
 {{/if}}
 {{/if}}
 {{else}}

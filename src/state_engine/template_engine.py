@@ -875,6 +875,13 @@ class TemplateEngine:
             'credentials_invalid': context.get('credentials_invalid', False),
             'credentials_inconnus': context.get('credentials_inconnus', False),
 
+            # Blocage confirmation session (documents manquants ou credentials invalides)
+            # NOTE: La clôture passée (CAS 8) n'est PAS un blocage - on redirige vers la nouvelle date
+            'session_confirmation_blocked': context.get('session_confirmation_blocked', False),
+            'session_blocking_reason': context.get('session_blocking_reason'),
+            'session_blocked_documents_manquants': context.get('session_blocked_documents_manquants', False),
+            'session_blocked_credentials_invalides': context.get('session_blocked_credentials_invalides', False),
+
             # Données supplémentaires pour templates hybrides
             'has_next_dates': bool(context.get('next_dates', [])),
             'next_dates': self._format_next_dates_for_template(
@@ -1009,6 +1016,10 @@ class TemplateEngine:
             'has_complaint_alternatives': len(context.get('complaint_alternatives', [])) > 0,
             'assigned_session_info': context.get('assigned_session_info', {}),
             'claimed_session_info': context.get('claimed_session_info', {}),
+            # Toutes les sessions (jour + soir) quand le candidat a des contraintes sur les deux types
+            'has_all_sessions': context.get('has_all_sessions', False),
+            'all_sessions_jour': [self._format_session_for_template(s) for s in context.get('all_sessions_jour', [])],
+            'all_sessions_soir': [self._format_session_for_template(s) for s in context.get('all_sessions_soir', [])],
 
             # ===== FORMATION MANQUÉE (repositionnement) =====
             # Variables pour gérer le cas où le candidat a manqué sa formation

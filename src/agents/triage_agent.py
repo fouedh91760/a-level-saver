@@ -377,7 +377,25 @@ CONTEXTE COMMUNICATION (comment le candidat formule sa demande):
 
 EXTRACTION DES DATES DE FORMATION DEMANDÉES (requested_training_dates):
 
-Quand le candidat mentionne des dates de DISPONIBILITÉ pour sa formation (congés, disponibilités):
+⚠️ DISTINCTION CRITIQUE - NE PAS CONFONDRE:
+- **current_session_dates**: Dates de la session à laquelle le candidat est DÉJÀ inscrit
+  → Extraites des mails de confirmation CAB (noreply@info.zohomeeting.com, etc.)
+  → Ces dates sont du CONTEXTE, PAS une demande du candidat
+- **requested_training_dates**: Dates que le candidat DEMANDE explicitement
+  → Ses disponibilités, congés, périodes souhaitées
+  → SEULEMENT si le candidat les mentionne DANS SON MESSAGE (pas dans les mails cités)
+
+EXEMPLE - Le candidat répond à un mail de confirmation "Formation VTC - 16/02/2026 au 20/02/2026":
+Message candidat: "Bonjour j'ai repris le travail j'aimerais suivre ma formation le soir"
+→ current_session_dates: {start_date: "2026-02-16", end_date: "2026-02-20"} (du mail de confirmation)
+→ requested_training_dates: null (le candidat ne demande PAS de dates spécifiques !)
+→ session_preference: "soir" (il veut juste changer l'horaire)
+
+EXEMPLE - Le candidat donne SES disponibilités:
+Message candidat: "Je serai en congés du 21 au 28 février, je voudrais faire ma formation à ce moment"
+→ requested_training_dates: {start_date: "2026-02-21", end_date: "2026-02-28", ...} (SA demande)
+
+Quand le candidat mentionne des dates de DISPONIBILITÉ pour sa formation (dans SON message, pas dans les mails cités):
 
 1. **Plages de dates explicites:**
    - "du 21 au 28 février" → start_date: "2026-02-21", end_date: "2026-02-28", month: 2, is_range: true
@@ -440,6 +458,12 @@ Réponds UNIQUEMENT en JSON valide:
         "references_previous_communication": true | false,
         "mentions_discrepancy": true | false,
         "discrepancy_details": "description courte si discordance détectée" | null,
+        "current_session_dates": {
+            "start_date": "YYYY-MM-DD" | null,
+            "end_date": "YYYY-MM-DD" | null,
+            "raw_text": "texte original des dates" | null,
+            "source": "confirmation_email" | "context" | null
+        } | null,
         "requested_training_dates": {
             "start_date": "YYYY-MM-DD" | null,
             "end_date": "YYYY-MM-DD" | null,
@@ -474,19 +498,36 @@ Pour CONFIRMATION_SESSION, extraire dans intent_context:
   → Exemples: "du 16/03 au 27/03" → "16/03/2026-27/03/2026"
   → Format: date_debut-date_fin (avec l'année en cours ou l'année suivante si passée)
 
-⚠️ CRITIQUE - Pour DEMANDE_CHANGEMENT_SESSION, TOUJOURS extraire dans intent_context:
-- requested_training_dates: si le candidat mentionne des dates de DISPONIBILITÉ
-  → "du 21 au 28 février" → {start_date: "2026-02-21", end_date: "2026-02-28", month: 2, raw_text: "du 21 au 28 février", is_range: true}
-  → "semaine du 15 mars" → {start_date: "2026-03-15", end_date: "2026-03-21", month: 3, raw_text: "semaine du 15 mars", is_range: true}
-- session_preference: inférer depuis les horaires mentionnés
-  → "9h-18h", "9h00 à 18h00", "journée", "toute la journée" → "jour"
-  → "18h-22h", "le soir", "après travail" → "soir"
+⚠️ CRITIQUE - Pour DEMANDE_CHANGEMENT_SESSION, TOUJOURS distinguer dans intent_context:
 
-EXEMPLE - Message: "Je serai en congés du 21 au 28 février, disponible de 9h à 18h"
+1. **current_session_dates**: Dates extraites du mail de confirmation (contexte, pas une demande)
+   → Vient de: "Formation VTC - 16/02/2026 au 20/02/2026" dans un mail CAB
+   → {start_date: "2026-02-16", end_date: "2026-02-20", source: "confirmation_email"}
+
+2. **requested_training_dates**: Dates que le candidat DEMANDE dans SON message (null si pas de demande)
+   → SEULEMENT si le candidat dit "je voudrais du X au Y", "mes disponibilités sont..."
+   → "du 21 au 28 février" → {start_date: "2026-02-21", end_date: "2026-02-28", month: 2, ...}
+
+3. **session_preference**: Préférence horaire (jour/soir)
+   → "9h-18h", "journée" → "jour"
+   → "le soir", "après travail" → "soir"
+
+EXEMPLE 1 - Candidat veut JUSTE changer d'horaire (cas fréquent):
+Contexte: Mail de confirmation "Formation VTC - 16/02/2026 au 20/02/2026"
+Message candidat: "Bonjour j'ai repris le travail j'aimerais suivre ma formation le soir"
+→ primary_intent: "DEMANDE_CHANGEMENT_SESSION"
+→ session_preference: "soir"
+→ current_session_dates: {start_date: "2026-02-16", end_date: "2026-02-20", source: "confirmation_email"}
+→ requested_training_dates: null (il ne demande PAS de dates spécifiques !)
+→ is_complaint: false
+
+EXEMPLE 2 - Candidat donne SES disponibilités:
+Message candidat: "Je serai en congés du 21 au 28 février, disponible de 9h à 18h"
 → primary_intent: "DEMANDE_CHANGEMENT_SESSION"
 → session_preference: "jour"
+→ current_session_dates: null (pas de contexte de session actuelle)
 → requested_training_dates: {start_date: "2026-02-21", end_date: "2026-02-28", month: 2, raw_text: "du 21 au 28 février", is_range: true, inferred_preference: "jour"}
-→ is_complaint: false (changement volontaire)
+→ is_complaint: false
 
 EXEMPLE PLAINTE - Message: "J'avais clairement indiqué mon choix pour une formation en cours du jour du 16/02 au 20/02, mais je reçois une confirmation pour cours du soir du 16/03 au 27/03, cela ne correspond pas à ma demande"
 → primary_intent: "DEMANDE_CHANGEMENT_SESSION"
@@ -760,8 +801,10 @@ EXEMPLE PLAINTE - Message: "J'avais clairement indiqué mon choix pour une forma
                 logger.info(f"  ⚠️ Force majeure mentionnée: {intent_context.get('force_majeure_type')} - {intent_context.get('force_majeure_details', 'N/A')}")
             if intent_context.get('is_urgent'):
                 logger.info(f"  🚨 Situation urgente détectée")
+            if intent_context.get('current_session_dates'):
+                logger.info(f"  📅 Session actuelle (contexte): {intent_context.get('current_session_dates')}")
             if intent_context.get('requested_training_dates'):
-                logger.info(f"  📅 Dates demandées: {intent_context.get('requested_training_dates')}")
+                logger.info(f"  📅 Dates demandées par le candidat: {intent_context.get('requested_training_dates')}")
             if intent_context.get('session_preference'):
                 logger.info(f"  ⏰ Préférence session: {intent_context.get('session_preference')}")
             if intent_context.get('is_complaint'):
