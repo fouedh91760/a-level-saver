@@ -1193,13 +1193,42 @@ RÉSUMÉ (2-3 phrases):"""
         # Cette règle s'exécute AVANT l'appel IA pour économiser un appel API
         has_attachments = False
         attachment_count = 0
+        real_attachments = []
+
+        # Patterns pour identifier les logos/signatures à ignorer
+        logo_signature_patterns = ['logo', 'signature', 'image00', 'banner', 'icon', 'footer', 'header']
+
         if threads:
             for t in reversed(threads):
                 if t.get('direction') == 'in':
                     thread_attachments = t.get('attachments', [])
-                    if thread_attachments:
+                    for att in thread_attachments:
+                        att_name = (att.get('name') or att.get('fileName') or '').lower()
+                        att_size_raw = att.get('size') or att.get('fileSize') or 0
+                        try:
+                            att_size = int(att_size_raw) if att_size_raw else 0
+                        except (ValueError, TypeError):
+                            att_size = 0
+
+                        # Ignorer les petites images (< 50KB) qui sont probablement des logos/signatures
+                        is_small_image = (
+                            att_size < 50000 and
+                            any(att_name.endswith(ext) for ext in ['.png', '.jpg', '.jpeg', '.gif', '.bmp'])
+                        )
+
+                        # Ignorer si le nom contient des patterns de logo/signature
+                        is_logo_signature = any(pattern in att_name for pattern in logo_signature_patterns)
+
+                        # Garder seulement les vraies pièces jointes
+                        if not is_small_image and not is_logo_signature:
+                            real_attachments.append(att)
+                            logger.debug(f"  📎 Vraie pièce jointe: {att_name} ({att_size} bytes)")
+                        else:
+                            logger.debug(f"  🚫 Logo/signature ignoré: {att_name} ({att_size} bytes)")
+
+                    if real_attachments:
                         has_attachments = True
-                        attachment_count = len(thread_attachments)
+                        attachment_count = len(real_attachments)
                     break
 
         subject_lower = subject.lower() if subject else ''
