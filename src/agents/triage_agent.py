@@ -652,7 +652,10 @@ EXEMPLE PLAINTE - Message: "J'avais clairement indiqué mon choix pour une forma
             # - Si Evalbox = "Refusé CMA" ET fournit identifiants → GO (vérifier compte)
             # - Si Evalbox = "Refusé CMA" SANS envoi de documents → GO (il ne sait pas encore, workflow l'informe)
             evalbox = deal_data.get('Evalbox', '')
-            if evalbox in ['Refusé CMA', 'Documents manquants', 'Documents refusés']:
+            # Evalbox qui déclenchent le routage vers Refus CMA si envoi de documents
+            # "Pret a payer" inclus car le candidat peut répondre à une demande de document manquant
+            evalbox_needs_doc_routing = ['Refusé CMA', 'Documents manquants', 'Documents refusés', 'Pret a payer']
+            if evalbox in evalbox_needs_doc_routing:
                 # Vérifier si le dernier message contient des identifiants ExamT3P
                 thread_lower = thread_content.lower() if thread_content else ''
                 has_credentials = (

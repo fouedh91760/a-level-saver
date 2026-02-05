@@ -151,8 +151,87 @@ class DOCTicketWorkflow:
 
             # Check if we should STOP (routing to another department)
             if triage_result.get('action') == 'ROUTE':
-                logger.warning(f"⚠️  TRIAGE → ROUTE to {triage_result['target_department']}")
-                logger.warning("🛑 STOP WORKFLOW (pas de draft selon règles)")
+                target_dept = triage_result.get('target_department')
+                detected_intent = triage_result.get('detected_intent')
+                logger.warning(f"⚠️  TRIAGE → ROUTE to {target_dept}")
+
+                # CAS SPÉCIAL: TRANSMET_DOCUMENTS vers Refus CMA → créer un brouillon d'accusé réception
+                if target_dept == 'Refus CMA' and detected_intent == 'TRANSMET_DOCUMENTS':
+                    logger.info("  📝 Création d'un brouillon d'accusé réception avant transfert...")
+
+                    # Récupérer le prénom du candidat depuis le deal
+                    selected_deal = triage_result.get('selected_deal', {})
+                    deal_name = selected_deal.get('Deal_Name', '') if selected_deal else ''
+                    # Extraire le prénom : "BFS NP Jonathan Alvarez" → "Jonathan"
+                    # Le prénom est généralement après "BFS NP" ou "BFS ONLINE"
+                    prenom = 'Candidat'
+                    if deal_name:
+                        parts = deal_name.split()
+                        if len(parts) >= 3:
+                            # Skip BFS, NP/ONLINE, prendre le 3ème mot (prénom)
+                            prenom = parts[2].capitalize()
+                        elif len(parts) >= 1:
+                            prenom = parts[-1].capitalize()
+
+                    # Message d'accusé réception simple
+                    acknowledgment_html = f"""Bonjour {prenom},<br>
+<br>
+Nous avons bien reçu votre document et nous vous en remercions.<br>
+<br>
+Notre équipe va le traiter dans les plus brefs délais. Si des informations complémentaires sont nécessaires, nous reviendrons vers vous.<br>
+<br>
+Cordialement,<br>
+L'équipe CAB Formations"""
+
+                    result['response_result'] = {
+                        'response_text': acknowledgment_html,
+                        'template_used': 'transmet_documents_acknowledgment'
+                    }
+                    result['draft_content'] = acknowledgment_html
+
+                    # Créer le brouillon si demandé
+                    if auto_create_draft:
+                        try:
+                            from config import settings
+
+                            ticket = self.desk_client.get_ticket(ticket_id)
+                            to_email = ticket.get('email', '')
+                            from_email = settings.zoho_desk_email_doc or settings.zoho_desk_email_default
+
+                            logger.info(f"  📧 Draft TRANSMET_DOCUMENTS: from={from_email}, to={to_email}")
+
+                            draft_result = self.desk_client.create_ticket_reply_draft(
+                                ticket_id=ticket_id,
+                                content=acknowledgment_html,
+                                content_type='html',
+                                from_email=from_email,
+                                to_email=to_email
+                            )
+
+                            if draft_result:
+                                logger.info(f"  ✅ Brouillon d'accusé réception créé")
+                                result['draft_created'] = True
+
+                                # Transférer le ticket vers Refus CMA
+                                if auto_update_ticket:
+                                    try:
+                                        self.desk_client.move_ticket_to_department(ticket_id, "Refus CMA")
+                                        logger.info("  ✅ Ticket transféré vers Refus CMA")
+                                        result['transferred_to'] = "Refus CMA"
+                                    except Exception as transfer_error:
+                                        logger.error(f"  ❌ Erreur transfert: {transfer_error}")
+                            else:
+                                logger.warning("  ⚠️ Échec création brouillon")
+                                result['draft_created'] = False
+                        except Exception as e:
+                            logger.error(f"  ❌ Erreur création brouillon: {e}")
+                            result['draft_created'] = False
+                    else:
+                        logger.info("  ℹ️ Brouillon non créé (dry-run ou auto_create_draft=False)")
+                        result['draft_created'] = False
+                else:
+                    logger.warning("🛑 STOP WORKFLOW (pas de draft selon règles)")
+
                 result['workflow_stage'] = 'STOPPED_AT_TRIAGE'
                 result['success'] = True
                 return result
@@ -1112,10 +1191,12 @@ RÉSUMÉ (2-3 phrases):"""
                     break
 
         subject_lower = subject.lower() if subject else ''
-        document_keywords = ['document', 'pièce', 'piece', 'justificatif', 'passeport', 'permis', 'identité', 'identite', 'domicile', 'fournir']
+        content_lower = last_thread_content.lower() if last_thread_content else ''
+        document_keywords = ['document', 'pièce', 'piece', 'justificatif', 'passeport', 'permis', 'identité', 'identite', 'domicile', 'fournir', 'attestation', 'hébergement', 'hebergement']
         subject_has_doc_keyword = any(kw in subject_lower for kw in document_keywords)
+        content_has_doc_keyword = any(kw in content_lower for kw in document_keywords)
 
-        if has_attachments and subject_has_doc_keyword:
+        if has_attachments and (subject_has_doc_keyword or content_has_doc_keyword):
             logger.info(f"  🔍 Pièces jointes détectées ({attachment_count}) + sujet document → Route vers Refus CMA")
             ai_triage = {
                 'action': 'ROUTE',
@@ -1154,6 +1235,8 @@ RÉSUMÉ (2-3 phrases):"""
         # Multi-intentions
         triage_result['primary_intent'] = ai_triage.get('primary_intent')
         triage_result['secondary_intents'] = ai_triage.get('secondary_intents', [])
+        # Ajouter selected_deal pour utilisation ultérieure (ex: draft TRANSMET_DOCUMENTS)
+        triage_result['selected_deal'] = selected_deal
 
         # Log intention si détectée
         if triage_result.get('detected_intent'):
@@ -1605,21 +1688,68 @@ Deux comptes ExamenT3P fonctionnels ont été détectés pour ce candidat, et le
             # SORTIE ANTICIPÉE: Deal VTC classique (hors partenariat Uber)
             # ================================================================
             # Les deals non-Uber (599€, 1299€, CPF, etc.) sont gérés manuellement
-            # par l'équipe DOCS CAB → Transfert et STOP (pas de draft, pas de CRM)
+            # par l'équipe DOCS CAB → Draft + Transfert et STOP
             deal_stage = deal_data.get('Stage', '')
             if deal_stage == 'GAGNÉ':
                 logger.info("\n🚦 SORTIE ANTICIPÉE - Deal VTC classique détecté")
                 logger.info(f"  Deal: {deal_data.get('Deal_Name', 'N/A')} ({deal_data.get('Amount', 0)}€)")
                 logger.info(f"  Stage: {deal_stage}")
-                logger.info("  → Transfert vers DOCS CAB et arrêt du workflow")
+                logger.info("  → Création brouillon + Transfert vers DOCS CAB")
 
+                # Extraire le prénom
+                deal_name = deal_data.get('Deal_Name', '')
+                prenom = 'Candidat'
+                if deal_name:
+                    parts = deal_name.split()
+                    if len(parts) >= 3:
+                        prenom = parts[2].capitalize()
+                    elif len(parts) >= 1:
+                        prenom = parts[-1].capitalize()
+
+                # Message d'accusé réception
+                acknowledgment_html = f"""Bonjour {prenom},<br>
+<br>
+Nous avons bien reçu votre message et nous vous en remercions.<br>
+<br>
+Notre équipe va le traiter dans les plus brefs délais. Si des informations complémentaires sont nécessaires, nous reviendrons vers vous.<br>
+<br>
+Cordialement,<br>
+L'équipe CAB Formations"""
+
+                draft_created = False
+                transferred = False
+
+                # Créer le brouillon
                 try:
-                    self.desk_client.move_ticket_to_department(ticket_id, "DOCS CAB")
-                    logger.info("✅ TRANSFER → Ticket transféré vers DOCS CAB")
-                    transferred = True
-                except Exception as transfer_error:
-                    logger.warning(f"⚠️ Impossible de transférer vers DOCS CAB: {transfer_error}")
-                    transferred = False
+                    from config import settings
+
+                    ticket = self.desk_client.get_ticket(ticket_id)
+                    to_email = ticket.get('email', '')
+                    from_email = settings.zoho_desk_email_doc or settings.zoho_desk_email_default
+
+                    logger.info(f"  📧 Draft DOCS CAB: from={from_email}, to={to_email}")
+
+                    draft_result = self.desk_client.create_ticket_reply_draft(
+                        ticket_id=ticket_id,
+                        content=acknowledgment_html,
+                        content_type='html',
+                        from_email=from_email,
+                        to_email=to_email
+                    )
+
+                    if draft_result:
+                        logger.info("  ✅ Brouillon d'accusé réception créé")
+                        draft_created = True
+
+                        # Transférer le ticket vers DOCS CAB
+                        try:
+                            self.desk_client.move_ticket_to_department(ticket_id, "DOCS CAB")
+                            logger.info("  ✅ Ticket transféré vers DOCS CAB")
+                            transferred = True
+                        except Exception as transfer_error:
+                            logger.warning(f"  ⚠️ Impossible de transférer vers DOCS CAB: {transfer_error}")
+                except Exception as e:
+                    logger.error(f"  ❌ Erreur création brouillon DOCS CAB: {e}")
 
                 return {
                     'success': True,
@@ -1630,7 +1760,8 @@ Deux comptes ExamenT3P fonctionnels ont été détectés pour ce candidat, et le
                     'deal_name': deal_data.get('Deal_Name', 'N/A'),
                     'deal_amount': deal_data.get('Amount', 0),
                     'transferred_to': 'DOCS CAB' if transferred else None,
-                    'draft_created': False,
+                    'draft_created': draft_created,
+                    'draft_content': acknowledgment_html if draft_created else None,
                     'crm_updated': False
                 }
 
