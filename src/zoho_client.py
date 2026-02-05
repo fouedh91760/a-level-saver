@@ -429,6 +429,32 @@ class ZohoDeskClient(ZohoAPIClient):
         logger.debug(f"Draft payload: channel=EMAIL, contentType={content_type}, content_length={len(content)}")
         return self._make_request("POST", url, params=params, json=data)
 
+    def has_existing_draft(self, ticket_id: str) -> bool:
+        """
+        Check if a ticket already has a draft reply.
+
+        Args:
+            ticket_id: The ticket ID
+
+        Returns:
+            True if a draft exists, False otherwise
+        """
+        try:
+            threads_response = self.get_ticket_threads(ticket_id)
+            threads = threads_response.get('data', []) if isinstance(threads_response, dict) else threads_response
+
+            for thread in threads:
+                # Les brouillons ont status="DRAFT" (majuscules)
+                status = thread.get('status', '').upper()
+                if status == 'DRAFT':
+                    logger.info(f"Draft existant trouvé pour ticket {ticket_id}")
+                    return True
+
+            return False
+        except Exception as e:
+            logger.warning(f"Erreur vérification draft pour ticket {ticket_id}: {e}")
+            return False
+
     def get_ticket_threads(self, ticket_id: str) -> Dict[str, Any]:
         """
         Get all threads (emails, replies) for a ticket.

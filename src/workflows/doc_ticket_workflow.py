@@ -140,6 +140,18 @@ class DOCTicketWorkflow:
 
         try:
             # ================================================================
+            # STEP 0: VÉRIFIER SI UN BROUILLON EXISTE DÉJÀ
+            # ================================================================
+            logger.info("\n0️⃣  VÉRIFICATION BROUILLON EXISTANT...")
+            if self.desk_client.has_existing_draft(ticket_id):
+                logger.warning("⚠️  BROUILLON EXISTANT DÉTECTÉ → SKIP WORKFLOW")
+                result['workflow_stage'] = 'SKIPPED_DRAFT_EXISTS'
+                result['success'] = True
+                result['skip_reason'] = 'Un brouillon existe déjà pour ce ticket'
+                return result
+            logger.info("  ✅ Pas de brouillon existant, continuation du workflow")
+
+            # ================================================================
             # STEP 1: AGENT TRIEUR (Triage with STOP & GO)
             # ================================================================
             logger.info("\n1️⃣  AGENT TRIEUR - Triage du ticket...")
