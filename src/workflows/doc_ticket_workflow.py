@@ -91,6 +91,14 @@ class DOCTicketWorkflow:
 
         logger.info("✅ DOCTicketWorkflow initialized (State Engine, shared clients)")
 
+    def _mark_brouillon_auto(self, ticket_id: str) -> None:
+        """Mark ticket with BROUILLON AUTO = true after draft creation."""
+        try:
+            self.desk_client.update_ticket(ticket_id, {'cf': {'cf_brouillon_auto': True}})
+            logger.debug(f"  ✅ BROUILLON AUTO coché pour ticket {ticket_id}")
+        except Exception as e:
+            logger.warning(f"  ⚠️ Erreur marquage BROUILLON AUTO: {e}")
+
     def process_ticket(
         self,
         ticket_id: str,
@@ -223,6 +231,7 @@ L'équipe CAB Formations"""
                             if draft_result:
                                 logger.info(f"  ✅ Brouillon d'accusé réception créé")
                                 result['draft_created'] = True
+                                self._mark_brouillon_auto(ticket_id)
 
                                 # Transférer le ticket vers Refus CMA
                                 if auto_update_ticket:
@@ -298,6 +307,7 @@ L'équipe CAB Formations"""
                         )
                         logger.info("✅ DRAFT DOUBLON → Brouillon créé dans Zoho Desk")
                         result['draft_created'] = True
+                        self._mark_brouillon_auto(ticket_id)
                     except Exception as e:
                         logger.error(f"Erreur création brouillon doublon: {e}")
                         result['draft_created'] = False
@@ -345,6 +355,7 @@ L'équipe CAB Formations"""
                         )
                         logger.info("✅ DRAFT CLARIFICATION → Brouillon créé dans Zoho Desk")
                         result['draft_created'] = True
+                        self._mark_brouillon_auto(ticket_id)
                     except Exception as e:
                         logger.error(f"Erreur création brouillon clarification: {e}")
                         result['draft_created'] = False
@@ -547,6 +558,7 @@ La date d'examen dans Zoho CRM est dans le passé. Le workflow a été stoppé p
                     )
                     logger.info("✅ DRAFT MANUEL → Note créée pour traitement humain")
                     result['draft_created'] = True
+                    self._mark_brouillon_auto(ticket_id)
                 except Exception as e:
                     logger.error(f"❌ Erreur création draft manuel: {e}")
                     result['draft_created'] = False
@@ -764,6 +776,7 @@ La date d'examen dans Zoho CRM est dans le passé. Le workflow a été stoppé p
                     )
                     logger.info("✅ DRAFT CREATION → Brouillon créé dans Zoho Desk")
                     result['draft_created'] = True
+                    self._mark_brouillon_auto(ticket_id)
                 except Exception as draft_error:
                     logger.warning(f"⚠️ Impossible de créer le draft dans Zoho Desk: {draft_error}")
                     logger.info("📋 La réponse est disponible ci-dessus pour copier-coller manuellement")
@@ -1781,6 +1794,7 @@ L'équipe CAB Formations"""
                     if draft_result:
                         logger.info("  ✅ Brouillon d'accusé réception créé")
                         draft_created = True
+                        self._mark_brouillon_auto(ticket_id)
 
                         # Transférer le ticket vers DOCS CAB
                         try:
