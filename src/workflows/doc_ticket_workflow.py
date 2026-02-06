@@ -590,35 +590,13 @@ La date d'examen dans Zoho CRM est dans le passé. Le workflow a été stoppé p
 
             logger.info("✅ RESPONSE → Réponse générée")
 
-            # ================================================================
-            # STEP 4: CRM NOTE (OBLIGATOIRE avant draft)
-            # ================================================================
-            logger.info("\n4️⃣  CRM NOTE - Création de la note CRM...")
-            result['workflow_stage'] = 'CRM_NOTE'
-
-            crm_note = self._create_crm_note(
-                ticket_id=ticket_id,
-                triage_result=triage_result,
-                analysis_result=analysis_result,
-                response_result=response_result
-            )
-            result['crm_note'] = crm_note
-
-            if auto_update_crm and analysis_result.get('deal_id'):
-                # Add note to deal
-                self.crm_client.add_deal_note(
-                    deal_id=analysis_result['deal_id'],
-                    note_title="Note automatique - Ticket DOC",
-                    note_content=crm_note
-                )
-                logger.info("✅ CRM NOTE → Note ajoutée au deal")
-            else:
-                logger.info("✅ CRM NOTE → Note générée (pas d'auto-update)")
+            # Note: CRM NOTE sera créée après STEP 6 (après les mises à jour CRM)
+            # pour inclure les vraies mises à jour effectuées
 
             # ================================================================
-            # STEP 5: TICKET UPDATE (status, tags)
+            # STEP 4: TICKET UPDATE (status, tags)
             # ================================================================
-            logger.info("\n5️⃣  TICKET UPDATE - Mise à jour du ticket...")
+            logger.info("\n4️⃣  TICKET UPDATE - Mise à jour du ticket...")
             result['workflow_stage'] = 'TICKET_UPDATE'
 
             if auto_update_ticket:
@@ -631,9 +609,9 @@ La date d'examen dans Zoho CRM est dans le passé. Le workflow a été stoppé p
                 logger.info("✅ TICKET UPDATE → Préparé (pas d'auto-update)")
 
             # ================================================================
-            # STEP 6: DEAL UPDATE (via CRMUpdateAgent)
+            # STEP 5: DEAL UPDATE (via CRMUpdateAgent)
             # ================================================================
-            logger.info("\n6️⃣  DEAL UPDATE - Mise à jour CRM via CRMUpdateAgent...")
+            logger.info("\n5️⃣  DEAL UPDATE - Mise à jour CRM via CRMUpdateAgent...")
             result['workflow_stage'] = 'DEAL_UPDATE'
 
             # Check both scenario flag and AI-extracted updates
@@ -647,6 +625,15 @@ La date d'examen dans Zoho CRM est dans le passé. Le workflow a été stoppé p
                 ai_updates['Date_examen_VTC'] = new_date
                 result['deadline_passed_reschedule'] = True
                 result['new_exam_date'] = new_date
+
+            # CONFIRMATION_DATE_EXAMEN: Si le candidat a confirmé une nouvelle date d'examen
+            if analysis_result.get('confirmed_exam_date_valid') and analysis_result.get('confirmed_exam_date_id'):
+                confirmed_date_id = analysis_result['confirmed_exam_date_id']
+                confirmed_date = analysis_result.get('confirmed_new_exam_date', '')
+                logger.info(f"  📅 CONFIRMATION_DATE_EXAMEN: Date confirmée → {confirmed_date} (ID: {confirmed_date_id})")
+                ai_updates['Date_examen_VTC'] = confirmed_date_id
+                result['exam_date_confirmed_update'] = True
+                result['confirmed_exam_date'] = confirmed_date
 
             # CONFIRMATION_SESSION: Si le candidat a confirmé sa session avec des dates
             if analysis_result.get('session_confirmed') and analysis_result.get('matched_session_id'):
@@ -717,8 +704,39 @@ La date d'examen dans Zoho CRM est dans le passé. Le workflow a été stoppé p
                         logger.info("✅ DEAL UPDATE → Aucune mise à jour après mapping")
                 else:
                     logger.info("✅ DEAL UPDATE → Préparé (pas d'auto-update)")
+                    crm_update_result = {}
             else:
                 logger.info("✅ DEAL UPDATE → Non requis pour ce scénario")
+                crm_update_result = {}
+
+            # Stocker les mises à jour appliquées pour la note CRM
+            result['crm_updates_applied'] = crm_update_result.get('updates_applied', {}) if crm_update_result else {}
+
+            # ================================================================
+            # STEP 6: CRM NOTE (après les mises à jour CRM)
+            # ================================================================
+            logger.info("\n6️⃣  CRM NOTE - Création de la note CRM...")
+            result['workflow_stage'] = 'CRM_NOTE'
+
+            crm_note = self._create_crm_note(
+                ticket_id=ticket_id,
+                triage_result=triage_result,
+                analysis_result=analysis_result,
+                response_result=response_result,
+                crm_updates_applied=result.get('crm_updates_applied', {})
+            )
+            result['crm_note'] = crm_note
+
+            if auto_update_crm and analysis_result.get('deal_id'):
+                # Add note to deal
+                self.crm_client.add_deal_note(
+                    deal_id=analysis_result['deal_id'],
+                    note_title="Note automatique - Ticket DOC",
+                    note_content=crm_note
+                )
+                logger.info("✅ CRM NOTE → Note ajoutée au deal")
+            else:
+                logger.info("✅ CRM NOTE → Note générée (pas d'auto-update)")
 
             # ================================================================
             # STEP 7: DRAFT CREATION (Zoho Desk)
@@ -984,9 +1002,40 @@ La date d'examen dans Zoho CRM est dans le passé. Le workflow a été stoppé p
 
         # Rule #2.5: VÉRIFICATION DOUBLON UBER 20€
         # Si le candidat a déjà bénéficié de l'offre Uber 20€, il ne peut pas en bénéficier à nouveau
+        # MAIS d'abord vérifier s'il demande une formation CPF ou autre chose → router vers Contact
         if linking_result.get('has_duplicate_uber_offer'):
             duplicate_deals = linking_result.get('duplicate_deals', [])
             logger.warning(f"⚠️ DOUBLON UBER 20€ DÉTECTÉ: {len(duplicate_deals)} opportunités 20€ GAGNÉ")
+
+            # Vérifier si le candidat demande une formation CPF ou autre chose
+            cpf_keywords = ["cpf", "compte cpf", "formation cpf", "compte formation",
+                           "mon compte formation", "finançable", "financable", "financement"]
+            content_to_check = (subject + ' ' + last_thread_content).lower()
+            asks_for_cpf = any(kw in content_to_check for kw in cpf_keywords)
+
+            if asks_for_cpf:
+                logger.info(f"📋 DOUBLON UBER mais demande CPF détectée → Router vers Contact")
+                triage_result['action'] = 'ROUTE'
+                triage_result['target_department'] = 'Contact'
+                triage_result['reason'] = "Doublon Uber mais demande formation CPF - traitement manuel requis"
+                triage_result['method'] = 'cpf_request_routing'
+                triage_result['has_duplicate_uber_offer'] = True
+                triage_result['duplicate_deals'] = duplicate_deals
+
+                # Auto-transfer vers Contact
+                if auto_transfer:
+                    try:
+                        logger.info(f"🔄 Transfert automatique vers Contact...")
+                        transfer_success = self.dispatcher._reassign_ticket(ticket_id, 'Contact')
+                        if transfer_success:
+                            logger.info(f"✅ Ticket transféré vers Contact")
+                            triage_result['transferred'] = True
+                    except Exception as e:
+                        logger.error(f"Erreur transfert: {e}")
+
+                return triage_result
+
+            # Pas de demande CPF → workflow doublon Uber standard
             triage_result['action'] = 'DUPLICATE_UBER'
             triage_result['reason'] = f"Candidat a déjà bénéficié de l'offre Uber 20€ ({len(duplicate_deals)} opportunités GAGNÉ)"
             triage_result['method'] = 'duplicate_detection'
@@ -1629,6 +1678,12 @@ Deux comptes ExamenT3P fonctionnels ont été détectés pour ce candidat, et le
                 updated_deal = self.crm_client.get_deal(deal_id)
                 if updated_deal:
                     deal_data = updated_deal
+                # CRITIQUE: Mettre à jour enriched_lookups avec la nouvelle date
+                # Sinon le template utilisera l'ancienne date du CRM
+                new_date = date_sync_result.get('new_date')
+                if new_date:
+                    enriched_lookups['date_examen'] = new_date
+                    logger.info(f"  📅 enriched_lookups['date_examen'] mis à jour: {new_date}")
                 # Ajouter au sync_result pour la note CRM
                 sync_result['date_sync'] = date_sync_result
             elif date_sync_result.get('blocked'):
@@ -2011,10 +2066,55 @@ L'équipe CAB Formations"""
                     logger.warning("  ⚠️ Pas de deal_id - impossible d'appliquer les mises à jour CRM")
 
             # ================================================================
+            # CONFIRMATION DE DATE D'EXAMEN: Vérifier et valider la date demandée
+            # ================================================================
+            confirmed_exam_date_valid = False
+            confirmed_exam_date_id = None
+            confirmed_exam_date_info = None
+            confirmed_exam_date_unavailable = False
+            available_exam_dates_for_dept = []
+
+            intent_for_date_check = IntentParser(triage_result)
+            confirmed_new_exam_date = intent_for_date_check.confirmed_new_exam_date
+            detected_intent_for_date = triage_result.get('detected_intent', '')
+
+            if confirmed_new_exam_date and detected_intent_for_date in ['CONFIRMATION_DATE_EXAMEN', 'REPORT_DATE']:
+                logger.info(f"  📅 Date d'examen confirmée par le candidat: {confirmed_new_exam_date}")
+
+                # Trouver le département du candidat
+                current_dept = None
+                if date_examen_vtc_result.get('current_departement'):
+                    current_dept = str(date_examen_vtc_result.get('current_departement'))
+                elif date_examen_vtc_result.get('date_examen_info', {}).get('Departement'):
+                    current_dept = str(date_examen_vtc_result.get('date_examen_info', {}).get('Departement'))
+
+                if current_dept:
+                    # Vérifier si la date existe pour ce département
+                    from src.utils.date_examen_vtc_helper import get_next_exam_dates
+                    dept_dates = get_next_exam_dates(self.crm_client, current_dept, limit=20)
+                    available_exam_dates_for_dept = dept_dates
+
+                    # Chercher la date confirmée
+                    for d in dept_dates:
+                        if d.get('Date_Examen') == confirmed_new_exam_date:
+                            confirmed_exam_date_valid = True
+                            confirmed_exam_date_id = d.get('id')
+                            confirmed_exam_date_info = d
+                            logger.info(f"  ✅ Date {confirmed_new_exam_date} DISPONIBLE pour département {current_dept} (ID: {confirmed_exam_date_id})")
+                            break
+
+                    if not confirmed_exam_date_valid:
+                        confirmed_exam_date_unavailable = True
+                        logger.warning(f"  ⚠️ Date {confirmed_new_exam_date} NON DISPONIBLE pour département {current_dept}")
+                        logger.info(f"  📅 Dates disponibles: {[d.get('Date_Examen') for d in dept_dates[:5]]}")
+                else:
+                    logger.warning(f"  ⚠️ Département non trouvé, impossible de vérifier la date")
+
+            # ================================================================
             # ENRICHISSEMENT: Si intention date-related avec mois/lieu spécifiques
             # ================================================================
             # Inclut REPORT_DATE, DEMANDE_DATES_FUTURES, DEMANDE_AUTRES_DATES
-            DATE_RELATED_INTENTS = ['REPORT_DATE', 'DEMANDE_DATES_FUTURES', 'DEMANDE_AUTRES_DATES', 'DEMANDE_AUTRES_DEPARTEMENTS']
+            DATE_RELATED_INTENTS = ['REPORT_DATE', 'DEMANDE_DATES_FUTURES', 'DEMANDE_AUTRES_DATES', 'DEMANDE_AUTRES_DEPARTEMENTS', 'CONFIRMATION_DATE_EXAMEN']
             if triage_result.get('primary_intent') in DATE_RELATED_INTENTS:
                 intent = IntentParser(triage_result)
                 requested_month = intent.requested_month
@@ -2267,13 +2367,21 @@ L'équipe CAB Formations"""
                 # CAS normal: Candidat confirme sa session → utiliser SA date assignée
                 exam_dates_for_session = [date_examen_info]
                 logger.info(f"  📚 CONFIRMATION_SESSION + date assignée ({date_examen_info.get('Date_Examen')}) → sessions pour cette date uniquement")
-        elif detected_intent == 'REPORT_DATE':
-            # CAS 2: REPORT_DATE → charger les dates SPÉCIFIQUES au département et exclure la date actuelle
+        elif detected_intent in ['REPORT_DATE', 'CONFIRMATION_DATE_EXAMEN']:
+            # CAS 2: REPORT_DATE ou CONFIRMATION_DATE_EXAMEN
             current_date = date_examen_info.get('Date_Examen') if date_examen_info else None
             current_dept = date_examen_vtc_result.get('current_departement') or date_examen_vtc_result.get('date_examen_info', {}).get('Departement')
 
-            if current_dept:
-                # Charger les dates spécifiques au département (pas la liste globale)
+            # CAS 2a: Date confirmée par le candidat → charger sessions pour CETTE date
+            if confirmed_exam_date_valid and confirmed_exam_date_info:
+                exam_dates_for_session = [confirmed_exam_date_info]
+                logger.info(f"  📚 DATE CONFIRMÉE: {confirmed_exam_date_info.get('Date_Examen')} → sessions pour cette date")
+            # CAS 2b: Date demandée non disponible → afficher alternatives
+            elif confirmed_exam_date_unavailable and available_exam_dates_for_dept:
+                exam_dates_for_session = available_exam_dates_for_dept
+                logger.info(f"  📚 DATE NON DISPONIBLE: affichage de {len(available_exam_dates_for_dept)} alternative(s)")
+            # CAS 2c: Pas de date spécifique → charger les dates du département
+            elif current_dept:
                 from src.utils.date_examen_vtc_helper import get_next_exam_dates
                 dept_dates = get_next_exam_dates(self.crm_client, current_dept, limit=10)
                 # Filtrer la date actuelle
@@ -2407,6 +2515,10 @@ L'équipe CAB Formations"""
                     'closest_before_soir': match_result.get('closest_before_soir'),
                     'closest_after_jour': match_result.get('closest_after_jour'),
                     'closest_after_soir': match_result.get('closest_after_soir'),
+                    # Fallback: type demandé indisponible, alternatives d'un autre type
+                    'no_sessions_of_requested_type': match_result.get('no_sessions_of_requested_type', False),
+                    'alternative_type': match_result.get('alternative_type'),
+                    'alternative_type_label': match_result.get('alternative_type_label', ''),
                 }
 
                 logger.info(f"  🎯 Résultat matching: {match_result.get('match_type')} ({len(match_result.get('sessions_proposees', []))} session(s))")
@@ -2561,6 +2673,21 @@ L'équipe CAB Formations"""
             confirmed_dates = intent.confirmed_session_dates
             session_preference = intent.session_preference  # 'jour' ou 'soir'
 
+            # Fallback: utiliser requested_training_dates si confirmed_session_dates est vide
+            # Le triage peut retourner les dates dans l'un ou l'autre champ
+            requested_dates = intent.requested_training_dates
+            if not confirmed_dates and requested_dates:
+                start = requested_dates.get('start_date', '')
+                end = requested_dates.get('end_date', '')
+                if start and end:
+                    # Convertir du format YYYY-MM-DD au format DD/MM/YYYY-DD/MM/YYYY
+                    from src.utils.date_utils import parse_date_flexible
+                    start_dt = parse_date_flexible(start)
+                    end_dt = parse_date_flexible(end)
+                    if start_dt and end_dt:
+                        confirmed_dates = f"{start_dt.strftime('%d/%m/%Y')}-{end_dt.strftime('%d/%m/%Y')}"
+                        logger.info(f"  📅 Dates extraites de requested_training_dates: {confirmed_dates}")
+
             matched = None
 
             # 1. Essayer matching par dates si fournies
@@ -2573,12 +2700,30 @@ L'équipe CAB Formations"""
                 if not matched:
                     logger.warning(f"  ⚠️ Aucune session ne matche les dates: {confirmed_dates}")
 
+            # 1b. Si pas de match et sessions_proposees disponibles (cas has_date_range_request)
+            if not matched and confirmed_dates and session_data and session_data.get('sessions_proposees'):
+                logger.info(f"  🔍 Matching session par dates dans sessions_proposees: {confirmed_dates}")
+                matched = self._match_session_in_flat_list(
+                    confirmed_dates,
+                    session_data['sessions_proposees']
+                )
+                if not matched:
+                    logger.warning(f"  ⚠️ Aucune session ne matche les dates dans sessions_proposees")
+
             # 2. Sinon, essayer matching par préférence (jour/soir)
             if not matched and session_preference and session_data and session_data.get('proposed_options'):
                 logger.info(f"  🔍 Matching session par préférence: {session_preference}")
                 matched = self._match_session_by_preference(
                     session_preference,
                     session_data['proposed_options']
+                )
+
+            # 2b. Matching par préférence dans sessions_proposees
+            if not matched and session_preference and session_data and session_data.get('sessions_proposees'):
+                logger.info(f"  🔍 Matching session par préférence dans sessions_proposees: {session_preference}")
+                matched = self._match_session_by_preference_flat(
+                    session_preference,
+                    session_data['sessions_proposees']
                 )
 
             # 3. Résultat du matching
@@ -2661,6 +2806,13 @@ L'équipe CAB Formations"""
             'session_year_error_corrected_type': session_year_error_corrected.get('session_type') if session_year_error_corrected else None,
             'session_year_error_corrected_start': session_year_error_corrected.get('date_debut') if session_year_error_corrected else None,
             'session_year_error_corrected_end': session_year_error_corrected.get('date_fin') if session_year_error_corrected else None,
+            # Confirmation de date d'examen (CONFIRMATION_DATE_EXAMEN / REPORT_DATE avec date spécifique)
+            'confirmed_exam_date_valid': confirmed_exam_date_valid,
+            'confirmed_exam_date_id': confirmed_exam_date_id,
+            'confirmed_exam_date_info': confirmed_exam_date_info,
+            'confirmed_exam_date_unavailable': confirmed_exam_date_unavailable,
+            'available_exam_dates_for_dept': available_exam_dates_for_dept,
+            'confirmed_new_exam_date': confirmed_new_exam_date,
         }
 
     def _match_session_by_confirmed_dates(
@@ -2772,6 +2924,116 @@ L'équipe CAB Formations"""
             logger.error(f"Erreur lors du matching par préférence: {e}")
             return None
 
+    def _match_session_in_flat_list(
+        self,
+        confirmed_dates: str,
+        sessions_list: List[Dict]
+    ) -> Optional[Dict]:
+        """
+        Matche une session par dates dans une liste plate de sessions.
+
+        Utilisé pour matcher dans sessions_proposees (format flat) quand
+        proposed_options (format imbriqué) est vide.
+
+        Args:
+            confirmed_dates: Dates au format "DD/MM/YYYY-DD/MM/YYYY"
+            sessions_list: Liste plate de sessions
+
+        Returns:
+            Dict avec id, name, session_type si trouvé, None sinon
+        """
+        from src.utils.date_utils import parse_date_flexible
+
+        try:
+            # Parser les dates confirmées
+            parts = confirmed_dates.split('-')
+            if len(parts) != 2:
+                logger.warning(f"Format dates confirmées invalide: {confirmed_dates}")
+                return None
+
+            start_str, end_str = parts[0].strip(), parts[1].strip()
+            confirmed_start = parse_date_flexible(start_str)
+            confirmed_end = parse_date_flexible(end_str)
+
+            if not confirmed_start or not confirmed_end:
+                logger.warning(f"Impossible de parser les dates: {start_str}, {end_str}")
+                return None
+
+            logger.info(f"  📅 Recherche session: {confirmed_start.strftime('%d/%m/%Y')} - {confirmed_end.strftime('%d/%m/%Y')}")
+
+            # Chercher dans la liste plate de sessions
+            for session in sessions_list:
+                session_start = parse_date_flexible(session.get('Date_d_but', '') or session.get('date_debut', ''))
+                session_end = parse_date_flexible(session.get('Date_fin', '') or session.get('date_fin', ''))
+
+                if not session_start or not session_end:
+                    continue
+
+                # Vérifier si les dates correspondent (tolérance de 1 jour)
+                start_match = abs((session_start - confirmed_start).days) <= 1
+                end_match = abs((session_end - confirmed_end).days) <= 1
+
+                if start_match and end_match:
+                    session_type = session.get('session_type', '')
+                    session_name = 'Cours du jour' if session_type == 'jour' else 'Cours du soir' if session_type == 'soir' else session.get('Name', '')
+
+                    logger.info(f"  ✅ Session matchée dans liste plate: {session_name}")
+                    logger.info(f"     Du {session.get('Date_d_but', '')} au {session.get('Date_fin', '')}")
+
+                    return {
+                        'id': session.get('id'),
+                        'name': session_name,
+                        'session_type': session_type,
+                        'Date_d_but': session.get('Date_d_but'),
+                        'Date_fin': session.get('Date_fin'),
+                    }
+
+            return None
+
+        except Exception as e:
+            logger.error(f"Erreur lors du matching dans liste plate: {e}")
+            return None
+
+    def _match_session_by_preference_flat(
+        self,
+        preference: str,
+        sessions_list: List[Dict]
+    ) -> Optional[Dict]:
+        """
+        Matche une session par préférence jour/soir dans une liste plate.
+
+        Args:
+            preference: 'jour' ou 'soir'
+            sessions_list: Liste plate de sessions
+
+        Returns:
+            Dict avec id, name, session_type si trouvé, None sinon
+        """
+        try:
+            for session in sessions_list:
+                session_type = session.get('session_type', '')
+
+                if session_type == preference:
+                    session_name = 'Cours du jour' if preference == 'jour' else 'Cours du soir'
+
+                    logger.info(f"  ✅ Session matchée par préférence (flat): {session_name}")
+                    logger.info(f"     Du {session.get('Date_d_but', '')} au {session.get('Date_fin', '')}")
+
+                    return {
+                        'id': session.get('id'),
+                        'name': session_name,
+                        'session_type': preference,
+                        'Date_d_but': session.get('Date_d_but'),
+                        'Date_fin': session.get('Date_fin'),
+                    }
+
+            logger.warning(f"  ⚠️ Aucune session de type '{preference}' trouvée dans liste plate")
+            return None
+
+        except Exception as e:
+            logger.error(f"Erreur lors du matching par préférence (flat): {e}")
+            return None
+
     def _generate_duplicate_uber_response(
         self,
         ticket_id: str,
@@ -2808,6 +3070,7 @@ Après vérification de votre dossier, je constate que vous avez déjà bénéfi
 Si vous souhaitez vous réinscrire à l'examen VTC, voici vos options :
 
 OPTION 1 : Inscription autonome
+
 • Vous pouvez vous inscrire vous-même sur le site de la CMA (ExamT3P)
 • Les frais d'inscription à l'examen s'élèvent à 241€, à votre charge
 • Site d'inscription : https://exament3p.cma-france.fr
@@ -3070,6 +3333,17 @@ L'équipe CAB Formations"""
             # Mettre à jour aussi date_examen_vtc_value pour cohérence
             date_examen_vtc_value = new_exam_date
 
+        # ================================================================
+        # CONFIRMATION_DATE_EXAMEN: Si candidat a confirmé une nouvelle date
+        # Mettre à jour enriched_lookups AVANT la génération du template
+        # ================================================================
+        if analysis_result.get('confirmed_exam_date_valid') and analysis_result.get('confirmed_new_exam_date'):
+            confirmed_date = analysis_result['confirmed_new_exam_date']
+            logger.info(f"  📅 CONFIRMATION_DATE_EXAMEN: Mise à jour enriched_lookups avec date confirmée: {confirmed_date}")
+            enriched_lookups['date_examen'] = confirmed_date
+            # Mettre à jour aussi date_examen_vtc_value pour cohérence
+            date_examen_vtc_value = confirmed_date
+
         # DEBUG: Vérifier session_data avant l'injection dans le contexte
         logger.info(f"  🔍 DEBUG session_data: has_date_range={session_data.get('has_date_range_request')}, match_type={session_data.get('match_type')}, closest_before={session_data.get('closest_before') is not None}")
 
@@ -3165,7 +3439,10 @@ L'équipe CAB Formations"""
             # Flags booléens pour conditions template (pybars3 ne supporte pas eq)
             'is_exact_match': session_data.get('match_type') == 'EXACT',
             'is_overlap_match': session_data.get('match_type') == 'OVERLAP',
-            'is_no_match': session_data.get('match_type') in ('NO_MATCH', 'CLOSEST'),
+            'is_no_match': session_data.get('match_type') in ('NO_MATCH', 'CLOSEST', 'CLOSEST_FALLBACK'),
+            # Fallback quand type demandé indisponible (ex: pas de cours du jour)
+            'no_sessions_of_requested_type': session_data.get('no_sessions_of_requested_type', False),
+            'alternative_type_label': session_data.get('alternative_type_label', ''),
 
             # Vérification plainte session (erreur CAB)
             'is_complaint': session_data.get('is_complaint', False),
@@ -3204,6 +3481,11 @@ L'équipe CAB Formations"""
             'session_year_error_corrected_name': analysis_result.get('session_year_error_corrected_name', ''),
             'session_year_error_corrected_start': analysis_result.get('session_year_error_corrected_start', ''),
             'session_year_error_corrected_end': analysis_result.get('session_year_error_corrected_end', ''),
+
+            # Confirmation de date d'examen (CONFIRMATION_DATE_EXAMEN)
+            'confirmed_exam_date_valid': analysis_result.get('confirmed_exam_date_valid', False),
+            'confirmed_exam_date_unavailable': analysis_result.get('confirmed_exam_date_unavailable', False),
+            'available_exam_dates_for_dept': analysis_result.get('available_exam_dates_for_dept', []),
 
             # Uber
             'is_uber_20_deal': uber_result.get('is_uber_20_deal', False),
@@ -3787,7 +4069,8 @@ Génère maintenant la personnalisation (1-3 phrases):"""
         ticket_id: str,
         triage_result: Dict,
         analysis_result: Dict,
-        response_result: Dict
+        response_result: Dict,
+        crm_updates_applied: Dict = None
     ) -> str:
         """
         Crée une note CRM unique et consolidée avec toutes les infos du traitement.
@@ -3799,6 +4082,8 @@ Génère maintenant la personnalisation (1-3 phrases):"""
         4. Next steps (candidat + CAB)
         5. Alertes si nécessaire
         """
+        if crm_updates_applied is None:
+            crm_updates_applied = {}
         import anthropic
 
         lines = []
@@ -3830,10 +4115,9 @@ Génère maintenant la personnalisation (1-3 phrases):"""
             new_date = date_sync.get('new_date', '')
             updates.append(f"• Date_examen_VTC: {old_date} → {new_date}")
 
-        # Mises à jour depuis la réponse
-        crm_updates = response_result.get('crm_updates', {})
-        if crm_updates:
-            for field, value in crm_updates.items():
+        # Mises à jour CRM appliquées (passées en paramètre après STEP 5)
+        if crm_updates_applied:
+            for field, value in crm_updates_applied.items():
                 # Éviter les doublons
                 if not any(field in u for u in updates):
                     updates.append(f"• {field}: → {value}")

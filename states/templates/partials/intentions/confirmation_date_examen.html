@@ -1,0 +1,35 @@
+<!-- Partial: Réponse à l'intention CONFIRMATION_DATE_EXAMEN -->
+<!-- Le candidat confirme son choix de date d'examen -->
+<b>Concernant les dates d'examen</b><br>
+{{#if confirmed_exam_date_valid}}
+{{!-- Date confirmée disponible et validée --}}
+Votre date d'examen est confirmée : <b>{{date_examen}}</b>.<br>
+{{#if date_cloture}}
+La date limite d'inscription est le <b>{{date_cloture}}</b>.<br>
+{{/if}}
+<br>
+Nous procédons à la mise à jour de votre dossier.<br>
+{{else}}
+{{#if confirmed_exam_date_unavailable}}
+{{!-- Date demandée non disponible --}}
+La date que vous avez demandée n'est malheureusement pas disponible pour votre département.<br>
+<br>
+{{#if available_exam_dates_for_dept}}
+Voici les dates d'examen disponibles :<br>
+{{#each available_exam_dates_for_dept}}
+- <b>{{this.Date_Examen}}</b>{{#if this.Date_Cloture}} (inscription avant le {{this.Date_Cloture}}){{/if}}<br>
+{{/each}}
+<br>
+Merci de nous confirmer la date qui vous convient.<br>
+{{else}}
+Aucune date n'est actuellement disponible. Nous vous recontacterons dès qu'une nouvelle date sera ouverte.<br>
+{{/if}}
+{{else}}
+{{!-- Fallback: date confirmée sans validation explicite --}}
+{{#if date_examen}}
+Votre date d'examen est confirmée : <b>{{date_examen}}</b>.<br>
+{{else}}
+Nous avons bien noté votre demande concernant la date d'examen.<br>
+{{/if}}
+{{/if}}
+{{/if}}

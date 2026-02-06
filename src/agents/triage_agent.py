@@ -140,8 +140,10 @@ INTENTIONS POSSIBLES (par ordre de spécificité - préfère les intentions spé
   ⚠️ IMPORTANT: Si le candidat demande "février" et sa date est en "mars" → c'est DEMANDE_DATE_PLUS_TOT
   ⚠️ Réponse attendue: vérifier cross-département, si aucune option → expliquer que c'est impossible et garder date actuelle
 - CONFIRMATION_DATE_EXAMEN: Candidat CONFIRME son choix de date d'examen
-  Exemples: "je confirme la date du 15 mars", "je choisis le 31/03", "ok pour cette date"
+  Exemples: "je confirme la date du 15 mars", "je choisis le 31/03", "ok pour cette date",
+            "je confirme le 28/04/2026", "je veux changer pour le 28 avril"
   ⚠️ Important pour mise à jour CRM (crm_update: true)
+  ⚠️ EXTRAIRE la date confirmée dans intent_context.confirmed_new_exam_date au format "YYYY-MM-DD"
 - DEMANDE_AUTRES_DEPARTEMENTS: Veut voir des dates dans d'autres villes/départements
   Exemples: "dates ailleurs", "autre département", "dates à Lyon", "d'autres options"
 
@@ -344,6 +346,10 @@ CONTEXTE SUPPLÉMENTAIRE (pour toutes les intentions):
 - requested_month: le mois spécifique DEMANDÉ pour un changement (1-12 ou null si non mentionné)
   Exemples: "je voudrais juillet" → 7, "reporter à septembre" → 9
   ⚠️ Ne pas confondre avec mentioned_month: ici c'est une DEMANDE, pas une mention
+- confirmed_new_exam_date: Date d'examen CONFIRMÉE par le candidat au format "YYYY-MM-DD"
+  Exemples: "je confirme le 28/04/2026" → "2026-04-28", "je choisis la date du 28 avril" → "2026-04-28"
+  ⚠️ IMPORTANT: Extraire cette date pour CONFIRMATION_DATE_EXAMEN et REPORT_DATE si le candidat confirme une date précise
+  ⚠️ Format: TOUJOURS "YYYY-MM-DD" (année-mois-jour). Convertir les formats FR (28/04/2026) en ISO (2026-04-28)
 - requested_location: la ville ou le département demandé tel que mentionné par le candidat
   Exemples: "Montpellier", "Lyon", "Paris", "département 34"
 - requested_dept_code: le CODE DÉPARTEMENT (2 chiffres) correspondant à la location demandée

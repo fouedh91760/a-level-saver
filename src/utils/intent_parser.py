@@ -81,6 +81,16 @@ class IntentParser:
         return bool(self._intent_context.get('wants_earlier_date'))
 
     @property
+    def confirmed_new_exam_date(self) -> Optional[str]:
+        """
+        Date d'examen confirmée par le candidat (format YYYY-MM-DD).
+
+        Returns:
+            Date au format "YYYY-MM-DD" ou None.
+        """
+        return self._intent_context.get('confirmed_new_exam_date')
+
+    @property
     def is_early_date_intent(self) -> bool:
         """True si l'intention est explicitement DEMANDE_DATE_PLUS_TOT."""
         return self.detected_intent == 'DEMANDE_DATE_PLUS_TOT'

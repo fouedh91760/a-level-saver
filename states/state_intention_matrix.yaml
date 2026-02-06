@@ -2240,6 +2240,14 @@ matrix:
       show_statut_section: true
       show_sessions_section: true
 
+  "*:CONFIRMATION_DATE_EXAMEN":
+    template: "response_master.html"
+    description: "Confirmation de date d'examen - tous états"
+    context_flags:
+      intention_confirmation_date_examen: true
+      show_statut_section: true
+      show_dates_section: false  # Ne pas re-proposer des dates, il a confirmé
+
   "*:DEMANDE_CONVOCATION":
     template: "response_master.html"
     description: "Demande de convocation - tous états"
