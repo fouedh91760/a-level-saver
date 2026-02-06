@@ -39,7 +39,7 @@ Le workflow traite les tickets DOC en utilisant plusieurs agents spécialisés e
 
 ---
 
-## 16 RÈGLES CRITIQUES - Ne Jamais Oublier
+## 17 RÈGLES CRITIQUES - Ne Jamais Oublier
 
 | # | Règle | Piège à éviter | Détails |
 |---|-------|----------------|---------|
@@ -59,6 +59,7 @@ Le workflow traite les tickets DOC en utilisant plusieurs agents spécialisés e
 | 14 | **JAMAIS de fallback legacy** | Laisser une combinaison STATE:INTENTION tomber sur `base_legacy/` | Voir §14 ci-dessous |
 | 15 | **Statuts pré-validation ≠ validés** | Traiter "Dossier Synchronisé" comme validé | Voir §15 ci-dessous |
 | 16 | **Sessions filtrées par date examen** | Proposer session septembre pour examen mai | Voir §16 ci-dessous |
+| 17 | **Doublon ≠ toutes les demandes** | Répondre "doublon" pour une demande CPF/France Travail | Voir §17 ci-dessous |
 
 ---
 
@@ -539,6 +540,53 @@ if primary_intent == 'DEMANDE_CHANGEMENT_SESSION':
 - ✅ Session 13/04 → 24/04 (avant examen)
 - ✅ Session 11/05 → 22/05 (avant examen)
 - ❌ Session 14/09 → 25/09 (APRÈS examen - filtrer !)
+
+---
+
+## RÈGLE 17 : Doublon ≠ Toutes les Demandes
+
+### Le Problème
+
+Un candidat avec un dossier Uber 20€ peut contacter CAB Formations pour une **autre raison** (formation CPF, France Travail/KAIROS, financement personnel). Dans ce cas, répondre "offre Uber 20€ déjà utilisée" est **complètement hors sujet**.
+
+### La Règle
+
+La logique doublon Uber ne s'applique que pour les demandes **liées à l'offre Uber 20€**. Pour les autres demandes, router vers Contact.
+
+### Keywords Non-Uber
+
+| Catégorie | Keywords |
+|-----------|----------|
+| CPF | cpf, compte cpf, compte formation, moncompteformation |
+| France Travail | france travail, kairos, pole emploi, conseiller |
+| Financement perso | 720€, tarif complet, payer moi-même |
+| Devis | devis, facture pro forma, proforma |
+| Autres | opco, fafcea, agefice, fifpl, fif pl |
+
+### Implémentation
+
+```python
+# Dans doc_ticket_workflow.py - _run_triage()
+# AVANT la logique doublon, vérifier si demande non-Uber
+if is_non_uber_registration and has_duplicate:
+    # Router vers Contact (ignorer doublon Uber)
+    triage_result['action'] = 'ROUTE'
+    triage_result['target_department'] = 'Contact'
+    return triage_result
+
+# Continuer avec logique doublon seulement si demande Uber
+if linking_result.get('has_duplicate_uber_offer'):
+    ...
+```
+
+### Exemple
+
+- Candidat A a un dossier Uber 20€ GAGNÉ
+- Candidat A écrit : "Je veux m'inscrire avec mon CPF à 720€"
+- ❌ FAUX : Répondre "Vous avez déjà utilisé l'offre Uber 20€"
+- ✅ CORRECT : Router vers Contact pour traitement formation CPF
+
+**Fichiers :** `docs/GESTION_DOUBLONS_BFS.md`, `src/workflows/doc_ticket_workflow.py`
 
 ---
 

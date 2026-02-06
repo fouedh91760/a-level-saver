@@ -24,7 +24,27 @@ Un candidat peut se réinscrire avec :
 
 ## Architecture de la Solution
 
-### Flux Global
+### ⚠️ RÈGLE CRITIQUE : Demandes Non-Uber
+
+**AVANT** d'appliquer la logique doublon, le système vérifie si la demande est liée à une formation **non-Uber**.
+
+| Type de demande | Keywords détectés | Action |
+|-----------------|-------------------|--------|
+| CPF | cpf, compte cpf, compte formation, moncompteformation | → Contact |
+| France Travail | france travail, kairos, pole emploi, conseiller | → Contact |
+| Financement personnel | 720€, tarif complet, payer moi-même | → Contact |
+| Devis | devis, facture pro forma | → Contact |
+| Autres financements | opco, fafcea, agefice, fifpl, fif pl | → Contact |
+
+**Si une demande non-Uber est détectée** (même si le candidat a un dossier Uber existant), le ticket est **routé vers Contact** pour traitement manuel. La logique doublon Uber n'est **PAS appliquée**.
+
+```
+Ticket → Détection keywords non-Uber →
+   ├── OUI (CPF/France Travail/etc.) → ROUTE vers Contact (ignorer doublon)
+   └── NON → Continuer avec logique doublon Uber (voir ci-dessous)
+```
+
+### Flux Global (Demandes Uber uniquement)
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐

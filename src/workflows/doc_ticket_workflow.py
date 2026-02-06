@@ -1474,6 +1474,88 @@ La date d'examen dans Zoho CRM est dans le passé. Le workflow a été stoppé p
                 logger.warning(f"  ⚠️ Impossible d'ajouter la note RGPD: {e}")
             return triage_result
 
+        # ================================================================
+        # RÈGLE CRITIQUE: NON-UBER REGISTRATION REQUESTS
+        # Si le candidat demande une formation avec un financement NON-UBER
+        # (CPF, France Travail/KAIROS, financement personnel, etc.),
+        # on doit router vers Contact SANS appliquer la logique doublon Uber.
+        # ================================================================
+        # Keywords indiquant une demande d'inscription NON-UBER
+        non_uber_registration_keywords = [
+            # CPF / Compte Formation
+            "cpf", "compte cpf", "mon compte cpf", "compte formation",
+            "mon compte formation", "moncompteformation",
+            # France Travail / KAIROS
+            "france travail", "francetravail", "pole emploi", "pôle emploi",
+            "kairos", "financement kairos", "financement france travail",
+            "conseiller france travail", "mon conseiller",
+            # Financement personnel / Tarif complet
+            "720€", "720 €", "720 euros", "tarif complet", "plein tarif",
+            "financement personnel", "payer moi-même", "payer moi même",
+            "payer de ma poche", "à mes frais", "a mes frais",
+            "paiement échelonné", "paiement en plusieurs fois",
+            # Devis / Facture
+            "devis", "facture pro forma", "proforma",
+            # Autres financements
+            "opco", "fafcea", "agefice", "fifpl", "fif pl",
+            "fonds de formation", "prise en charge",
+        ]
+
+        content_to_check = (subject + ' ' + last_thread_content).lower()
+        is_non_uber_registration = any(kw in content_to_check for kw in non_uber_registration_keywords)
+
+        # Si c'est une demande non-Uber ET il y a un doublon potentiel → Router vers Contact
+        # (ignorer la logique doublon Uber, ce n'est pas pertinent)
+        has_duplicate = linking_result.get('has_duplicate_uber_offer') or linking_result.get('needs_duplicate_confirmation')
+
+        if is_non_uber_registration and has_duplicate:
+            logger.info(f"📋 DEMANDE NON-UBER détectée (CPF/France Travail/etc.) + doublon existant → Router vers Contact")
+            logger.info(f"   → Ignorer logique doublon Uber car intention différente")
+            triage_result['action'] = 'ROUTE'
+            triage_result['target_department'] = 'Contact'
+            triage_result['reason'] = "Candidat avec dossier Uber existant mais demande formation non-Uber (CPF/France Travail/autre financement)"
+            triage_result['method'] = 'non_uber_registration_routing'
+            triage_result['has_existing_uber_deal'] = True
+            triage_result['selected_deal'] = selected_deal
+
+            # Auto-transfer vers Contact
+            if auto_transfer:
+                try:
+                    logger.info(f"🔄 Transfert automatique vers Contact...")
+                    transfer_success = self.dispatcher._reassign_ticket(ticket_id, 'Contact')
+                    if transfer_success:
+                        logger.info(f"✅ Ticket transféré vers Contact")
+                        triage_result['transferred'] = True
+                except Exception as e:
+                    logger.error(f"Erreur transfert: {e}")
+
+            return triage_result
+
+        # Si c'est une demande non-Uber mais PAS de doublon → Router vers Contact aussi
+        # (le département DOC ne gère que les dossiers Uber 20€)
+        if is_non_uber_registration and not all_deals:
+            logger.info(f"📋 DEMANDE NON-UBER détectée + pas de dossier → Router vers Contact (prospect)")
+            triage_result['action'] = 'ROUTE'
+            triage_result['target_department'] = 'Contact'
+            triage_result['reason'] = "Demande formation non-Uber (CPF/France Travail/autre) - prospect à traiter manuellement"
+            triage_result['method'] = 'non_uber_prospect_routing'
+
+            if auto_transfer:
+                try:
+                    transfer_success = self.dispatcher._reassign_ticket(ticket_id, 'Contact')
+                    if transfer_success:
+                        logger.info(f"✅ Ticket transféré vers Contact")
+                        triage_result['transferred'] = True
+                except Exception as e:
+                    logger.error(f"Erreur transfert: {e}")
+
+            return triage_result
+
+        # ================================================================
+        # À partir d'ici: le candidat demande quelque chose lié à Uber 20€
+        # → La logique doublon s'applique
+        # ================================================================
+
         # Rule #2.4b: VÉRIFICATION DOUBLON POTENTIEL (CLARIFICATION NÉCESSAIRE)
         # Si on détecte un doublon par nom+CP mais avec email/téléphone différents,
         # on demande confirmation au candidat pour éviter les homonymes
@@ -1502,38 +1584,10 @@ La date d'examen dans Zoho CRM est dans le passé. Le workflow a été stoppé p
 
         # Rule #2.5: VÉRIFICATION DOUBLON UBER 20€
         # Si le candidat a déjà bénéficié de l'offre Uber 20€, il ne peut pas en bénéficier à nouveau
-        # MAIS d'abord vérifier s'il demande une formation CPF ou autre chose → router vers Contact
+        # NOTE: Les demandes non-Uber (CPF, France Travail, etc.) sont gérées plus haut et routées vers Contact
         if linking_result.get('has_duplicate_uber_offer'):
             duplicate_deals = linking_result.get('duplicate_deals', [])
             logger.warning(f"⚠️ DOUBLON UBER 20€ DÉTECTÉ: {len(duplicate_deals)} opportunités 20€ GAGNÉ")
-
-            # Vérifier si le candidat demande une formation CPF ou autre chose
-            cpf_keywords = ["cpf", "compte cpf", "formation cpf", "compte formation",
-                           "mon compte formation", "finançable", "financable", "financement"]
-            content_to_check = (subject + ' ' + last_thread_content).lower()
-            asks_for_cpf = any(kw in content_to_check for kw in cpf_keywords)
-
-            if asks_for_cpf:
-                logger.info(f"📋 DOUBLON UBER mais demande CPF détectée → Router vers Contact")
-                triage_result['action'] = 'ROUTE'
-                triage_result['target_department'] = 'Contact'
-                triage_result['reason'] = "Doublon Uber mais demande formation CPF - traitement manuel requis"
-                triage_result['method'] = 'cpf_request_routing'
-                triage_result['has_duplicate_uber_offer'] = True
-                triage_result['duplicate_deals'] = duplicate_deals
-
-                # Auto-transfer vers Contact
-                if auto_transfer:
-                    try:
-                        logger.info(f"🔄 Transfert automatique vers Contact...")
-                        transfer_success = self.dispatcher._reassign_ticket(ticket_id, 'Contact')
-                        if transfer_success:
-                            logger.info(f"✅ Ticket transféré vers Contact")
-                            triage_result['transferred'] = True
-                    except Exception as e:
-                        logger.error(f"Erreur transfert: {e}")
-
-                return triage_result
 
             # Vérifier si le doublon est de type RECOVERABLE
             # RECOVERABLE = pas d'examen passé, pas de dossier validé → peut reprendre l'inscription
