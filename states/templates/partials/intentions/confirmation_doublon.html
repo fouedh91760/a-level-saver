@@ -1,0 +1,13 @@
+<!-- Partial: CONFIRMATION DOUBLON - Vérification réussie, reprise du dossier existant -->
+<b>Dossier identifié avec succès</b><br>
+<br>
+Merci ! Les informations que vous nous avez fournies correspondent bien à votre dossier existant. Nous allons donc poursuivre votre inscription à partir de celui-ci.<br>
+<br>
+{{#if already_paid_to_cma}}
+<b style="color: #27ae60;">Bonne nouvelle :</b> Les frais d'inscription à la CMA ont déjà été réglés lors de votre précédente inscription. Vous n'aurez donc pas à les repayer.<br>
+<br>
+{{/if}}
+{{#if duplicate_type_refus_cma}}
+Votre précédent dossier avait été refusé par la CMA. Nous allons le reprendre et soumettre vos nouveaux documents.<br>
+<br>
+{{/if}}

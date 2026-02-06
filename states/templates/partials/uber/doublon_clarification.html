@@ -1,0 +1,58 @@
+<!-- Partial: UBER DOUBLON - Demande de clarification (homonyme potentiel) -->
+<!-- Adapte le message selon l'intention du candidat -->
+
+{{#if intention_statut_dossier}}
+<b>Vérification avant consultation de votre dossier</b><br>
+<br>
+Nous avons trouvé un dossier existant à votre nom dans notre système.<br>
+<br>
+Afin de vous donner les informations sur votre dossier et nous assurer qu'il s'agit bien de vous, merci de nous confirmer :<br>
+{{else}}
+{{#if intention_demande_reinscription}}
+<b>Reprise de votre inscription</b><br>
+<br>
+Bonne nouvelle ! Nous avons retrouvé votre dossier existant dans notre système.<br>
+<br>
+Pour reprendre votre inscription là où vous l'aviez laissée, merci de nous confirmer :<br>
+{{else}}
+{{#if intention_demande_identifiants}}
+<b>Récupération de vos identifiants</b><br>
+<br>
+Nous avons trouvé un dossier existant à votre nom dans notre système.<br>
+<br>
+Afin de vous transmettre vos identifiants en toute sécurité, merci de nous confirmer :<br>
+{{else}}
+{{#if intention_demande_date}}
+<b>Vérification de votre dossier</b><br>
+<br>
+Nous avons trouvé un dossier existant à votre nom dans notre système.<br>
+<br>
+Avant de vous communiquer les dates disponibles, merci de nous confirmer qu'il s'agit bien de vous :<br>
+{{else}}
+{{#if intention_demande_elearning}}
+<b>Accès à votre formation</b><br>
+<br>
+Nous avons trouvé un dossier existant à votre nom dans notre système.<br>
+<br>
+Pour vous donner accès à votre formation e-learning, merci de nous confirmer :<br>
+{{else}}
+<b>Vérification de votre dossier</b><br>
+<br>
+Nous avons trouvé un dossier existant à votre nom dans notre système.<br>
+<br>
+Afin de nous assurer qu'il s'agit bien de vous et non d'un homonyme, merci de nous confirmer :<br>
+{{/if}}
+{{/if}}
+{{/if}}
+{{/if}}
+{{/if}}
+<br>
+<ul>
+<li>L'adresse email utilisée lors de votre précédente inscription</li>
+<li>Le numéro de téléphone renseigné à l'époque</li>
+</ul>
+<br>
+{{#if duplicate_type_recoverable}}
+<i>Si c'est bien vous, nous pourrons reprendre votre dossier existant et poursuivre votre inscription.</i><br>
+<br>
+{{/if}}

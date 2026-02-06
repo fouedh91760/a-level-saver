@@ -368,6 +368,36 @@ class ZohoDeskClient(ZohoAPIClient):
         params = {"orgId": settings.zoho_desk_org_id}
         return self._make_request("PATCH", url, params=params, json=data)
 
+    def get_ticket_comments(
+        self,
+        ticket_id: str,
+        include_public: bool = True,
+        include_private: bool = True
+    ) -> List[Dict[str, Any]]:
+        """Get all comments for a ticket.
+
+        Args:
+            ticket_id: The ticket ID
+            include_public: Include public comments
+            include_private: Include private/internal comments
+
+        Returns:
+            List of comment objects
+        """
+        url = f"{settings.zoho_desk_api_url}/tickets/{ticket_id}/comments"
+        params = {"orgId": settings.zoho_desk_org_id}
+        response = self._make_request("GET", url, params=params)
+
+        comments = response.get('data', [])
+
+        # Filter by visibility if needed
+        if not include_public:
+            comments = [c for c in comments if not c.get('isPublic', True)]
+        if not include_private:
+            comments = [c for c in comments if c.get('isPublic', True)]
+
+        return comments
+
     def add_ticket_comment(
         self,
         ticket_id: str,

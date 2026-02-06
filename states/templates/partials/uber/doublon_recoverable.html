@@ -1,0 +1,18 @@
+<!-- Partial: UBER DOUBLON RÉCUPÉRABLE - Inscription précédente reprennable -->
+<b>Reprise de votre dossier existant</b><br>
+<br>
+Nous avons retrouvé votre précédente inscription dans notre système.<br>
+<br>
+{{#if duplicate_type_refus_cma}}
+Votre dossier avait été refusé par la CMA lors de votre précédente inscription. Cela peut arriver en cas de documents incomplets ou non conformes.<br>
+<br>
+<b>Bonne nouvelle :</b> vous pouvez vous réinscrire en utilisant la même offre Uber 20€ !<br>
+{{else}}
+Votre précédente inscription n'avait pas été finalisée (paiement non effectué ou dossier incomplet).<br>
+<br>
+<b>Bonne nouvelle :</b> nous pouvons reprendre votre dossier existant et poursuivre votre inscription !<br>
+{{/if}}
+<br>
+Pour continuer, merci de nous renvoyer vos documents à jour :<br>
+{{> partials/common/liste_documents_requis}}
+<br>

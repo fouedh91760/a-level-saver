@@ -300,6 +300,17 @@ INTENTIONS POSSIBLES (par ordre de spécificité - préfère les intentions spé
   ⚠️ Ne pas utiliser si c'est un candidat Uber qui a payé les frais CMA → utiliser ERREUR_PAIEMENT_CMA
 - REMERCIEMENT: Simple remerciement sans autre demande
   Exemples: "merci beaucoup", "super merci", "c'est parfait merci"
+
+**Intentions liées aux DOUBLONS (clarification email):**
+- CONFIRMATION_DOUBLON: Le candidat CONFIRME qu'il s'agit bien de lui / même personne
+  Exemples: "oui c'est bien moi", "c'est mon dossier", "oui c'est le même", "je confirme",
+            "c'est effectivement moi", "oui je me suis déjà inscrit", "c'est bien mon ancien dossier"
+  ⚠️ Utiliser quand on lui a demandé de confirmer un doublon potentiel (nom+CP identiques)
+  ⚠️ Le candidat reconnaît son ancienne inscription / son autre dossier
+- REFUS_DOUBLON: Le candidat dit que ce N'EST PAS lui / pas la même personne
+  Exemples: "non ce n'est pas moi", "ce n'est pas mon dossier", "je ne connais pas",
+            "c'est quelqu'un d'autre", "première inscription", "homonyme", "jamais inscrit"
+  ⚠️ Le candidat nie être la même personne que le doublon trouvé
 - QUESTION_GENERALE: UNIQUEMENT si aucune intention spécifique ne correspond
   ⚠️ N'utilise QUESTION_GENERALE que si tu ne peux vraiment pas classifier autrement !
 

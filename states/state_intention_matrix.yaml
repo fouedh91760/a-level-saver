@@ -558,6 +558,28 @@ intentions:
     triggers: []
     fallback: true
 
+  CONFIRMATION_DOUBLON:
+    id: "I37"
+    description: "Candidat confirme qu'il s'agit bien de lui (doublon)"
+    triggers:
+      - "c'est bien moi"
+      - "c'est mon dossier"
+      - "je confirme"
+      - "c'est le même"
+      - "oui c'est moi"
+    response_type: duplicate_confirmed
+
+  REFUS_DOUBLON:
+    id: "I38"
+    description: "Candidat nie être le doublon trouvé"
+    triggers:
+      - "ce n'est pas moi"
+      - "pas mon dossier"
+      - "homonyme"
+      - "première inscription"
+      - "je ne connais pas"
+    response_type: duplicate_denied
+
 # =============================================================================
 # SECTION 2: DÉFINITION DES ÉTATS (DEPRECATED)
 # =============================================================================
@@ -2168,6 +2190,24 @@ matrix:
     context_flags:
       intention_question_generale: true
       show_statut_section: true
+
+  "*:CONFIRMATION_DOUBLON":
+    template: "response_master.html"
+    description: "Candidat confirme qu'il s'agit bien de lui (doublon)"
+    context_flags:
+      intention_confirmation_doublon: true
+      show_statut_section: false
+      show_dates_section: false
+    response_type: duplicate_confirmed
+
+  "*:REFUS_DOUBLON":
+    template: "response_master.html"
+    description: "Candidat nie être le doublon trouvé"
+    context_flags:
+      intention_refus_doublon: true
+      show_statut_section: false
+      show_dates_section: false
+    response_type: duplicate_denied
 
   "*:DOCUMENT_QUESTION":
     template: "response_master.html"

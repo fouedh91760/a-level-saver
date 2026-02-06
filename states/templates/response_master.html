@@ -47,6 +47,12 @@
 {{#if uber_doublon}}
 {{> partials/uber/doublon_offre}}
 {{/if}}
+{{#if uber_doublon_clarification}}
+{{> partials/uber/doublon_clarification}}
+{{/if}}
+{{#if uber_doublon_recoverable}}
+{{> partials/uber/doublon_recoverable}}
+{{/if}}
 {{#if uber_prospect}}
 {{> partials/uber/prospect_paiement}}
 {{/if}}
@@ -190,6 +196,12 @@
 {{/if}}
 {{#if intention_question_examen_pratique}}
 {{> partials/intentions/question_examen_pratique}}
+{{/if}}
+{{#if intention_confirmation_doublon}}
+{{> partials/intentions/confirmation_doublon}}
+{{/if}}
+{{#if intention_refus_doublon}}
+{{> partials/intentions/refus_doublon}}
 {{/if}}
 {{/unless}}
 

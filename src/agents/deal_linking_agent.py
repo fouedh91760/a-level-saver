@@ -541,23 +541,46 @@ Always respond in JSON format with the following structure:
         self,
         candidate_name: str,
         postal_code: str,
-        exclude_deal_ids: List[str] = None
-    ) -> List[Dict[str, Any]]:
+        exclude_deal_ids: List[str] = None,
+        candidate_email: str = None,
+        candidate_phone: str = None
+    ) -> Dict[str, Any]:
         """
-        Recherche des doublons potentiels par nom + code postal.
+        Recherche des doublons potentiels par nom + code postal avec évaluation de confiance.
 
         Cherche des deals 20€ GAGNÉ avec le même nom (normalisé) et code postal.
+        Évalue la confiance du match en comparant email/téléphone.
 
         Args:
             candidate_name: Nom complet du candidat (ex: "Gaël Carole")
             postal_code: Code postal (ex: "93330")
             exclude_deal_ids: IDs de deals à exclure de la recherche
+            candidate_email: Email du candidat actuel (pour comparaison)
+            candidate_phone: Téléphone du candidat actuel (pour comparaison)
 
         Returns:
-            Liste des deals 20€ GAGNÉ correspondants
+            {
+                'duplicates': List[Dict] - Liste des deals 20€ GAGNÉ correspondants
+                'confidence': str - 'HIGH_CONFIDENCE' ou 'NEEDS_CONFIRMATION'
+                'match_details': Dict - Détails du match (email_match, phone_match)
+                'duplicate_type': str - 'TRUE_DUPLICATE', 'RECOVERABLE_REFUS_CMA',
+                                        'RECOVERABLE_NOT_PAID', ou None
+            }
         """
+        result = {
+            'duplicates': [],
+            'confidence': None,
+            'match_details': {
+                'email_match': False,
+                'phone_match': False,
+                'different_email': False,
+                'different_phone': False
+            },
+            'duplicate_type': None
+        }
+
         if not candidate_name or not postal_code:
-            return []
+            return result
 
         exclude_deal_ids = exclude_deal_ids or []
         crm_client = self._get_crm_client()
@@ -579,7 +602,7 @@ Always respond in JSON format with the following structure:
                 search_term = name_parts[-1]
 
             if not search_term:
-                return []
+                return result
 
             # Rechercher les deals par nom
             url = f"{settings.zoho_crm_api_url}/Deals/search"
@@ -590,12 +613,21 @@ Always respond in JSON format with the following structure:
 
             if not all_deals:
                 logger.info(f"  📭 Aucun deal trouvé pour '{search_term}'")
-                return []
+                return result
 
             logger.info(f"  📋 {len(all_deals)} deals trouvés pour '{search_term}', filtrage...")
 
+            # Normaliser les infos candidat pour comparaison
+            candidate_email_norm = candidate_email.lower().strip() if candidate_email else None
+            candidate_phone_norm = self._normalize_phone(candidate_phone) if candidate_phone else None
+
             # Filtrer: 20€ GAGNÉ + même code postal + nom similaire
             duplicate_deals = []
+            has_email_match = False
+            has_phone_match = False
+            has_different_email = False
+            has_different_phone = False
+
             for deal in all_deals:
                 deal_id = deal.get('id')
 
@@ -617,7 +649,9 @@ Always respond in JSON format with the following structure:
                 # Vérifier nom (normalisé)
                 deal_name = deal.get('Deal_Name', '')
                 contact_name = deal.get('Contact_Name', {})
+                contact_id = None
                 if isinstance(contact_name, dict):
+                    contact_id = contact_name.get('id')
                     contact_name = contact_name.get('name', '')
 
                 # Normaliser et comparer
@@ -634,18 +668,235 @@ Always respond in JSON format with the following structure:
 
                 if name_match:
                     logger.info(f"  ✅ MATCH: {deal_name} (CP: {deal_postal}, Stage: {stage})")
+
+                    # Récupérer email/phone du contact du deal pour comparaison
+                    deal_email = None
+                    deal_phone = None
+
+                    if contact_id:
+                        try:
+                            contact_data = crm_client.get_contact(contact_id)
+                            if contact_data:
+                                deal_email = contact_data.get('Email', '').lower().strip() if contact_data.get('Email') else None
+                                deal_phone_raw = contact_data.get('Phone') or contact_data.get('Mobile')
+                                deal_phone = self._normalize_phone(deal_phone_raw) if deal_phone_raw else None
+                        except Exception as e:
+                            logger.warning(f"  ⚠️ Erreur récupération contact {contact_id}: {e}")
+
+                    # Comparer email/phone
+                    if candidate_email_norm and deal_email:
+                        if candidate_email_norm == deal_email:
+                            has_email_match = True
+                            logger.info(f"    📧 Email IDENTIQUE: {deal_email}")
+                        else:
+                            has_different_email = True
+                            logger.info(f"    📧 Email DIFFÉRENT: candidat={candidate_email_norm}, deal={deal_email}")
+
+                    if candidate_phone_norm and deal_phone:
+                        if candidate_phone_norm == deal_phone:
+                            has_phone_match = True
+                            logger.info(f"    📱 Téléphone IDENTIQUE: {deal_phone}")
+                        else:
+                            has_different_phone = True
+                            logger.info(f"    📱 Téléphone DIFFÉRENT: candidat={candidate_phone_norm}, deal={deal_phone}")
+
+                    # Ajouter les infos de contact au deal pour référence
+                    deal['_duplicate_contact_email'] = deal_email
+                    deal['_duplicate_contact_phone'] = deal_phone
                     duplicate_deals.append(deal)
+
+            result['duplicates'] = duplicate_deals
+            result['match_details'] = {
+                'email_match': has_email_match,
+                'phone_match': has_phone_match,
+                'different_email': has_different_email,
+                'different_phone': has_different_phone
+            }
 
             if duplicate_deals:
                 logger.warning(f"  ⚠️ {len(duplicate_deals)} doublon(s) potentiel(s) trouvé(s) par nom+CP")
+
+                # Déterminer la confiance
+                if has_email_match or has_phone_match:
+                    result['confidence'] = 'HIGH_CONFIDENCE'
+                    logger.info(f"  🔒 CONFIANCE HAUTE: email ou téléphone identique")
+                elif has_different_email and has_different_phone:
+                    result['confidence'] = 'NEEDS_CONFIRMATION'
+                    logger.info(f"  ❓ CONFIRMATION REQUISE: email ET téléphone différents")
+                elif has_different_email or has_different_phone:
+                    # Un seul est différent, l'autre peut être absent
+                    result['confidence'] = 'NEEDS_CONFIRMATION'
+                    logger.info(f"  ❓ CONFIRMATION REQUISE: données de contact différentes")
+                else:
+                    # Pas de données de contact pour comparer → demander confirmation
+                    result['confidence'] = 'NEEDS_CONFIRMATION'
+                    logger.info(f"  ❓ CONFIRMATION REQUISE: impossible de vérifier email/téléphone")
+
+                # Classifier le type de doublon
+                result['duplicate_type'] = self._classify_duplicate_type(duplicate_deals[0])
             else:
                 logger.info(f"  📭 Aucun doublon trouvé par nom+CP")
 
-            return duplicate_deals
+            return result
 
         except Exception as e:
             logger.error(f"Erreur recherche doublon par nom+CP: {e}")
-            return []
+            return result
+
+    def _has_examt3p_account(self, deal: Dict[str, Any]) -> bool:
+        """
+        Vérifie si un deal a un compte ExamT3P existant.
+
+        Un compte ExamT3P existe si :
+        - Evalbox = "Dossier Synchronisé" ou "Refusé CMA"
+        - OU NUM_DOSSIER_EVALBOX n'est pas vide
+
+        Args:
+            deal: Le deal à vérifier
+
+        Returns:
+            True si compte ExamT3P existe
+        """
+        evalbox = deal.get('Evalbox', '')
+        num_dossier = deal.get('NUM_DOSSIER_EVALBOX', '')
+
+        # Statuts qui prouvent qu'un compte existe
+        COMPTE_EXISTE_EVALBOX = ['Dossier Synchronisé', 'Refusé CMA']
+
+        has_account = evalbox in COMPTE_EXISTE_EVALBOX or bool(num_dossier)
+
+        if has_account:
+            logger.info(f"  ✅ Compte ExamT3P existe: Evalbox={evalbox}, NUM_DOSSIER={num_dossier or 'N/A'}")
+        else:
+            logger.info(f"  ❌ Pas de compte ExamT3P: Evalbox={evalbox}, NUM_DOSSIER={num_dossier or 'vide'}")
+
+        return has_account
+
+    def _is_already_paid_to_cma(self, deal: Dict[str, Any]) -> bool:
+        """
+        Vérifie si les frais d'examen ont déjà été payés à la CMA pour ce deal.
+
+        Les frais sont payés si Evalbox = "Dossier Synchronisé" ou "Refusé CMA"
+
+        Args:
+            deal: Le deal à vérifier
+
+        Returns:
+            True si frais déjà payés
+        """
+        evalbox = deal.get('Evalbox', '')
+        PAID_STATUSES = ['Dossier Synchronisé', 'Refusé CMA']
+        return evalbox in PAID_STATUSES
+
+    def _select_deal_for_duplicate_recovery(
+        self,
+        current_deal: Dict[str, Any],
+        duplicate_deal: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """
+        Sélectionne le deal sur lequel travailler quand on a 2 deals GAGNÉ.
+
+        Règle :
+        - Si le doublon (ancien) a un compte ExamT3P → travailler sur l'ancien
+        - Sinon → travailler sur le nouveau (current)
+
+        Args:
+            current_deal: Le deal lié au ticket actuel
+            duplicate_deal: Le deal doublon trouvé
+
+        Returns:
+            {
+                'deal_to_work_on': Dict - Le deal sur lequel continuer
+                'deal_to_disable': Dict - Le deal à désactiver (EXAM_INCLUS=Non)
+                'already_paid_to_cma': bool - Si les frais CMA ont déjà été payés
+                'reason': str - Explication du choix
+            }
+        """
+        result = {
+            'deal_to_work_on': None,
+            'deal_to_disable': None,
+            'already_paid_to_cma': False,
+            'reason': ''
+        }
+
+        # Vérifier si l'ancien deal (doublon) a un compte ExamT3P
+        duplicate_has_account = self._has_examt3p_account(duplicate_deal)
+
+        if duplicate_has_account:
+            # Travailler sur l'ancien deal (doublon) car il a un compte ExamT3P
+            result['deal_to_work_on'] = duplicate_deal
+            result['deal_to_disable'] = current_deal
+            result['already_paid_to_cma'] = self._is_already_paid_to_cma(duplicate_deal)
+            result['reason'] = f"Ancien deal a compte ExamT3P (Evalbox: {duplicate_deal.get('Evalbox', 'N/A')})"
+            logger.info(f"  🎯 Sélection: ANCIEN deal (compte ExamT3P existe)")
+            logger.info(f"     → Travailler sur: {duplicate_deal.get('Deal_Name')}")
+            logger.info(f"     → Désactiver: {current_deal.get('Deal_Name')}")
+        else:
+            # Travailler sur le nouveau deal (current)
+            result['deal_to_work_on'] = current_deal
+            result['deal_to_disable'] = duplicate_deal
+            result['already_paid_to_cma'] = False
+            result['reason'] = "Ancien deal sans compte ExamT3P → utiliser nouveau deal"
+            logger.info(f"  🎯 Sélection: NOUVEAU deal (ancien sans compte ExamT3P)")
+            logger.info(f"     → Travailler sur: {current_deal.get('Deal_Name')}")
+            logger.info(f"     → Désactiver: {duplicate_deal.get('Deal_Name')}")
+
+        if result['already_paid_to_cma']:
+            logger.warning(f"  ⚠️ ATTENTION: Frais CMA déjà payés sur l'ancien deal !")
+
+        return result
+
+    def _classify_duplicate_type(self, duplicate_deal: Dict[str, Any]) -> str:
+        """
+        Classifie le type de doublon trouvé.
+
+        Args:
+            duplicate_deal: Le deal doublon trouvé
+
+        Returns:
+            'TRUE_DUPLICATE' - Examen déjà passé ou dossier validé (irrécupérable)
+            'RECOVERABLE_PAID' - Dossier Synchronisé (payé mais pas encore validé), peut reprendre
+            'RECOVERABLE_REFUS_CMA' - Refusé par la CMA (payé), peut se réinscrire
+            'RECOVERABLE_NOT_PAID' - Jamais payé, peut se réinscrire
+        """
+        resultat = duplicate_deal.get('Resultat', '')
+        evalbox = duplicate_deal.get('Evalbox', '')
+
+        # Statuts d'examen passé
+        COMPLETED_RESULTAT_VALUES = ['ADMISSIBLE', 'NON ADMISSIBLE', 'NON ADMIS', 'ABSENT']
+
+        # Statuts de dossier validé/en cours d'examen (irrécupérable)
+        VALIDATED_EVALBOX_VALUES = ['VALIDE CMA', 'Convoc CMA reçue', 'Convoc CMA recue']
+
+        # Statut de refus CMA (payé mais refusé)
+        REFUS_CMA_VALUES = ['Refusé CMA', 'Refuse CMA']
+
+        # Statut Dossier Synchronisé (payé, en cours d'instruction)
+        PAID_WAITING_VALUES = ['Dossier Synchronisé']
+
+        # Vérifier si examen passé
+        if resultat and resultat.upper() in [r.upper() for r in COMPLETED_RESULTAT_VALUES]:
+            logger.info(f"  🔴 TRUE_DUPLICATE: Résultat={resultat}")
+            return 'TRUE_DUPLICATE'
+
+        # Vérifier si dossier validé
+        if evalbox and evalbox in VALIDATED_EVALBOX_VALUES:
+            logger.info(f"  🔴 TRUE_DUPLICATE: Evalbox={evalbox}")
+            return 'TRUE_DUPLICATE'
+
+        # Vérifier si Dossier Synchronisé (payé, en attente validation)
+        if evalbox and evalbox in PAID_WAITING_VALUES:
+            logger.info(f"  🟡 RECOVERABLE_PAID: Evalbox={evalbox} (frais CMA déjà payés)")
+            return 'RECOVERABLE_PAID'
+
+        # Vérifier si refus CMA (payé mais refusé)
+        if evalbox and evalbox in REFUS_CMA_VALUES:
+            logger.info(f"  🟡 RECOVERABLE_REFUS_CMA: Evalbox={evalbox} (frais CMA déjà payés)")
+            return 'RECOVERABLE_REFUS_CMA'
+
+        # Sinon: pas encore payé
+        logger.info(f"  🟢 RECOVERABLE_NOT_PAID: Evalbox={evalbox or 'N/A'}, Resultat={resultat or 'N/A'}")
+        return 'RECOVERABLE_NOT_PAID'
 
     def _extract_alternative_emails_from_threads(
         self,
@@ -859,7 +1110,17 @@ Emails alternatifs trouvés:"""
             "deal": None,
             "deal_found": False,
             "has_duplicate_uber_offer": False,  # True si candidat a déjà bénéficié de l'offre Uber 20€
-            "duplicate_deals": []  # Liste des deals 20€ GAGNÉ si doublon détecté
+            "duplicate_deals": [],  # Liste des deals 20€ GAGNÉ si doublon détecté
+            # Nouveaux champs pour la détection de doublons par nom+CP
+            "duplicate_confidence": None,  # 'HIGH_CONFIDENCE' ou 'NEEDS_CONFIRMATION'
+            "duplicate_type": None,  # 'TRUE_DUPLICATE', 'RECOVERABLE_REFUS_CMA', 'RECOVERABLE_NOT_PAID', 'RECOVERABLE_PAID'
+            "needs_duplicate_confirmation": False,  # True si on doit demander confirmation au candidat
+            "duplicate_contact_info": {},  # Infos de contact du doublon pour clarification
+            # Champs pour la gestion des 2 deals GAGNÉ (doublon récupérable)
+            "deal_to_work_on": None,  # Deal sur lequel travailler
+            "deal_to_disable": None,  # Deal à désactiver (EXAM_INCLUS=Non)
+            "already_paid_to_cma": False,  # True si frais CMA déjà payés (note à ajouter)
+            "duplicate_selection_reason": None  # Raison du choix de deal
         }
 
         # Step 1: Get ticket details
@@ -993,14 +1254,22 @@ Emails alternatifs trouvés:"""
 
                                 postal_code = current_deal.get('Mailing_Zip', '')
 
+                                # Récupérer email/phone du candidat actuel pour comparaison
+                                current_email = contact_data.get('Email', '').lower().strip() if contact_data and contact_data.get('Email') else None
+                                current_phone_raw = contact_data.get('Phone') or contact_data.get('Mobile') if contact_data else None
+                                current_phone = self._normalize_phone(current_phone_raw) if current_phone_raw else None
+
                                 if candidate_name and postal_code:
                                     existing_deal_ids = [d.get('id') for d in all_deals if d.get('id')]
-                                    name_postal_duplicates = self._search_duplicate_by_name_and_postal(
+                                    name_postal_result = self._search_duplicate_by_name_and_postal(
                                         candidate_name=candidate_name,
                                         postal_code=str(postal_code),
-                                        exclude_deal_ids=existing_deal_ids
+                                        exclude_deal_ids=existing_deal_ids,
+                                        candidate_email=current_email,
+                                        candidate_phone=current_phone
                                     )
 
+                                    name_postal_duplicates = name_postal_result.get('duplicates', [])
                                     if name_postal_duplicates:
                                         for dup_deal in name_postal_duplicates:
                                             if dup_deal.get('id') not in existing_deal_ids:
@@ -1010,14 +1279,27 @@ Emails alternatifs trouvés:"""
                                         result["name_postal_duplicate_check"] = True
                                         result["deals_found"] = len(all_deals)
                                         result["all_deals"] = all_deals
+                                        result["duplicate_confidence"] = name_postal_result.get('confidence')
+                                        result["duplicate_type"] = name_postal_result.get('duplicate_type')
                                         logger.warning(f"  ⚠️ DOUBLON DÉTECTÉ VIA NOM+CP: {len(name_postal_duplicates)} deal(s) 20€ GAGNÉ")
 
-                                        # Si le deal actuel est un 20€ (même EN ATTENTE) et qu'on trouve un 20€ GAGNÉ
-                                        # → c'est un doublon (candidat a déjà bénéficié de l'offre)
-                                        if current_deal.get('Amount') == 20:
+                                        # Si NEEDS_CONFIRMATION → demander clarification
+                                        if name_postal_result.get('confidence') == 'NEEDS_CONFIRMATION':
+                                            result["needs_duplicate_confirmation"] = True
+                                            # Stocker les infos de contact du doublon pour la clarification
+                                            dup_deal = name_postal_duplicates[0]
+                                            result["duplicate_contact_info"] = {
+                                                "duplicate_deal_id": dup_deal.get('id'),
+                                                "duplicate_email": dup_deal.get('_duplicate_contact_email'),
+                                                "duplicate_phone": dup_deal.get('_duplicate_contact_phone'),
+                                                "duplicate_deal_name": dup_deal.get('Deal_Name')
+                                            }
+                                            logger.info(f"  ❓ CONFIRMATION REQUISE: email/téléphone différents")
+                                        elif current_deal.get('Amount') == 20:
+                                            # HIGH_CONFIDENCE → doublon confirmé
                                             result["has_duplicate_uber_offer"] = True
                                             result["duplicate_deals"] = name_postal_duplicates
-                                            logger.warning(f"  ⚠️ DOUBLON UBER détecté: candidat a déjà un deal 20€ GAGNÉ (trouvé par nom+CP)")
+                                            logger.warning(f"  ⚠️ DOUBLON UBER détecté (HIGH_CONFIDENCE): candidat a déjà un deal 20€ GAGNÉ")
 
                             if len(deals_20_won) > 1 and not result.get("has_duplicate_uber_offer"):
                                 result["has_duplicate_uber_offer"] = True
@@ -1375,16 +1657,30 @@ Emails alternatifs trouvés:"""
 
                 postal_code = selected_deal.get('Mailing_Zip', '')
 
+                # Récupérer email/phone du candidat actuel pour comparaison
+                current_email = email  # Email extrait du ticket
+                current_phone = None
+                for contact in contacts:
+                    contact_phone = contact.get('Phone') or contact.get('Mobile')
+                    if contact_phone:
+                        current_phone = self._normalize_phone(contact_phone)
+                        break
+                if not current_phone:
+                    current_phone = self._extract_phone_from_ticket(ticket, threads)
+
                 if candidate_name and postal_code:
                     # Exclure les deals déjà trouvés
                     existing_deal_ids = [d.get('id') for d in all_deals if d.get('id')]
 
-                    name_postal_duplicates = self._search_duplicate_by_name_and_postal(
+                    name_postal_result = self._search_duplicate_by_name_and_postal(
                         candidate_name=candidate_name,
                         postal_code=str(postal_code),
-                        exclude_deal_ids=existing_deal_ids
+                        exclude_deal_ids=existing_deal_ids,
+                        candidate_email=current_email,
+                        candidate_phone=current_phone
                     )
 
+                    name_postal_duplicates = name_postal_result.get('duplicates', [])
                     if name_postal_duplicates:
                         # Fusionner avec all_deals et deals_20_won
                         for dup_deal in name_postal_duplicates:
@@ -1395,14 +1691,27 @@ Emails alternatifs trouvés:"""
                         result["name_postal_duplicate_check"] = True
                         result["deals_found"] = len(all_deals)
                         result["all_deals"] = all_deals
+                        result["duplicate_confidence"] = name_postal_result.get('confidence')
+                        result["duplicate_type"] = name_postal_result.get('duplicate_type')
                         logger.warning(f"  ⚠️ DOUBLON DÉTECTÉ VIA NOM+CP: {len(name_postal_duplicates)} deal(s) 20€ GAGNÉ")
 
-                        # Si le deal actuel est un 20€ (même EN ATTENTE) et qu'on trouve un 20€ GAGNÉ
-                        # → c'est un doublon (candidat a déjà bénéficié de l'offre)
-                        if selected_deal and selected_deal.get('Amount') == 20:
+                        # Si NEEDS_CONFIRMATION → demander clarification
+                        if name_postal_result.get('confidence') == 'NEEDS_CONFIRMATION':
+                            result["needs_duplicate_confirmation"] = True
+                            # Stocker les infos de contact du doublon pour la clarification
+                            dup_deal = name_postal_duplicates[0]
+                            result["duplicate_contact_info"] = {
+                                "duplicate_deal_id": dup_deal.get('id'),
+                                "duplicate_email": dup_deal.get('_duplicate_contact_email'),
+                                "duplicate_phone": dup_deal.get('_duplicate_contact_phone'),
+                                "duplicate_deal_name": dup_deal.get('Deal_Name')
+                            }
+                            logger.info(f"  ❓ CONFIRMATION REQUISE: email/téléphone différents")
+                        elif selected_deal and selected_deal.get('Amount') == 20:
+                            # HIGH_CONFIDENCE → doublon confirmé
                             result["has_duplicate_uber_offer"] = True
                             result["duplicate_deals"] = name_postal_duplicates
-                            logger.warning(f"  ⚠️ DOUBLON UBER détecté: candidat a déjà un deal 20€ GAGNÉ (trouvé par nom+CP)")
+                            logger.warning(f"  ⚠️ DOUBLON UBER détecté (HIGH_CONFIDENCE): candidat a déjà un deal 20€ GAGNÉ")
                 else:
                     if not candidate_name:
                         logger.info(f"  📛 Pas de nom de contact pour vérification doublon par nom+CP")
@@ -1455,6 +1764,40 @@ Emails alternatifs trouvés:"""
                 selected_deal = result["paid_formation_deal"]
                 selection_method = "Priority 1.5 - Formation payante après Uber"
                 logger.info(f"🎯 Deal sélectionné: formation payante {selected_deal.get('Deal_Name')} (€{selected_deal.get('Amount')})")
+
+            # ==================================================================
+            # PRIORITÉ 1.6 : DOUBLON RECOVERABLE - Sélection du bon deal
+            # Si on a détecté un doublon RECOVERABLE et qu'on a 2 deals GAGNÉ,
+            # on doit choisir sur lequel travailler (celui avec compte ExamT3P)
+            # ==================================================================
+            duplicate_type = result.get("duplicate_type")
+            is_recoverable_duplicate = (
+                result.get("has_duplicate_uber_offer") and
+                duplicate_type in ['RECOVERABLE_PAID', 'RECOVERABLE_REFUS_CMA', 'RECOVERABLE_NOT_PAID']
+            )
+
+            if is_recoverable_duplicate and len(deals_20_won) >= 2:
+                logger.info(f"  🔄 DOUBLON RECOVERABLE avec 2+ deals GAGNÉ - sélection du deal à utiliser")
+
+                # Trouver le deal actuel (le plus récent) et le doublon (l'ancien)
+                deals_sorted = sorted(deals_20_won, key=lambda d: d.get("Closing_Date", "") or "", reverse=True)
+                current_deal = deals_sorted[0]  # Le plus récent
+                duplicate_deal = deals_sorted[1]  # L'ancien (doublon)
+
+                # Appeler la logique de sélection
+                selection_result = self._select_deal_for_duplicate_recovery(current_deal, duplicate_deal)
+
+                result["deal_to_work_on"] = selection_result["deal_to_work_on"]
+                result["deal_to_disable"] = selection_result["deal_to_disable"]
+                result["already_paid_to_cma"] = selection_result["already_paid_to_cma"]
+                result["duplicate_selection_reason"] = selection_result["reason"]
+
+                # Mettre à jour le deal sélectionné
+                selected_deal = selection_result["deal_to_work_on"]
+                selection_method = f"Priority 1.6 - Doublon RECOVERABLE ({selection_result['reason']})"
+
+                if selection_result["already_paid_to_cma"]:
+                    logger.warning(f"  ⚠️ ATTENTION: Frais CMA déjà payés - ne pas repayer !")
 
             # PRIORITÉ 2 : Deals 20€ GAGNÉ (candidats payés en cours de traitement)
             if not selected_deal:

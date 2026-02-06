@@ -20,7 +20,7 @@ Gates:
 import logging
 import sys
 from pathlib import Path
-from typing import Dict, Optional, List
+from typing import Dict, Optional, List, Any
 from datetime import datetime
 
 # Add project root to path
@@ -99,6 +99,170 @@ class DOCTicketWorkflow:
         except Exception as e:
             logger.warning(f"  ⚠️ Erreur marquage BROUILLON AUTO: {e}")
 
+    def _check_pending_duplicate_clarification(self, ticket_id: str) -> Optional[Dict[str, Any]]:
+        """
+        Check if this ticket has a pending duplicate clarification.
+
+        Looks for internal notes containing [DUPLICATE_PENDING:deal_id] marker.
+        Also extracts the duplicate's email and phone for comparison.
+
+        Returns:
+            None if no pending clarification
+            Dict with pending_deal_id, duplicate_type, duplicate_email, duplicate_phone
+        """
+        import re
+
+        try:
+            comments = self.desk_client.get_ticket_comments(
+                ticket_id=ticket_id,
+                include_public=False,
+                include_private=True
+            )
+
+            for comment in comments:
+                content = comment.get('content', '')
+                # Look for the marker [DUPLICATE_PENDING:deal_id]
+                match = re.search(r'\[DUPLICATE_PENDING:(\d+)\]', content)
+                if match:
+                    deal_id = match.group(1)
+
+                    # Extract duplicate type from the note
+                    type_match = re.search(r'Type:\s*(\w+)', content)
+                    dup_type = type_match.group(1) if type_match else 'UNKNOWN'
+
+                    # Extract duplicate email from the note
+                    email_match = re.search(r'Email doublon:\s*([^\s\n]+)', content)
+                    dup_email = email_match.group(1) if email_match else ''
+                    if dup_email == 'N/A':
+                        dup_email = ''
+
+                    # Extract duplicate phone from the note
+                    phone_match = re.search(r'Téléphone doublon:\s*([^\s\n]+)', content)
+                    dup_phone = phone_match.group(1) if phone_match else ''
+                    if dup_phone == 'N/A':
+                        dup_phone = ''
+
+                    # Extract original intent from the note
+                    intent_match = re.search(r'Intention originale:\s*(\w+)', content)
+                    original_intent = intent_match.group(1) if intent_match else 'UNKNOWN'
+
+                    logger.info(f"  📝 Clarification doublon en attente trouvée: Deal {deal_id}")
+                    logger.info(f"     Email doublon: {dup_email or 'N/A'}")
+                    logger.info(f"     Téléphone doublon: {dup_phone or 'N/A'}")
+                    logger.info(f"     Intention originale: {original_intent}")
+
+                    return {
+                        'pending_deal_id': deal_id,
+                        'duplicate_type': dup_type,
+                        'duplicate_email': dup_email,
+                        'duplicate_phone': dup_phone,
+                        'original_intent': original_intent,
+                        'comment_id': comment.get('id')
+                    }
+
+            return None
+
+        except Exception as e:
+            logger.warning(f"  ⚠️ Erreur vérification clarification en attente: {e}")
+            return None
+
+    def _verify_duplicate_clarification_response(
+        self,
+        ticket_id: str,
+        pending_clarification: Dict[str, Any],
+        latest_message: str
+    ) -> Dict[str, Any]:
+        """
+        Verify if the candidate's response matches the duplicate's credentials.
+
+        Extracts email/phone from the latest message and compares with stored values.
+
+        Returns:
+            {
+                'verified': bool,
+                'match_type': 'email' | 'phone' | 'both' | 'none',
+                'extracted_email': str or None,
+                'extracted_phone': str or None,
+                'reason': str
+            }
+        """
+        import re
+
+        result = {
+            'verified': False,
+            'match_type': 'none',
+            'extracted_email': None,
+            'extracted_phone': None,
+            'reason': ''
+        }
+
+        # Get stored duplicate credentials
+        dup_email = pending_clarification.get('duplicate_email', '').lower().strip()
+        dup_phone = pending_clarification.get('duplicate_phone', '').strip()
+
+        # Normalize phone (remove spaces, dots, dashes)
+        def normalize_phone(phone: str) -> str:
+            if not phone:
+                return ''
+            # Remove all non-digits except leading +
+            normalized = re.sub(r'[^\d+]', '', phone)
+            # Convert +33 to 0
+            if normalized.startswith('+33'):
+                normalized = '0' + normalized[3:]
+            elif normalized.startswith('33') and len(normalized) > 10:
+                normalized = '0' + normalized[2:]
+            return normalized
+
+        dup_phone_normalized = normalize_phone(dup_phone)
+
+        # Extract email from message
+        email_pattern = re.compile(r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}')
+        email_matches = email_pattern.findall(latest_message)
+        if email_matches:
+            result['extracted_email'] = email_matches[0].lower()
+
+        # Extract phone from message (French format)
+        phone_pattern = re.compile(r'(?:(?:\+33|0033|33)|0)[67][\s.-]?\d{2}[\s.-]?\d{2}[\s.-]?\d{2}[\s.-]?\d{2}')
+        phone_matches = phone_pattern.findall(latest_message)
+        if phone_matches:
+            result['extracted_phone'] = phone_matches[0]
+
+        # Compare
+        email_match = False
+        phone_match = False
+
+        if result['extracted_email'] and dup_email:
+            email_match = result['extracted_email'] == dup_email
+            logger.info(f"  📧 Comparaison email: '{result['extracted_email']}' vs '{dup_email}' → {'MATCH' if email_match else 'NO MATCH'}")
+
+        if result['extracted_phone'] and dup_phone_normalized:
+            extracted_normalized = normalize_phone(result['extracted_phone'])
+            phone_match = extracted_normalized == dup_phone_normalized
+            logger.info(f"  📱 Comparaison téléphone: '{extracted_normalized}' vs '{dup_phone_normalized}' → {'MATCH' if phone_match else 'NO MATCH'}")
+
+        # Determine result
+        if email_match and phone_match:
+            result['verified'] = True
+            result['match_type'] = 'both'
+            result['reason'] = 'Email ET téléphone correspondent'
+        elif email_match:
+            result['verified'] = True
+            result['match_type'] = 'email'
+            result['reason'] = 'Email correspond'
+        elif phone_match:
+            result['verified'] = True
+            result['match_type'] = 'phone'
+            result['reason'] = 'Téléphone correspond'
+        else:
+            result['verified'] = False
+            result['match_type'] = 'none'
+            if not result['extracted_email'] and not result['extracted_phone']:
+                result['reason'] = 'Aucun email ou téléphone trouvé dans la réponse'
+            else:
+                result['reason'] = 'Email/téléphone ne correspondent pas au dossier doublon'
+
+        return result
+
     def process_ticket(
         self,
         ticket_id: str,
@@ -160,6 +324,17 @@ class DOCTicketWorkflow:
             logger.info("  ✅ Pas de brouillon existant, continuation du workflow")
 
             # ================================================================
+            # STEP 0.5: VÉRIFIER SI CLARIFICATION DOUBLON EN ATTENTE
+            # (Si le candidat répond à une demande de clarification de doublon)
+            # ================================================================
+            pending_clarification = self._check_pending_duplicate_clarification(ticket_id)
+            if pending_clarification:
+                logger.info(f"\n📝 CLARIFICATION DOUBLON EN ATTENTE: Deal {pending_clarification['pending_deal_id']}")
+                result['pending_duplicate_clarification'] = pending_clarification
+                # Note: La réponse du candidat sera analysée par le triage_agent
+                # qui détectera l'intention CONFIRMATION_DOUBLON ou REFUS_DOUBLON
+
+            # ================================================================
             # STEP 1: AGENT TRIEUR (Triage with STOP & GO)
             # ================================================================
             logger.info("\n1️⃣  AGENT TRIEUR - Triage du ticket...")
@@ -168,6 +343,127 @@ class DOCTicketWorkflow:
             # auto_transfer=False if we're in dry-run mode (no ticket updates)
             triage_result = self._run_triage(ticket_id, auto_transfer=auto_update_ticket)
             result['triage_result'] = triage_result
+
+            # ================================================================
+            # CHECK: Réponse à une clarification de doublon en attente ?
+            # On vérifie si l'email ou téléphone fourni correspond au doublon
+            # ================================================================
+            if pending_clarification:
+                pending_deal_id = pending_clarification['pending_deal_id']
+                logger.info(f"\n🔄 VÉRIFICATION CLARIFICATION DOUBLON (Deal {pending_deal_id})")
+
+                # Récupérer le dernier message du candidat
+                try:
+                    threads_response = self.desk_client.get_ticket_threads(ticket_id)
+                    threads = threads_response.get('data', []) if isinstance(threads_response, dict) else threads_response
+                    latest_message = ''
+                    for thread in threads:
+                        # Chercher le dernier message du client (pas de l'agent)
+                        if thread.get('direction') == 'in' or thread.get('isForward'):
+                            latest_message = thread.get('content', '') or thread.get('plainText', '')
+                            break
+
+                    if latest_message:
+                        # Vérifier si l'email/téléphone correspond
+                        verification = self._verify_duplicate_clarification_response(
+                            ticket_id=ticket_id,
+                            pending_clarification=pending_clarification,
+                            latest_message=latest_message
+                        )
+                        result['duplicate_verification'] = verification
+
+                        if verification['verified']:
+                            # ✅ MATCH - Le candidat a fourni un email/téléphone qui correspond
+                            logger.info(f"  ✅ VÉRIFICATION RÉUSSIE: {verification['reason']}")
+
+                            # 1. Récupérer le deal doublon
+                            duplicate_deal = self.crm_client.get_deal(pending_deal_id)
+                            if duplicate_deal:
+                                # 2. Mettre à jour cf_opportunite vers le deal doublon
+                                deal_url = f"https://crm.zoho.com/crm/org123/tab/Potentials/{pending_deal_id}"
+                                try:
+                                    self.desk_client.update_ticket(ticket_id, {
+                                        'cf': {'cf_opportunite': deal_url}
+                                    })
+                                    logger.info(f"  ✅ cf_opportunite mis à jour vers deal doublon: {pending_deal_id}")
+                                    result['cf_opportunite_updated'] = pending_deal_id
+                                except Exception as e:
+                                    logger.error(f"  ⚠️ Erreur mise à jour cf_opportunite: {e}")
+
+                                # 3. Classifier le type de doublon et traiter comme DUPLICATE_RECOVERABLE
+                                duplicate_type = pending_clarification.get('duplicate_type', 'RECOVERABLE_NOT_PAID')
+                                original_intent = pending_clarification.get('original_intent', 'UNKNOWN')
+
+                                # Injecter les infos du doublon dans triage_result
+                                triage_result['action'] = 'DUPLICATE_RECOVERABLE'
+                                triage_result['duplicate_type'] = duplicate_type
+                                triage_result['duplicate_deals'] = [duplicate_deal]
+                                triage_result['selected_deal'] = duplicate_deal
+                                triage_result['deal_to_work_on'] = duplicate_deal
+                                triage_result['already_paid_to_cma'] = self.deal_linker._is_already_paid_to_cma(duplicate_deal)
+
+                                # Réinjecter l'intention originale pour que le workflow y réponde
+                                triage_result['detected_intent'] = original_intent
+                                triage_result['original_intent_restored'] = True
+                                logger.info(f"  📋 Intention originale restaurée: {original_intent}")
+
+                                # 4. Ajouter une note de résolution
+                                resolution_note = f"""✅ CLARIFICATION DOUBLON RÉSOLUE - IDENTITÉ VÉRIFIÉE
+
+Le candidat a fourni des informations qui CORRESPONDENT au dossier doublon.
+→ Méthode de vérification: {verification['match_type']}
+→ {verification['reason']}
+→ Email fourni: {verification.get('extracted_email') or 'N/A'}
+→ Téléphone fourni: {verification.get('extracted_phone') or 'N/A'}
+→ Deal ID confirmé: {pending_deal_id}
+→ cf_opportunite mis à jour vers ce deal
+→ Intention originale restaurée: {original_intent}
+
+[DUPLICATE_RESOLVED:VERIFIED]"""
+
+                                try:
+                                    self.desk_client.add_ticket_comment(
+                                        ticket_id=ticket_id,
+                                        content=resolution_note,
+                                        is_public=False
+                                    )
+                                except Exception as e:
+                                    logger.warning(f"  ⚠️ Erreur ajout note résolution: {e}")
+
+                                logger.info("  → Continuation comme DUPLICATE_RECOVERABLE")
+
+                        else:
+                            # ❌ PAS DE MATCH - L'email/téléphone ne correspond pas
+                            logger.info(f"  ❌ VÉRIFICATION ÉCHOUÉE: {verification['reason']}")
+
+                            # Ajouter une note avec les détails
+                            no_match_note = f"""⚠️ CLARIFICATION DOUBLON - VÉRIFICATION ÉCHOUÉE
+
+Le candidat a répondu mais les informations NE CORRESPONDENT PAS.
+→ Email fourni: {verification.get('extracted_email') or 'Aucun'}
+→ Téléphone fourni: {verification.get('extracted_phone') or 'Aucun'}
+→ Raison: {verification['reason']}
+
+ACTION: Traitement comme nouveau dossier (homonyme probable)
+
+[DUPLICATE_VERIFICATION_FAILED]"""
+
+                            try:
+                                self.desk_client.add_ticket_comment(
+                                    ticket_id=ticket_id,
+                                    content=no_match_note,
+                                    is_public=False
+                                )
+                            except Exception as e:
+                                logger.warning(f"  ⚠️ Erreur ajout note: {e}")
+
+                            # Continuer comme nouveau dossier
+                            triage_result['action'] = 'GO'
+                            logger.info("  → Continuation comme nouveau dossier (GO)")
+
+                except Exception as e:
+                    logger.error(f"  ❌ Erreur vérification clarification: {e}")
+                    result['errors'].append(f"Erreur vérification clarification: {e}")
 
             # Check if we should STOP (routing to another department)
             if triage_result.get('action') == 'ROUTE':
@@ -310,6 +606,184 @@ L'équipe CAB Formations"""
                         self._mark_brouillon_auto(ticket_id)
                     except Exception as e:
                         logger.error(f"Erreur création brouillon doublon: {e}")
+                        result['draft_created'] = False
+
+                result['success'] = True
+                return result
+
+            # Check if DUPLICATE_CLARIFICATION (doublon potentiel, clarification nécessaire)
+            if triage_result.get('action') == 'DUPLICATE_CLARIFICATION':
+                logger.warning("❓ DOUBLON POTENTIEL → Demande de clarification")
+                result['workflow_stage'] = 'DUPLICATE_CLARIFICATION'
+                result['duplicate_contact_info'] = triage_result.get('duplicate_contact_info', {})
+                result['duplicate_type'] = triage_result.get('duplicate_type')
+
+                # Générer une réponse de clarification
+                clarification_response = self._generate_duplicate_clarification_response(
+                    ticket_id=ticket_id,
+                    triage_result=triage_result
+                )
+                result['response_result'] = clarification_response
+                result['clarification_response'] = clarification_response.get('response_text', '')
+
+                # Créer le brouillon si demandé
+                if auto_create_draft and clarification_response.get('response_text'):
+                    try:
+                        from config import settings
+
+                        # Récupérer les infos du ticket pour l'email
+                        ticket = self.desk_client.get_ticket(ticket_id)
+                        to_email = ticket.get('email', '')
+
+                        # Convertir en HTML
+                        html_content = clarification_response['response_text'].replace('\n', '<br>')
+
+                        # Email source selon le département
+                        from_email = settings.zoho_desk_email_doc or settings.zoho_desk_email_default
+
+                        logger.info(f"📧 Draft CLARIFICATION DOUBLON: from={from_email}, to={to_email}")
+
+                        self.desk_client.create_ticket_reply_draft(
+                            ticket_id=ticket_id,
+                            content=html_content,
+                            content_type="html",
+                            from_email=from_email,
+                            to_email=to_email
+                        )
+                        logger.info("✅ DRAFT CLARIFICATION → Brouillon créé dans Zoho Desk")
+                        result['draft_created'] = True
+                        self._mark_brouillon_auto(ticket_id)
+                    except Exception as e:
+                        logger.error(f"Erreur création brouillon clarification: {e}")
+                        result['draft_created'] = False
+
+                # ================================================================
+                # AJOUTER NOTE INTERNE AVEC INFO DOUBLON POTENTIEL
+                # (Pour pouvoir récupérer l'info quand le candidat répond)
+                # ================================================================
+                duplicate_contact_info = triage_result.get('duplicate_contact_info', {})
+                if duplicate_contact_info:
+                    try:
+                        duplicate_deal_id = duplicate_contact_info.get('duplicate_deal_id', '')
+                        duplicate_deal_name = duplicate_contact_info.get('duplicate_deal_name', '')
+                        duplicate_type = triage_result.get('duplicate_type', 'UNKNOWN')
+
+                        # Stocker aussi l'intention originale pour la reprendre après vérification
+                        original_intent = triage_result.get('detected_intent', 'UNKNOWN')
+
+                        note_content = f"""⚠️ DOUBLON POTENTIEL DÉTECTÉ - EN ATTENTE CLARIFICATION
+
+Dossier doublon trouvé par NOM + CODE POSTAL (email/téléphone différents)
+• Deal ID: {duplicate_deal_id}
+• Deal Name: {duplicate_deal_name}
+• Type: {duplicate_type}
+• Email doublon: {duplicate_contact_info.get('duplicate_email', 'N/A')}
+• Téléphone doublon: {duplicate_contact_info.get('duplicate_phone', 'N/A')}
+• Intention originale: {original_intent}
+
+ACTION REQUISE: Attendre réponse candidat pour confirmer s'il s'agit bien du même dossier.
+[DUPLICATE_PENDING:{duplicate_deal_id}]"""
+
+                        self.desk_client.add_ticket_comment(
+                            ticket_id=ticket_id,
+                            content=note_content,
+                            is_public=False  # Note interne uniquement
+                        )
+                        logger.info(f"📝 Note interne ajoutée avec info doublon: {duplicate_deal_id}")
+                        result['duplicate_note_added'] = True
+                    except Exception as e:
+                        logger.error(f"Erreur ajout note doublon: {e}")
+                        result['duplicate_note_added'] = False
+
+                result['success'] = True
+                return result
+
+            # Check if DUPLICATE_RECOVERABLE (doublon récupérable)
+            if triage_result.get('action') == 'DUPLICATE_RECOVERABLE':
+                logger.info("🟢 DOUBLON RÉCUPÉRABLE → Proposer reprise d'inscription")
+                result['workflow_stage'] = 'DUPLICATE_RECOVERABLE'
+                result['duplicate_type'] = triage_result.get('duplicate_type')
+                result['duplicate_deals'] = triage_result.get('duplicate_deals', [])
+
+                # ================================================================
+                # GESTION DES 2 DEALS GAGNÉ
+                # ================================================================
+                deal_to_work_on = triage_result.get('deal_to_work_on')
+                deal_to_disable = triage_result.get('deal_to_disable')
+                already_paid_to_cma = triage_result.get('already_paid_to_cma', False)
+
+                # 1. Mettre à jour EXAM_INCLUS = "Non" sur le deal à désactiver
+                if deal_to_disable:
+                    try:
+                        deal_to_disable_id = deal_to_disable.get('id')
+                        logger.info(f"  ❌ Désactivation deal: {deal_to_disable.get('Deal_Name')} (EXAM_INCLUS=Non)")
+                        self.crm_client.update_deal(deal_to_disable_id, {'EXAM_INCLUS': 'Non'})
+                        result['deal_disabled'] = deal_to_disable_id
+                        logger.info(f"  ✅ Deal désactivé: EXAM_INCLUS=Non")
+                    except Exception as e:
+                        logger.error(f"  ⚠️ Erreur désactivation deal: {e}")
+
+                # 2. Ajouter une note au ticket si frais CMA déjà payés
+                if already_paid_to_cma:
+                    try:
+                        note_content = """⚠️⚠️⚠️ ATTENTION - FRAIS CMA DÉJÀ PAYÉS ⚠️⚠️⚠️
+
+Ce candidat a un dossier déjà payé à la CMA (Dossier Synchronisé ou Refusé CMA).
+
+👉 NE PAS REPAYER LES 241€ DE FRAIS D'EXAMEN
+
+Le dossier peut être repris sans frais supplémentaires auprès de la CMA."""
+
+                        self.desk_client.add_ticket_comment(
+                            ticket_id,
+                            note_content,
+                            is_public=False
+                        )
+                        result['cma_payment_note_added'] = True
+                        logger.warning(f"  📝 Note ajoutée au ticket: FRAIS CMA DÉJÀ PAYÉS")
+                    except Exception as e:
+                        logger.error(f"  ⚠️ Erreur ajout note frais CMA: {e}")
+
+                # Stocker le deal sur lequel travailler
+                result['deal_to_work_on'] = deal_to_work_on
+
+                # Générer une réponse de reprise d'inscription
+                recoverable_response = self._generate_duplicate_recoverable_response(
+                    ticket_id=ticket_id,
+                    triage_result=triage_result
+                )
+                result['response_result'] = recoverable_response
+                result['recoverable_response'] = recoverable_response.get('response_text', '')
+
+                # Créer le brouillon si demandé
+                if auto_create_draft and recoverable_response.get('response_text'):
+                    try:
+                        from config import settings
+
+                        # Récupérer les infos du ticket pour l'email
+                        ticket = self.desk_client.get_ticket(ticket_id)
+                        to_email = ticket.get('email', '')
+
+                        # Convertir en HTML
+                        html_content = recoverable_response['response_text'].replace('\n', '<br>')
+
+                        # Email source selon le département
+                        from_email = settings.zoho_desk_email_doc or settings.zoho_desk_email_default
+
+                        logger.info(f"📧 Draft REPRISE INSCRIPTION: from={from_email}, to={to_email}")
+
+                        self.desk_client.create_ticket_reply_draft(
+                            ticket_id=ticket_id,
+                            content=html_content,
+                            content_type="html",
+                            from_email=from_email,
+                            to_email=to_email
+                        )
+                        logger.info("✅ DRAFT REPRISE → Brouillon créé dans Zoho Desk")
+                        result['draft_created'] = True
+                        self._mark_brouillon_auto(ticket_id)
+                    except Exception as e:
+                        logger.error(f"Erreur création brouillon reprise: {e}")
                         result['draft_created'] = False
 
                 result['success'] = True
@@ -1000,6 +1474,32 @@ La date d'examen dans Zoho CRM est dans le passé. Le workflow a été stoppé p
                 logger.warning(f"  ⚠️ Impossible d'ajouter la note RGPD: {e}")
             return triage_result
 
+        # Rule #2.4b: VÉRIFICATION DOUBLON POTENTIEL (CLARIFICATION NÉCESSAIRE)
+        # Si on détecte un doublon par nom+CP mais avec email/téléphone différents,
+        # on demande confirmation au candidat pour éviter les homonymes
+        if linking_result.get('needs_duplicate_confirmation'):
+            duplicate_info = linking_result.get('duplicate_contact_info', {})
+            duplicate_type = linking_result.get('duplicate_type')
+            logger.info(f"❓ DOUBLON POTENTIEL - Clarification nécessaire (type: {duplicate_type})")
+
+            triage_result['action'] = 'DUPLICATE_CLARIFICATION'
+            triage_result['reason'] = "Doublon potentiel détecté par nom+CP mais email/téléphone différents - clarification requise"
+            triage_result['method'] = 'duplicate_name_postal_confirmation'
+            triage_result['duplicate_contact_info'] = duplicate_info
+            triage_result['duplicate_type'] = duplicate_type
+            triage_result['selected_deal'] = selected_deal
+
+            # Stocker les infos pour le template
+            triage_result['uber_doublon_clarification'] = True
+            triage_result['duplicate_deal_name'] = duplicate_info.get('duplicate_deal_name', '')
+            # Déterminer si le doublon est récupérable
+            triage_result['duplicate_type_recoverable'] = duplicate_type in ['RECOVERABLE_REFUS_CMA', 'RECOVERABLE_NOT_PAID']
+            triage_result['duplicate_type_refus_cma'] = duplicate_type == 'RECOVERABLE_REFUS_CMA'
+
+            logger.info(f"   Deal doublon: {duplicate_info.get('duplicate_deal_name')}")
+            logger.info(f"   Type: {duplicate_type}")
+            return triage_result
+
         # Rule #2.5: VÉRIFICATION DOUBLON UBER 20€
         # Si le candidat a déjà bénéficié de l'offre Uber 20€, il ne peut pas en bénéficier à nouveau
         # MAIS d'abord vérifier s'il demande une formation CPF ou autre chose → router vers Contact
@@ -1035,7 +1535,46 @@ La date d'examen dans Zoho CRM est dans le passé. Le workflow a été stoppé p
 
                 return triage_result
 
-            # Pas de demande CPF → workflow doublon Uber standard
+            # Vérifier si le doublon est de type RECOVERABLE
+            # RECOVERABLE = pas d'examen passé, pas de dossier validé → peut reprendre l'inscription
+            duplicate_type = linking_result.get('duplicate_type')
+            is_recoverable = duplicate_type in ['RECOVERABLE_REFUS_CMA', 'RECOVERABLE_NOT_PAID', 'RECOVERABLE_PAID']
+
+            if is_recoverable:
+                # Doublon récupérable → proposer de reprendre l'inscription
+                logger.info(f"🟢 DOUBLON RÉCUPÉRABLE (type: {duplicate_type}) → Proposer reprise d'inscription")
+                triage_result['action'] = 'DUPLICATE_RECOVERABLE'
+                triage_result['reason'] = f"Doublon Uber détecté mais inscription récupérable (type: {duplicate_type})"
+                triage_result['method'] = 'duplicate_recovery'
+                triage_result['duplicate_deals'] = duplicate_deals
+                triage_result['duplicate_type'] = duplicate_type
+
+                # Logique de sélection de deal si 2 deals GAGNÉ
+                # Utiliser les infos retournées par deal_linking_agent
+                deal_to_work_on = linking_result.get('deal_to_work_on')
+                deal_to_disable = linking_result.get('deal_to_disable')
+                already_paid_to_cma = linking_result.get('already_paid_to_cma', False)
+
+                if deal_to_work_on:
+                    triage_result['selected_deal'] = deal_to_work_on
+                    triage_result['deal_to_work_on'] = deal_to_work_on
+                    triage_result['deal_to_disable'] = deal_to_disable
+                    triage_result['already_paid_to_cma'] = already_paid_to_cma
+                    logger.info(f"  🎯 Deal sélectionné: {deal_to_work_on.get('Deal_Name')}")
+                    if deal_to_disable:
+                        logger.info(f"  ❌ Deal à désactiver: {deal_to_disable.get('Deal_Name')}")
+                    if already_paid_to_cma:
+                        logger.warning(f"  ⚠️ FRAIS CMA DÉJÀ PAYÉS - Note à ajouter au ticket")
+                else:
+                    triage_result['selected_deal'] = selected_deal
+
+                # Flags pour le template
+                triage_result['uber_doublon_recoverable'] = True
+                triage_result['duplicate_type_refus_cma'] = duplicate_type == 'RECOVERABLE_REFUS_CMA'
+                triage_result['duplicate_type_paid'] = duplicate_type in ['RECOVERABLE_PAID', 'RECOVERABLE_REFUS_CMA']
+                return triage_result
+
+            # Pas de demande CPF et pas récupérable → workflow doublon Uber standard (offre épuisée)
             triage_result['action'] = 'DUPLICATE_UBER'
             triage_result['reason'] = f"Candidat a déjà bénéficié de l'offre Uber 20€ ({len(duplicate_deals)} opportunités GAGNÉ)"
             triage_result['method'] = 'duplicate_detection'
@@ -3099,6 +3638,153 @@ L'équipe Cab Formations"""
             'previous_dates': previous_dates,
             'crm_updates': {},  # Pas de mise à jour CRM pour les doublons
             'detected_scenarios': ['DUPLICATE_UBER_OFFER']
+        }
+
+    def _generate_duplicate_clarification_response(
+        self,
+        ticket_id: str,
+        triage_result: Dict
+    ) -> Dict:
+        """
+        Génère une réponse pour demander des clarifications quand un doublon
+        potentiel est détecté par nom + code postal mais avec email/téléphone différents.
+
+        Permet d'éviter les homonymes en demandant au candidat de confirmer
+        ses coordonnées utilisées lors de sa précédente inscription.
+
+        La réponse s'adapte à l'intention du candidat (STATUT_DOSSIER, DEMANDE_IDENTIFIANTS, etc.)
+        """
+        logger.info("📝 Génération de la réponse CLARIFICATION DOUBLON...")
+
+        duplicate_contact_info = triage_result.get('duplicate_contact_info', {})
+        duplicate_type = triage_result.get('duplicate_type', '')
+        duplicate_deal_name = duplicate_contact_info.get('duplicate_deal_name', 'un dossier')
+        detected_intent = triage_result.get('detected_intent', '')
+
+        # Déterminer si le doublon est récupérable
+        is_recoverable = duplicate_type in ['RECOVERABLE_REFUS_CMA', 'RECOVERABLE_NOT_PAID', 'RECOVERABLE_PAID']
+
+        # Message adapté à l'intention du candidat
+        if detected_intent == 'STATUT_DOSSIER':
+            intro = "Pour vérifier l'état de votre dossier"
+        elif detected_intent == 'DEMANDE_REINSCRIPTION':
+            intro = "Bonne nouvelle ! Nous avons retrouvé votre dossier. Pour reprendre votre inscription"
+        elif detected_intent in ['DEMANDE_IDENTIFIANTS', 'ENVOIE_IDENTIFIANTS']:
+            intro = "Pour vous transmettre vos identifiants en toute sécurité"
+        elif detected_intent in ['DEMANDE_DATES_FUTURES', 'DEMANDE_DATE_EXAMEN', 'REPORT_DATE']:
+            intro = "Avant de vous communiquer les dates disponibles"
+        elif detected_intent in ['DEMANDE_ELEARNING_ACCESS', 'DEMANDE_DATE_VISIO']:
+            intro = "Pour vous donner accès à votre formation"
+        elif detected_intent == 'DEMANDE_CONVOCATION':
+            intro = "Pour vérifier votre convocation"
+        else:
+            intro = "Afin de nous assurer qu'il s'agit bien de vous et non d'un homonyme"
+
+        # Note sur la possibilité de récupérer le dossier
+        recovery_note = ""
+        if is_recoverable:
+            if duplicate_type == 'RECOVERABLE_REFUS_CMA':
+                recovery_note = "\n\nSi c'est bien vous, votre précédent dossier avait été refusé par la CMA. Bonne nouvelle : vous pouvez vous réinscrire en utilisant la même offre Uber 20€ !"
+            else:
+                recovery_note = "\n\nSi c'est bien vous, nous pourrons reprendre votre dossier existant et poursuivre votre inscription !"
+
+        response_text = f"""Bonjour,
+
+Je vous remercie pour votre message.
+
+Nous avons trouvé un dossier existant ({duplicate_deal_name}) dans notre système qui correspond à votre nom et code postal.
+
+{intro}, merci de nous confirmer :
+
+• L'adresse email utilisée lors de votre précédente inscription
+• Le numéro de téléphone renseigné à l'époque{recovery_note}
+
+Dans l'attente de votre retour, je reste à votre disposition.
+
+Bien cordialement,
+
+L'équipe Cab Formations"""
+
+        logger.info(f"✅ Réponse CLARIFICATION DOUBLON générée ({len(response_text)} caractères)")
+        logger.info(f"   Intention adaptée: {detected_intent or 'générique'}")
+
+        return {
+            'response_text': response_text,
+            'is_duplicate_clarification_response': True,
+            'duplicate_type': duplicate_type,
+            'is_recoverable': is_recoverable,
+            'duplicate_contact_info': duplicate_contact_info,
+            'detected_intent': detected_intent,
+            'crm_updates': {},  # Pas de mise à jour CRM pour les clarifications
+            'detected_scenarios': ['DUPLICATE_CLARIFICATION']
+        }
+
+    def _generate_duplicate_recoverable_response(
+        self,
+        ticket_id: str,
+        triage_result: Dict
+    ) -> Dict:
+        """
+        Génère une réponse pour les doublons récupérables.
+
+        Cas récupérables :
+        - RECOVERABLE_PAID : Dossier Synchronisé (payé, en attente validation) → peut reprendre
+        - RECOVERABLE_REFUS_CMA : Dossier précédemment refusé par la CMA (payé) → peut se réinscrire
+        - RECOVERABLE_NOT_PAID : Inscription jamais finalisée (pas de paiement) → peut reprendre
+
+        Dans ces cas, le candidat peut reprendre son inscription avec la même offre Uber 20€.
+        """
+        logger.info("📝 Génération de la réponse DOUBLON RÉCUPÉRABLE...")
+
+        duplicate_type = triage_result.get('duplicate_type', '')
+        duplicate_deals = triage_result.get('duplicate_deals', [])
+        already_paid_to_cma = triage_result.get('already_paid_to_cma', False)
+
+        # Déterminer le message selon le type
+        if duplicate_type == 'RECOVERABLE_REFUS_CMA':
+            reason_text = """Après vérification, nous constatons que votre précédent dossier avait été refusé par la CMA. Cela peut arriver en cas de documents incomplets ou non conformes.
+
+Bonne nouvelle : votre dossier est déjà enregistré auprès de la CMA, vous pouvez vous réinscrire sans frais supplémentaires !"""
+        elif duplicate_type == 'RECOVERABLE_PAID':
+            reason_text = """Après vérification, nous constatons que votre précédent dossier est en cours de traitement auprès de la CMA.
+
+Bonne nouvelle : votre dossier est déjà enregistré, nous pouvons reprendre votre inscription sans frais supplémentaires !"""
+        else:
+            # RECOVERABLE_NOT_PAID
+            reason_text = """Après vérification, nous constatons que votre précédente inscription n'avait pas été finalisée.
+
+Bonne nouvelle : nous pouvons reprendre votre dossier existant et poursuivre votre inscription !"""
+
+        response_text = f"""Bonjour,
+
+Je vous remercie pour votre message.
+
+{reason_text}
+
+Pour continuer, merci de nous renvoyer vos documents à jour :
+
+• Pièce d'identité (carte d'identité ou passeport)
+• Permis de conduire (recto + verso)
+• Justificatif de domicile de moins de 6 mois
+
+Vous pouvez nous les envoyer en réponse à cet email.
+
+Si vous avez des questions sur la démarche, n'hésitez pas à me contacter.
+
+Bien cordialement,
+
+L'équipe Cab Formations"""
+
+        logger.info(f"✅ Réponse DOUBLON RÉCUPÉRABLE générée ({len(response_text)} caractères)")
+
+        return {
+            'response_text': response_text,
+            'is_duplicate_recoverable_response': True,
+            'duplicate_type': duplicate_type,
+            'duplicate_deals_count': len(duplicate_deals),
+            'already_paid_to_cma': already_paid_to_cma,
+            'crm_updates': {},  # Pas de mise à jour CRM pour les doublons récupérables
+            'detected_scenarios': ['DUPLICATE_RECOVERABLE']
         }
 
     def _generate_clarification_response(

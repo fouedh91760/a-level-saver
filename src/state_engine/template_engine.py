@@ -860,7 +860,14 @@ class TemplateEngine:
             'uber_cas_d': context.get('uber_cas_d', False),
             'uber_cas_e': context.get('uber_cas_e', False),
             'uber_doublon': context.get('uber_doublon', False),
+            'uber_doublon_clarification': context.get('uber_doublon_clarification', False),
+            'uber_doublon_recoverable': context.get('uber_doublon_recoverable', False),
             'uber_prospect': context.get('uber_prospect', False),
+            # Infos pour clarification doublon
+            'duplicate_deal_name': context.get('duplicate_deal_name', ''),
+            'duplicate_type_recoverable': context.get('duplicate_type_recoverable', False),
+            'duplicate_type_refus_cma': context.get('duplicate_type_refus_cma', False),
+            'already_paid_to_cma': context.get('already_paid_to_cma', False),
 
             # Résultats d'examen
             'resultat_admis': context.get('resultat_admis', False),
@@ -1171,6 +1178,8 @@ class TemplateEngine:
         'UBER_ACCOUNT_NOT_VERIFIED': 'uber_cas_d',
         'UBER_NOT_ELIGIBLE': 'uber_cas_e',
         'DUPLICATE_UBER': 'uber_doublon',
+        'DUPLICATE_CLARIFICATION': 'uber_doublon_clarification',
+        'DUPLICATE_RECOVERABLE': 'uber_doublon_recoverable',
         'UBER_PROSPECT': 'uber_prospect',
 
         # États Credentials
@@ -1242,6 +1251,9 @@ class TemplateEngine:
         'QUESTION_HEBERGEMENT': 'intention_question_hebergement',
         'PERMIS_PROBATOIRE': 'intention_permis_probatoire',
         'RECLAMATION': 'intention_reclamation',
+        # Intentions doublon
+        'CONFIRMATION_DOUBLON': 'intention_confirmation_doublon',
+        'REFUS_DOUBLON': 'intention_refus_doublon',
     }
 
     def _auto_map_intention_flags(self, context: Dict[str, Any]) -> Dict[str, bool]:
@@ -1285,6 +1297,9 @@ class TemplateEngine:
             'intention_erreur_paiement_cma': False,
             'intention_permis_renouvellement': False,
             'intention_permis_probatoire': False,
+            # Intentions doublon
+            'intention_confirmation_doublon': False,
+            'intention_refus_doublon': False,
         }
 
         # Récupérer l'intention principale (rétrocompatibilité + nouveau format)
