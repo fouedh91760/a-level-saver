@@ -517,6 +517,136 @@ Always respond in JSON format with the following structure:
             logger.error(f"Failed to search contacts by phone {phone}: {e}")
             return []
 
+    def _normalize_name_for_comparison(self, name: str) -> str:
+        """
+        Normalise un nom pour comparaison (supprime accents, met en minuscules).
+
+        Args:
+            name: Nom à normaliser
+
+        Returns:
+            Nom normalisé
+        """
+        import unicodedata
+        if not name:
+            return ""
+        # Supprimer les accents
+        normalized = unicodedata.normalize('NFD', name)
+        normalized = ''.join(c for c in normalized if unicodedata.category(c) != 'Mn')
+        # Mettre en minuscules et supprimer espaces multiples
+        normalized = ' '.join(normalized.lower().split())
+        return normalized
+
+    def _search_duplicate_by_name_and_postal(
+        self,
+        candidate_name: str,
+        postal_code: str,
+        exclude_deal_ids: List[str] = None
+    ) -> List[Dict[str, Any]]:
+        """
+        Recherche des doublons potentiels par nom + code postal.
+
+        Cherche des deals 20€ GAGNÉ avec le même nom (normalisé) et code postal.
+
+        Args:
+            candidate_name: Nom complet du candidat (ex: "Gaël Carole")
+            postal_code: Code postal (ex: "93330")
+            exclude_deal_ids: IDs de deals à exclure de la recherche
+
+        Returns:
+            Liste des deals 20€ GAGNÉ correspondants
+        """
+        if not candidate_name or not postal_code:
+            return []
+
+        exclude_deal_ids = exclude_deal_ids or []
+        crm_client = self._get_crm_client()
+
+        try:
+            from config import settings
+
+            # Normaliser le nom pour comparaison
+            normalized_candidate_name = self._normalize_name_for_comparison(candidate_name)
+            logger.info(f"  🔍 Recherche doublon par nom+CP: '{candidate_name}' ({normalized_candidate_name}) + {postal_code}")
+
+            # Extraire prénom et nom pour recherche
+            name_parts = candidate_name.split()
+            if len(name_parts) < 2:
+                logger.info(f"  ⚠️ Nom incomplet, recherche par nom uniquement")
+                search_term = name_parts[0] if name_parts else ""
+            else:
+                # Chercher par le nom de famille (généralement le dernier mot)
+                search_term = name_parts[-1]
+
+            if not search_term:
+                return []
+
+            # Rechercher les deals par nom
+            url = f"{settings.zoho_crm_api_url}/Deals/search"
+            params = {"word": search_term, "per_page": 100}
+
+            response = crm_client._make_request("GET", url, params=params)
+            all_deals = response.get("data", [])
+
+            if not all_deals:
+                logger.info(f"  📭 Aucun deal trouvé pour '{search_term}'")
+                return []
+
+            logger.info(f"  📋 {len(all_deals)} deals trouvés pour '{search_term}', filtrage...")
+
+            # Filtrer: 20€ GAGNÉ + même code postal + nom similaire
+            duplicate_deals = []
+            for deal in all_deals:
+                deal_id = deal.get('id')
+
+                # Exclure les deals déjà connus
+                if deal_id in exclude_deal_ids:
+                    continue
+
+                # Vérifier Stage et Amount
+                stage = deal.get('Stage', '')
+                amount = deal.get('Amount')
+                if stage != 'GAGNÉ' or amount != 20:
+                    continue
+
+                # Vérifier code postal
+                deal_postal = deal.get('Mailing_Zip', '')
+                if str(deal_postal) != str(postal_code):
+                    continue
+
+                # Vérifier nom (normalisé)
+                deal_name = deal.get('Deal_Name', '')
+                contact_name = deal.get('Contact_Name', {})
+                if isinstance(contact_name, dict):
+                    contact_name = contact_name.get('name', '')
+
+                # Normaliser et comparer
+                normalized_deal_name = self._normalize_name_for_comparison(deal_name)
+                normalized_contact = self._normalize_name_for_comparison(contact_name)
+
+                # Match si le nom normalisé du candidat est contenu dans le deal_name ou contact_name
+                name_match = (
+                    normalized_candidate_name in normalized_deal_name or
+                    normalized_candidate_name in normalized_contact or
+                    normalized_deal_name in normalized_candidate_name or
+                    normalized_contact == normalized_candidate_name
+                )
+
+                if name_match:
+                    logger.info(f"  ✅ MATCH: {deal_name} (CP: {deal_postal}, Stage: {stage})")
+                    duplicate_deals.append(deal)
+
+            if duplicate_deals:
+                logger.warning(f"  ⚠️ {len(duplicate_deals)} doublon(s) potentiel(s) trouvé(s) par nom+CP")
+            else:
+                logger.info(f"  📭 Aucun doublon trouvé par nom+CP")
+
+            return duplicate_deals
+
+        except Exception as e:
+            logger.error(f"Erreur recherche doublon par nom+CP: {e}")
+            return []
+
     def _extract_alternative_emails_from_threads(
         self,
         threads: List[Dict[str, Any]],
@@ -803,7 +933,93 @@ Emails alternatifs trouvés:"""
 
                             # Check for duplicate Uber 20€
                             deals_20_won = [d for d in all_deals if d.get("Amount") == 20 and d.get("Stage") == "GAGNÉ"]
-                            if len(deals_20_won) > 1:
+
+                            # Si 1 seul deal 20€ trouvé par email, chercher par téléphone pour détecter doublons
+                            if len(deals_20_won) == 1:
+                                logger.info(f"  📱 1 deal 20€ GAGNÉ trouvé - recherche doublon via téléphone...")
+                                phone = None
+                                if contact_data:
+                                    contact_phone = contact_data.get('Phone') or contact_data.get('Mobile')
+                                    if contact_phone:
+                                        phone = self._normalize_phone(contact_phone)
+
+                                if phone:
+                                    logger.info(f"  📱 Téléphone: {phone} - recherche de contacts...")
+                                    phone_contacts = self._search_contacts_by_phone(phone)
+
+                                    if phone_contacts:
+                                        new_phone_contact_ids = [
+                                            c.get("id") for c in phone_contacts
+                                            if c.get("id") and c.get("id") not in all_contact_ids
+                                        ]
+
+                                        if new_phone_contact_ids:
+                                            logger.info(f"  📱 {len(new_phone_contact_ids)} nouveau(x) contact(s) trouvé(s) par téléphone")
+                                            phone_deals = self._get_deals_for_contacts(new_phone_contact_ids)
+                                            phone_deals_20_won = [d for d in phone_deals if d.get("Amount") == 20 and d.get("Stage") == "GAGNÉ"]
+
+                                            if phone_deals_20_won:
+                                                existing_ids = {d.get("id") for d in all_deals}
+                                                for deal in phone_deals:
+                                                    if deal.get("id") not in existing_ids:
+                                                        all_deals.append(deal)
+                                                        if deal.get("Amount") == 20 and deal.get("Stage") == "GAGNÉ":
+                                                            deals_20_won.append(deal)
+
+                                                result["phone_duplicate_check"] = True
+                                                result["phone_used"] = phone
+                                                result["all_deals"] = all_deals
+                                                result["deals_found"] = len(all_deals)
+                                                logger.info(f"  ✅ DOUBLON DÉTECTÉ VIA TÉLÉPHONE: {len(phone_deals_20_won)} deal(s) 20€ GAGNÉ supplémentaire(s)")
+                                            else:
+                                                logger.info(f"  📱 Pas de deal 20€ GAGNÉ supplémentaire via téléphone")
+                                        else:
+                                            logger.info(f"  📱 Contacts téléphone = mêmes que contacts email")
+                                    else:
+                                        logger.info(f"  📱 Aucun contact trouvé par téléphone")
+                                else:
+                                    logger.info(f"  📱 Aucun téléphone disponible pour vérification doublon")
+
+                            # ==================================================================
+                            # VÉRIFICATION DOUBLON PAR NOM + CODE POSTAL
+                            # ==================================================================
+                            current_deal = result.get("selected_deal") or deal_data
+                            if len(deals_20_won) <= 1 and current_deal:
+                                contact_name_data = current_deal.get('Contact_Name', {})
+                                if isinstance(contact_name_data, dict):
+                                    candidate_name = contact_name_data.get('name', '')
+                                else:
+                                    candidate_name = str(contact_name_data) if contact_name_data else ''
+
+                                postal_code = current_deal.get('Mailing_Zip', '')
+
+                                if candidate_name and postal_code:
+                                    existing_deal_ids = [d.get('id') for d in all_deals if d.get('id')]
+                                    name_postal_duplicates = self._search_duplicate_by_name_and_postal(
+                                        candidate_name=candidate_name,
+                                        postal_code=str(postal_code),
+                                        exclude_deal_ids=existing_deal_ids
+                                    )
+
+                                    if name_postal_duplicates:
+                                        for dup_deal in name_postal_duplicates:
+                                            if dup_deal.get('id') not in existing_deal_ids:
+                                                all_deals.append(dup_deal)
+                                                deals_20_won.append(dup_deal)
+
+                                        result["name_postal_duplicate_check"] = True
+                                        result["deals_found"] = len(all_deals)
+                                        result["all_deals"] = all_deals
+                                        logger.warning(f"  ⚠️ DOUBLON DÉTECTÉ VIA NOM+CP: {len(name_postal_duplicates)} deal(s) 20€ GAGNÉ")
+
+                                        # Si le deal actuel est un 20€ (même EN ATTENTE) et qu'on trouve un 20€ GAGNÉ
+                                        # → c'est un doublon (candidat a déjà bénéficié de l'offre)
+                                        if current_deal.get('Amount') == 20:
+                                            result["has_duplicate_uber_offer"] = True
+                                            result["duplicate_deals"] = name_postal_duplicates
+                                            logger.warning(f"  ⚠️ DOUBLON UBER détecté: candidat a déjà un deal 20€ GAGNÉ (trouvé par nom+CP)")
+
+                            if len(deals_20_won) > 1 and not result.get("has_duplicate_uber_offer"):
                                 result["has_duplicate_uber_offer"] = True
                                 result["duplicate_deals"] = deals_20_won
                                 logger.warning(f"  ⚠️ DOUBLON UBER détecté: {len(deals_20_won)} opportunités 20€ GAGNÉ")
@@ -1088,7 +1304,112 @@ Emails alternatifs trouvés:"""
             # DÉTECTION DOUBLON UBER 20€ (candidat ayant déjà bénéficié de l'offre)
             # ==================================================================
             deals_20_won = [d for d in all_deals if d.get("Amount") == 20 and d.get("Stage") == "GAGNÉ"]
-            if len(deals_20_won) > 1:
+
+            # Si 1 seul deal 20€ trouvé par email, chercher par téléphone pour détecter doublons
+            if len(deals_20_won) == 1 and not phone_fallback_used:
+                logger.info(f"  📱 1 deal 20€ GAGNÉ trouvé par email - recherche doublon via téléphone...")
+
+                # Extraire le téléphone du contact ou du ticket
+                phone = None
+                for contact in contacts:
+                    contact_phone = contact.get('Phone') or contact.get('Mobile')
+                    if contact_phone:
+                        phone = self._normalize_phone(contact_phone)
+                        if phone:
+                            break
+
+                if not phone:
+                    phone = self._extract_phone_from_ticket(ticket, threads)
+
+                if phone:
+                    logger.info(f"  📱 Téléphone: {phone} - recherche de contacts...")
+                    phone_contacts = self._search_contacts_by_phone(phone)
+
+                    if phone_contacts:
+                        # Filtrer les contacts déjà trouvés par email
+                        new_contact_ids = [
+                            c.get("id") for c in phone_contacts
+                            if c.get("id") and c.get("id") not in contact_ids
+                        ]
+
+                        if new_contact_ids:
+                            logger.info(f"  📱 {len(new_contact_ids)} nouveau(x) contact(s) trouvé(s) par téléphone")
+                            phone_deals = self._get_deals_for_contacts(new_contact_ids)
+                            phone_deals_20_won = [d for d in phone_deals if d.get("Amount") == 20 and d.get("Stage") == "GAGNÉ"]
+
+                            if phone_deals_20_won:
+                                # Fusionner avec all_deals et deals_20_won
+                                existing_ids = {d.get("id") for d in all_deals}
+                                for deal in phone_deals:
+                                    if deal.get("id") not in existing_ids:
+                                        all_deals.append(deal)
+                                        if deal.get("Amount") == 20 and deal.get("Stage") == "GAGNÉ":
+                                            deals_20_won.append(deal)
+
+                                result["phone_duplicate_check"] = True
+                                result["phone_used"] = phone
+                                result["deals_found"] = len(all_deals)
+                                result["all_deals"] = all_deals
+                                logger.info(f"  ✅ DOUBLON DÉTECTÉ VIA TÉLÉPHONE: {len(phone_deals_20_won)} deal(s) 20€ GAGNÉ supplémentaire(s)")
+                            else:
+                                logger.info(f"  📱 Pas de deal 20€ GAGNÉ supplémentaire via téléphone")
+                        else:
+                            logger.info(f"  📱 Contacts téléphone = mêmes que contacts email")
+                    else:
+                        logger.info(f"  📱 Aucun contact trouvé par téléphone")
+                else:
+                    logger.info(f"  📱 Aucun téléphone disponible pour vérification doublon")
+
+            # ==================================================================
+            # VÉRIFICATION DOUBLON PAR NOM + CODE POSTAL
+            # Si on n'a qu'un seul deal 20€ ou aucun, chercher par nom+CP
+            # pour détecter les doublons avec des données email/téléphone différentes
+            # ==================================================================
+            if len(deals_20_won) <= 1 and selected_deal:
+                # Extraire nom et code postal du deal sélectionné
+                contact_name_data = selected_deal.get('Contact_Name', {})
+                if isinstance(contact_name_data, dict):
+                    candidate_name = contact_name_data.get('name', '')
+                else:
+                    candidate_name = str(contact_name_data) if contact_name_data else ''
+
+                postal_code = selected_deal.get('Mailing_Zip', '')
+
+                if candidate_name and postal_code:
+                    # Exclure les deals déjà trouvés
+                    existing_deal_ids = [d.get('id') for d in all_deals if d.get('id')]
+
+                    name_postal_duplicates = self._search_duplicate_by_name_and_postal(
+                        candidate_name=candidate_name,
+                        postal_code=str(postal_code),
+                        exclude_deal_ids=existing_deal_ids
+                    )
+
+                    if name_postal_duplicates:
+                        # Fusionner avec all_deals et deals_20_won
+                        for dup_deal in name_postal_duplicates:
+                            if dup_deal.get('id') not in existing_deal_ids:
+                                all_deals.append(dup_deal)
+                                deals_20_won.append(dup_deal)
+
+                        result["name_postal_duplicate_check"] = True
+                        result["deals_found"] = len(all_deals)
+                        result["all_deals"] = all_deals
+                        logger.warning(f"  ⚠️ DOUBLON DÉTECTÉ VIA NOM+CP: {len(name_postal_duplicates)} deal(s) 20€ GAGNÉ")
+
+                        # Si le deal actuel est un 20€ (même EN ATTENTE) et qu'on trouve un 20€ GAGNÉ
+                        # → c'est un doublon (candidat a déjà bénéficié de l'offre)
+                        if selected_deal and selected_deal.get('Amount') == 20:
+                            result["has_duplicate_uber_offer"] = True
+                            result["duplicate_deals"] = name_postal_duplicates
+                            logger.warning(f"  ⚠️ DOUBLON UBER détecté: candidat a déjà un deal 20€ GAGNÉ (trouvé par nom+CP)")
+                else:
+                    if not candidate_name:
+                        logger.info(f"  📛 Pas de nom de contact pour vérification doublon par nom+CP")
+                    if not postal_code:
+                        logger.info(f"  📮 Pas de code postal pour vérification doublon par nom+CP")
+
+            if len(deals_20_won) > 1 and not result.get("has_duplicate_uber_offer"):
                 # DOUBLON DÉTECTÉ : Le candidat a plusieurs opportunités 20€ GAGNÉ
                 # Cela signifie qu'il a déjà bénéficié de l'offre Uber une fois
                 result["has_duplicate_uber_offer"] = True
