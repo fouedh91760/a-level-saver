@@ -1488,17 +1488,21 @@ La date d'examen dans Zoho CRM est dans le passé. Le workflow a été stoppé p
             # France Travail / KAIROS
             "france travail", "francetravail", "pole emploi", "pôle emploi",
             "kairos", "financement kairos", "financement france travail",
-            "conseiller france travail", "mon conseiller",
+            "conseiller france travail",
             # Financement personnel / Tarif complet
             "720€", "720 €", "720 euros", "tarif complet", "plein tarif",
             "financement personnel", "payer moi-même", "payer moi même",
             "payer de ma poche", "à mes frais", "a mes frais",
             "paiement échelonné", "paiement en plusieurs fois",
             # Devis / Facture
-            "devis", "facture pro forma", "proforma",
+            "facture pro forma", "proforma",
             # Autres financements
             "opco", "fafcea", "agefice", "fifpl", "fif pl",
-            "fonds de formation", "prise en charge",
+            "fonds de formation",
+            # ⚠️ RETIRÉS (trop de faux positifs):
+            # - "prise en charge": expression courante = "traitement/gestion", pas forcément financement
+            # - "mon conseiller": trop générique (peut désigner CAB, pas France Travail)
+            # - "devis": candidat peut demander un "devis" dans le cadre de son dossier 20€
         ]
 
         content_to_check = (subject + ' ' + last_thread_content).lower()
@@ -1753,9 +1757,15 @@ La date d'examen dans Zoho CRM est dans le passé. Le workflow a été stoppé p
             return triage_result
 
         # Rule #2.7: ROUTAGE AUTOMATIQUE SI DÉPARTEMENT DIFFÉRENT DE DOC
-        # BusinessRules a déterminé que ce ticket devrait aller ailleurs (ex: "examen pratique" → Contact)
+        # BusinessRules a déterminé que ce ticket devrait aller ailleurs (ex: "Refus CMA")
+        # ⚠️ IMPORTANT: Ne PAS auto-router vers Contact ici !
+        # Les keywords de BusinessRules causent trop de faux positifs (cpf, taxi, etc.)
+        # Le TriageAgent (Claude) est bien meilleur pour décider du routage vers Contact
+        # car il comprend le CONTEXTE du message, pas juste les mots-clés.
         suggested_department = linking_result.get('recommended_department') or linking_result.get('department', 'DOC')
-        if suggested_department and suggested_department.upper() not in ['DOC', 'DOCUMENTS']:
+        if (suggested_department
+            and suggested_department.upper() not in ['DOC', 'DOCUMENTS', 'CONTACT']
+        ):
             logger.warning(f"⚠️ ROUTAGE AUTOMATIQUE → {suggested_department} (règle métier)")
             triage_result['action'] = 'ROUTE'
             triage_result['target_department'] = suggested_department
@@ -1777,6 +1787,8 @@ La date d'examen dans Zoho CRM est dans le passé. Le workflow a été stoppé p
                     logger.error(f"Erreur transfert: {e}")
 
             return triage_result
+        elif suggested_department and suggested_department.upper() == 'CONTACT':
+            logger.info(f"ℹ️ BusinessRules suggère Contact, mais on laisse le TriageAgent décider (éviter faux positifs keywords)")
 
         # If no deals found, also check by email directly
         if not all_deals:

@@ -248,18 +248,12 @@ class BusinessRules:
                 "location de véhicule",
                 "louer un véhicule",
                 "louer véhicule",
-                # CPF / Compte Formation
-                "cpf",
-                "formation cpf",
-                "mon compte cpf",
-                "compte cpf",
-                "compte formation",
-                "mon compte formation",
-                # Taxi / autres métiers
-                "taxi",
-                "ambulance",
-                "capacité de transport",
-                "capacite de transport"
+                # ⚠️ CPF/taxi/ambulance/compte formation RETIRÉS de cette liste.
+                # Ces keywords causaient trop de faux positifs :
+                # - "taxi" apparaît dans les footers CMA qui gèrent VTC ET Taxi
+                # - "cpf" et "compte formation" apparaissent en contexte Uber
+                # Le TriageAgent (Claude IA) est bien plus fiable pour ces cas
+                # car il comprend le CONTEXTE, pas juste les mots-clés.
             ]
 
             # Vérifier sujet et dernier thread
