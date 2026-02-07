@@ -2389,27 +2389,34 @@ Deux comptes ExamenT3P fonctionnels ont été détectés pour ce candidat, et le
             # ================================================================
             # SORTIE ANTICIPÉE: Deal VTC classique (hors partenariat Uber)
             # ================================================================
-            # Les deals non-Uber (599€, 1299€, CPF, etc.) sont gérés manuellement
-            # par l'équipe DOCS CAB → Draft + Transfert et STOP
+            # Routage selon l'intention détectée :
+            # - TRANSMET_DOCUMENTS → DOCS CAB + brouillon accusé réception
+            # - Autre intention → Contact sans brouillon (traitement manuel)
             deal_stage = deal_data.get('Stage', '')
             if deal_stage == 'GAGNÉ':
+                detected_intent = triage_result.get('detected_intent', '')
+
                 logger.info("\n🚦 SORTIE ANTICIPÉE - Deal VTC classique détecté")
                 logger.info(f"  Deal: {deal_data.get('Deal_Name', 'N/A')} ({deal_data.get('Amount', 0)}€)")
                 logger.info(f"  Stage: {deal_stage}")
-                logger.info("  → Création brouillon + Transfert vers DOCS CAB")
+                logger.info(f"  Intention: {detected_intent}")
 
-                # Extraire le prénom
-                deal_name = deal_data.get('Deal_Name', '')
-                prenom = 'Candidat'
-                if deal_name:
-                    parts = deal_name.split()
-                    if len(parts) >= 3:
-                        prenom = parts[2].capitalize()
-                    elif len(parts) >= 1:
-                        prenom = parts[-1].capitalize()
+                # TRANSMET_DOCUMENTS → DOCS CAB avec brouillon
+                if detected_intent == 'TRANSMET_DOCUMENTS':
+                    logger.info("  → Envoi documents détecté → DOCS CAB + brouillon")
 
-                # Message d'accusé réception
-                acknowledgment_html = f"""Bonjour {prenom},<br>
+                    # Extraire le prénom
+                    deal_name = deal_data.get('Deal_Name', '')
+                    prenom = 'Candidat'
+                    if deal_name:
+                        parts = deal_name.split()
+                        if len(parts) >= 3:
+                            prenom = parts[2].capitalize()
+                        elif len(parts) >= 1:
+                            prenom = parts[-1].capitalize()
+
+                    # Message d'accusé réception
+                    acknowledgment_html = f"""Bonjour {prenom},<br>
 <br>
 Nous avons bien reçu votre message et nous vous en remercions.<br>
 <br>
@@ -2418,55 +2425,80 @@ Notre équipe va le traiter dans les plus brefs délais. Si des informations com
 Cordialement,<br>
 L'équipe CAB Formations"""
 
-                draft_created = False
-                transferred = False
+                    draft_created = False
+                    transferred = False
 
-                # Créer le brouillon
-                try:
-                    from config import settings
+                    # Créer le brouillon
+                    try:
+                        from config import settings
 
-                    ticket = self.desk_client.get_ticket(ticket_id)
-                    to_email = ticket.get('email', '')
-                    from_email = settings.zoho_desk_email_doc or settings.zoho_desk_email_default
+                        ticket = self.desk_client.get_ticket(ticket_id)
+                        to_email = ticket.get('email', '')
+                        from_email = settings.zoho_desk_email_doc or settings.zoho_desk_email_default
 
-                    logger.info(f"  📧 Draft DOCS CAB: from={from_email}, to={to_email}")
+                        logger.info(f"  📧 Draft DOCS CAB: from={from_email}, to={to_email}")
 
-                    draft_result = self.desk_client.create_ticket_reply_draft(
-                        ticket_id=ticket_id,
-                        content=acknowledgment_html,
-                        content_type='html',
-                        from_email=from_email,
-                        to_email=to_email
-                    )
+                        draft_result = self.desk_client.create_ticket_reply_draft(
+                            ticket_id=ticket_id,
+                            content=acknowledgment_html,
+                            content_type='html',
+                            from_email=from_email,
+                            to_email=to_email
+                        )
 
-                    if draft_result:
-                        logger.info("  ✅ Brouillon d'accusé réception créé")
-                        draft_created = True
-                        self._mark_brouillon_auto(ticket_id)
+                        if draft_result:
+                            logger.info("  ✅ Brouillon d'accusé réception créé")
+                            draft_created = True
+                            self._mark_brouillon_auto(ticket_id)
 
-                        # Transférer le ticket vers DOCS CAB
-                        try:
-                            self.desk_client.move_ticket_to_department(ticket_id, "DOCS CAB")
-                            logger.info("  ✅ Ticket transféré vers DOCS CAB")
-                            transferred = True
-                        except Exception as transfer_error:
-                            logger.warning(f"  ⚠️ Impossible de transférer vers DOCS CAB: {transfer_error}")
-                except Exception as e:
-                    logger.error(f"  ❌ Erreur création brouillon DOCS CAB: {e}")
+                            # Transférer le ticket vers DOCS CAB
+                            try:
+                                self.desk_client.move_ticket_to_department(ticket_id, "DOCS CAB")
+                                logger.info("  ✅ Ticket transféré vers DOCS CAB")
+                                transferred = True
+                            except Exception as transfer_error:
+                                logger.warning(f"  ⚠️ Impossible de transférer vers DOCS CAB: {transfer_error}")
+                    except Exception as e:
+                        logger.error(f"  ❌ Erreur création brouillon DOCS CAB: {e}")
 
-                return {
-                    'success': True,
-                    'workflow_stage': 'STOPPED_DOCS_CAB',
-                    'reason': 'Deal VTC classique (non-Uber) - Transféré vers DOCS CAB',
-                    'ticket_id': ticket_id,
-                    'deal_id': deal_id,
-                    'deal_name': deal_data.get('Deal_Name', 'N/A'),
-                    'deal_amount': deal_data.get('Amount', 0),
-                    'transferred_to': 'DOCS CAB' if transferred else None,
-                    'draft_created': draft_created,
-                    'draft_content': acknowledgment_html if draft_created else None,
-                    'crm_updated': False
-                }
+                    return {
+                        'success': True,
+                        'workflow_stage': 'STOPPED_DOCS_CAB',
+                        'reason': 'Deal VTC classique (non-Uber) + envoi documents - Transféré vers DOCS CAB',
+                        'ticket_id': ticket_id,
+                        'deal_id': deal_id,
+                        'deal_name': deal_data.get('Deal_Name', 'N/A'),
+                        'deal_amount': deal_data.get('Amount', 0),
+                        'transferred_to': 'DOCS CAB' if transferred else None,
+                        'draft_created': draft_created,
+                        'draft_content': acknowledgment_html if draft_created else None,
+                        'crm_updated': False
+                    }
+
+                # Autre intention → Contact sans brouillon
+                else:
+                    logger.info(f"  → Demande d'information ({detected_intent}) → Contact sans brouillon")
+
+                    transferred = False
+                    try:
+                        self.desk_client.move_ticket_to_department(ticket_id, "Contact")
+                        logger.info("  ✅ Ticket transféré vers Contact")
+                        transferred = True
+                    except Exception as transfer_error:
+                        logger.warning(f"  ⚠️ Impossible de transférer vers Contact: {transfer_error}")
+
+                    return {
+                        'success': True,
+                        'workflow_stage': 'STOPPED_CONTACT',
+                        'reason': f'Deal VTC classique (non-Uber) + demande info ({detected_intent}) - Transféré vers Contact',
+                        'ticket_id': ticket_id,
+                        'deal_id': deal_id,
+                        'deal_name': deal_data.get('Deal_Name', 'N/A'),
+                        'deal_amount': deal_data.get('Amount', 0),
+                        'transferred_to': 'Contact' if transferred else None,
+                        'draft_created': False,
+                        'crm_updated': False
+                    }
 
         # ================================================================
         # RÈGLE: Si pas de Date_Dossier_re_u → pas de dates/sessions
