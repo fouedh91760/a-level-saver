@@ -1430,7 +1430,9 @@ La date d'examen dans Zoho CRM est dans le passé. Le workflow a été stoppé p
             'reason': 'Ticket reste dans DOC',
             'transferred': False,
             'current_department': current_department,
-            'method': 'default'
+            'method': 'default',
+            'ticket_subject': subject,
+            'customer_message': last_thread_content,
         }
 
         # Rule #1: SPAM detection (simple keywords - pas besoin d'IA)

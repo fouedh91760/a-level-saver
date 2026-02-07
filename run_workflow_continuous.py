@@ -43,7 +43,16 @@ def log(msg):
     sys.stdout.flush()
 
 def sync_pending_from_zoho():
-    """Synchronise doc_tickets_pending.json avec Zoho Desk."""
+    """Synchronise doc_tickets_pending.json avec Zoho Desk.
+
+    Critères de sélection :
+    - Ticket OUVERT dans département DOC
+    - BROUILLON AUTO = non (pas encore traité ou client a répondu)
+
+    Note: On ne vérifie plus processed_ids car le champ BROUILLON AUTO
+    est la source de vérité. Si un client répond, le ticket est réouvert
+    et BROUILLON AUTO reste décoché → sera re-traité.
+    """
     log("Synchronisation avec Zoho Desk...")
 
     client = ZohoDeskClient()
@@ -61,25 +70,25 @@ def sync_pending_from_zoho():
         if len(tickets) < 100 or from_index > 2500:
             break
 
-    # Charger les tickets déjà traités
-    processed_ids = set()
-    if os.path.exists(PROCESSED_FILE):
-        with open(PROCESSED_FILE, 'r', encoding='utf-8') as f:
-            processed = json.load(f)
-            processed_ids = {p['id'] for p in processed}
-
-    # Filtrer les tickets non traités
+    # Filtrer: uniquement les tickets où BROUILLON AUTO n'est PAS coché
     pending_tickets = []
     for t in all_doc_tickets:
-        if t.get('id') not in processed_ids:
-            pending_tickets.append({
-                'id': t.get('id'),
-                'ticketNumber': t.get('ticketNumber'),
-                'subject': t.get('subject'),
-                'email': t.get('email'),
-                'createdTime': t.get('createdTime'),
-                'status': t.get('status'),
-            })
+        # cf = custom fields, cf_brouillon_auto = true/false ou absent
+        cf = t.get('cf', {})
+        brouillon_auto = cf.get('cf_brouillon_auto', False)
+
+        # Si BROUILLON AUTO est coché (true), on skip
+        if brouillon_auto:
+            continue
+
+        pending_tickets.append({
+            'id': t.get('id'),
+            'ticketNumber': t.get('ticketNumber'),
+            'subject': t.get('subject'),
+            'email': t.get('email'),
+            'createdTime': t.get('createdTime'),
+            'status': t.get('status'),
+        })
 
     # Sauvegarder
     with open(PENDING_FILE, 'w', encoding='utf-8') as f:
@@ -189,6 +198,7 @@ def process_all_pending(workflow, cycle_num, delay_seconds=3.0):
             # Collecter pour batch results
             analysis = result.get('analysis_result', {})
             response = result.get('response_result', {})
+            triage = result.get('triage_result', {})
             results.append({
                 'ticket_id': ticket_id,
                 'success': success,
@@ -199,8 +209,9 @@ def process_all_pending(workflow, cycle_num, delay_seconds=3.0):
                 'crm_updated': result.get('crm_updated', False),
                 'error': result.get('error'),
                 # Contenu original et réponse pour analyse demande/réponse
-                'ticket_subject': analysis.get('ticket_subject', ''),
-                'customer_message': analysis.get('customer_message', ''),
+                # Fallback sur triage_result pour les tickets ROUTE/SPAM (analyse non faite)
+                'ticket_subject': analysis.get('ticket_subject', '') or triage.get('ticket_subject', ''),
+                'customer_message': analysis.get('customer_message', '') or triage.get('customer_message', ''),
                 'draft_content': response.get('final_response', '') or response.get('raw_response', ''),
             })
 
