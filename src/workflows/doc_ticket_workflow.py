@@ -562,6 +562,31 @@ L'équipe CAB Formations"""
                 result['success'] = True
                 return result
 
+            # Check if CMA NOTIFICATION (dossier incomplet / validé)
+            if triage_result.get('action') == 'CMA_NOTIFICATION':
+                cma_type = triage_result.get('cma_type', 'INCONNU')
+                logger.warning(f"🏛️ CMA NOTIFICATION ({cma_type}) → Clôture automatique")
+
+                # Note interne pour traçabilité
+                try:
+                    note = f"🏛️ Email CMA - {cma_type}\nClôturé automatiquement (notification CMA, pas d'action requise)."
+                    self.desk_client.add_ticket_comment(ticket_id, note, is_public=False)
+                except Exception as e:
+                    logger.warning(f"Erreur ajout note CMA: {e}")
+
+                result['workflow_stage'] = f'CLOSED_CMA_{cma_type}'
+                if auto_update_ticket:
+                    self.desk_client.update_ticket(ticket_id, {"status": "Closed"})
+                result['success'] = True
+                return result
+
+            # CMA email non catégorisé → reste dans DOC sans action
+            if triage_result.get('action') == 'CMA_OTHER':
+                logger.warning("🏛️ Email CMA non catégorisé → Reste dans DOC (pas de route, pas de clôture)")
+                result['workflow_stage'] = 'SKIPPED_CMA_OTHER'
+                result['success'] = True
+                return result
+
             # Check if DUPLICATE UBER 20€
             if triage_result.get('action') == 'DUPLICATE_UBER':
                 logger.warning("⚠️  DOUBLON UBER 20€ → Candidat a déjà bénéficié de l'offre")
@@ -839,6 +864,109 @@ Le dossier peut être repris sans frais supplémentaires auprès de la CMA."""
 
             # FEU VERT → Continue
             logger.info("✅ TRIAGE → FEU VERT (continue workflow)")
+
+            # ================================================================
+            # NOTE CRM : Ancien deal payé CMA (doublon RECOVERABLE_PAID/REFUS_CMA)
+            # Si un ancien deal a déjà été payé à la CMA, ajouter une note interne
+            # avec les infos pour payer par chèque avec l'ancien numéro de dossier
+            # ================================================================
+            old_paid_deal = triage_result.get('old_paid_deal')
+            if old_paid_deal:
+                try:
+                    old_deal_id = old_paid_deal.get('id', '')
+                    old_deal_name = old_paid_deal.get('Deal_Name', '')
+                    old_evalbox = old_paid_deal.get('Evalbox', 'N/A')
+                    old_dup_type = triage_result.get('duplicate_type', '')
+                    crm_link = f"https://crm.zoho.com/crm/tab/Potentials/{old_deal_id}"
+
+                    note_content = f"""⚠️ ANCIEN DOSSIER CMA DÉJÀ PAYÉ
+
+Doublon détecté (type: {old_dup_type})
+Le candidat a un ancien dossier dont les frais CMA (241€) ont déjà été réglés.
+
+📋 Ancien deal: {old_deal_name}
+🔗 Lien: {crm_link}
+📊 Evalbox ancien dossier: {old_evalbox}
+
+👉 ACTION REQUISE: Payer le dossier CMA par chèque en indiquant l'ancien numéro de dossier Evalbox ({old_evalbox}).
+⚠️ NE PAS REPAYER en ligne les 241€ de frais d'examen."""
+
+                    self.desk_client.add_ticket_comment(
+                        ticket_id,
+                        note_content,
+                        is_public=False
+                    )
+                    logger.info(f"📝 Note CRM ajoutée: ancien deal payé {old_deal_name} (Evalbox: {old_evalbox})")
+                except Exception as e:
+                    logger.error(f"⚠️ Erreur ajout note ancien deal payé: {e}")
+
+            # ================================================================
+            # DEMANDE_ANNULATION: Détection d'insistance
+            # Si on a déjà répondu à une demande d'annulation (thread sortant
+            # contenant "non remboursable"), le candidat insiste → escalade
+            # ================================================================
+            detected_intent_go = triage_result.get('detected_intent', '')
+            if detected_intent_go == 'DEMANDE_ANNULATION':
+                # Vérifier les threads sortants pour détecter une réponse précédente
+                from src.utils.text_utils import get_clean_thread_content
+                annulation_already_answered = False
+                cma_payment_mentioned = False
+                try:
+                    threads = self.desk_client.get_all_threads_with_full_content(ticket_id)
+                    annulation_markers = ['non remboursable', 'non-remboursable', 'plus de 700']
+                    cma_markers = ['241', 'frais d\'inscription à la cma', 'frais cma']
+                    for thread in threads:
+                        if thread.get('direction') == 'out':
+                            thread_content = get_clean_thread_content(thread).lower()
+                            if any(marker in thread_content for marker in annulation_markers):
+                                annulation_already_answered = True
+                                if any(marker in thread_content for marker in cma_markers):
+                                    cma_payment_mentioned = True
+                                break
+                except Exception as e:
+                    logger.warning(f"⚠️ Erreur vérification insistance annulation: {e}")
+
+                if annulation_already_answered:
+                    logger.warning("🔴 DEMANDE_ANNULATION: INSISTANCE DÉTECTÉE → Escalade Lamia (priorité HIGH)")
+                    # Construire la note selon que la CMA a été payée ou non
+                    if cma_payment_mentioned:
+                        escalation_note = (
+                            "⚠️ INSISTANCE ANNULATION — CMA DÉJÀ PAYÉE\n\n"
+                            "Le candidat a déjà reçu une réponse mentionnant le paiement CMA (241€) "
+                            "et insiste pour annuler/être remboursé.\n\n"
+                            "→ ANNULATION DE L'EXAMEN : demander remboursement à la CMA en urgence.\n"
+                            "→ Ticket escaladé en priorité HIGH et assigné à Lamia pour traitement manuel."
+                        )
+                    else:
+                        escalation_note = (
+                            "⚠️ INSISTANCE ANNULATION/REMBOURSEMENT\n\n"
+                            "Le candidat a déjà reçu une réponse expliquant la politique de non-remboursement "
+                            "et insiste pour annuler/être remboursé.\n\n"
+                            "→ Ticket escaladé en priorité HIGH et assigné à Lamia pour traitement manuel."
+                        )
+
+                    # Mettre à jour le ticket: priorité HIGH + assignation Lamia
+                    LAMIA_AGENT_ID = '198709000096599317'
+                    if auto_update_ticket:
+                        try:
+                            self.desk_client.update_ticket(ticket_id, {
+                                'priority': 'High',
+                                'assigneeId': LAMIA_AGENT_ID,
+                            })
+                            self.desk_client.add_ticket_comment(
+                                ticket_id,
+                                escalation_note,
+                                is_public=False
+                            )
+                            logger.info("  ✅ Ticket mis à jour: priorité HIGH + assigné à Lamia")
+                        except Exception as e:
+                            logger.error(f"  ❌ Erreur mise à jour ticket: {e}")
+
+                    result['workflow_stage'] = 'ESCALATED_ANNULATION_INSISTENCE'
+                    result['escalated_to'] = 'Lamia Serbouty'
+                    result['cma_payment_at_risk'] = cma_payment_mentioned
+                    result['success'] = True
+                    return result
 
             # ================================================================
             # STEP 2: AGENT ANALYSTE (6-source data extraction)
@@ -1445,6 +1573,75 @@ La date d'examen dans Zoho CRM est dans le passé. Le workflow a été stoppé p
             logger.info("🚫 SPAM détecté → Clôturer sans réponse")
             return triage_result
 
+        # Rule #1.5: CMA notification detection (dossier incomplet / validé)
+        # Les CMA envoient des notifications sur l'état des dossiers ExamT3P.
+        # On vérifie le FROM du thread le plus récent (pas ticket.email qui peut être
+        # un forward client). Si le thread le plus récent est d'un client → pas CMA.
+        cma_email_domains = ['@cma-', '@cmar-', '@cm-', '@cma.']
+
+        # Identifier le FROM du thread le plus récent (= premier dans la liste, API newest first)
+        most_recent_from = ''
+        for _th in threads:
+            if _th.get('direction') == 'in' and _th.get('status') != 'DRAFT':
+                most_recent_from = (_th.get('fromEmailAddress') or '').lower()
+                break
+
+        is_cma_sender = bool(most_recent_from) and any(domain in most_recent_from for domain in cma_email_domains)
+
+        if is_cma_sender:
+            import re as _re
+            cma_type = None
+
+            # IMPORTANT: Nettoyer le contenu pour ne garder que le dernier message CMA
+            # Les blockquotes/citations d'anciens messages peuvent contenir "incomplet" d'un ancien échange
+            cma_thread = next((_th for _th in threads if _th.get('direction') == 'in' and _th.get('status') != 'DRAFT'), None)
+            cleaned_cma_content = get_clean_thread_content(cma_thread).lower() if cma_thread else last_thread_content.lower()
+            # Couper au premier marqueur de citation (réponses précédentes)
+            reply_markers = [' a écrit :', ' a écrit:', '-----message', '---------- forwarded', 'from:', 'de : ']
+            for marker in reply_markers:
+                pos = cleaned_cma_content.find(marker)
+                if pos > 50:  # Must be after some real content
+                    cleaned_cma_content = cleaned_cma_content[:pos]
+                    break
+            cma_combined = (subject + ' ' + cleaned_cma_content).lower()
+
+            # Exclusion: emails batch listant PLUSIEURS candidats (pas une notification individuelle)
+            batch_exclusion = ['plusieurs dossiers', 'tableau ci-dessous', 'liste des candidats']
+            is_batch = any(excl in cma_combined for excl in batch_exclusion)
+
+            # Pattern DOSSIER INCOMPLET
+            incomplet_patterns = [
+                r'dossier.*incomplet',
+                r"s'avère incomplet",
+                r'toujours en incomplet',
+            ]
+            if not is_batch and any(_re.search(p, cma_combined) for p in incomplet_patterns):
+                cma_type = 'DOSSIER_INCOMPLET'
+
+            # Pattern DOSSIER VALIDÉ / COMPLET
+            valide_patterns = [
+                r'dossier.*est complet',
+                r'dossier.*a été validé',
+                r'confirmons que votre dossier.*complet',
+            ]
+            if not cma_type and any(_re.search(p, cma_combined) for p in valide_patterns):
+                cma_type = 'DOSSIER_VALIDE'
+
+            if cma_type:
+                triage_result['action'] = 'CMA_NOTIFICATION'
+                triage_result['cma_type'] = cma_type
+                triage_result['reason'] = f'Email CMA ({most_recent_from}) - {cma_type}'
+                triage_result['method'] = 'cma_notification_filter'
+                logger.info(f"🏛️ CMA NOTIFICATION ({cma_type}) détectée → Clôture automatique")
+                return triage_result
+            else:
+                # CMA mail mais pas incomplet/validé → rester dans DOC, ne PAS router vers Contact
+                triage_result['action'] = 'CMA_OTHER'
+                triage_result['reason'] = f'Email CMA ({most_recent_from}) - contenu non catégorisé, reste dans DOC'
+                triage_result['method'] = 'cma_notification_filter'
+                logger.info(f"🏛️ Email CMA détecté ({most_recent_from}) mais pas dossier incomplet/validé → reste dans DOC (pas de route Contact)")
+                return triage_result
+
         # Rule #2: Get deals from CRM for context
         linking_result = self.deal_linker.process({"ticket_id": ticket_id})
         all_deals = linking_result.get('all_deals', [])
@@ -1503,7 +1700,18 @@ La date d'examen dans Zoho CRM est dans le passé. Le workflow a été stoppé p
             "fonds de formation", "prise en charge",
         ]
 
-        content_to_check = (subject + ' ' + last_thread_content).lower()
+        # Nettoyer les métadonnées SalesIQ avant le check keywords
+        # (les chats SalesIQ incluent "Informations sur le visiteur" suivi de
+        # données techniques comme "prise en charge de java" qui causent des faux positifs)
+        clean_thread_content = last_thread_content
+        salesiq_markers = ['informations sur le visiteur', 'informations sur le visiteurmasquer']
+        for marker in salesiq_markers:
+            marker_idx = clean_thread_content.lower().find(marker)
+            if marker_idx != -1:
+                clean_thread_content = clean_thread_content[:marker_idx].strip()
+                break
+
+        content_to_check = (subject + ' ' + clean_thread_content).lower()
         is_non_uber_registration = any(kw in content_to_check for kw in non_uber_registration_keywords)
 
         # Si c'est une demande non-Uber ET il y a un doublon potentiel → Router vers Contact
@@ -1587,7 +1795,17 @@ La date d'examen dans Zoho CRM est dans le passé. Le workflow a été stoppé p
         # Rule #2.5: VÉRIFICATION DOUBLON UBER 20€
         # Si le candidat a déjà bénéficié de l'offre Uber 20€, il ne peut pas en bénéficier à nouveau
         # NOTE: Les demandes non-Uber (CPF, France Travail, etc.) sont gérées plus haut et routées vers Contact
+        # NOTE: Si le département a été recalculé vers Contact (ex: "épreuve pratique" détecté), router vers Contact
         if linking_result.get('has_duplicate_uber_offer'):
+            # Vérifier si le département recalculé indique un service hors-scope (Contact)
+            recalc_dept = linking_result.get('recommended_department', '')
+            if recalc_dept == 'Contact':
+                logger.info(f"📋 DOUBLON UBER détecté MAIS département recalculé vers Contact → Router vers Contact")
+                triage_result['action'] = 'ROUTE'
+                triage_result['target_department'] = 'Contact'
+                triage_result['reason'] = f"Doublon Uber mais demande hors-scope détectée (département recalculé: Contact)"
+                triage_result['method'] = 'duplicate_with_other_service'
+                return triage_result
             duplicate_deals = linking_result.get('duplicate_deals', [])
             logger.warning(f"⚠️ DOUBLON UBER 20€ DÉTECTÉ: {len(duplicate_deals)} opportunités 20€ GAGNÉ")
 
@@ -1597,52 +1815,81 @@ La date d'examen dans Zoho CRM est dans le passé. Le workflow a été stoppé p
             is_recoverable = duplicate_type in ['RECOVERABLE_REFUS_CMA', 'RECOVERABLE_NOT_PAID', 'RECOVERABLE_PAID']
 
             if is_recoverable:
-                # Doublon récupérable → proposer de reprendre l'inscription
-                logger.info(f"🟢 DOUBLON RÉCUPÉRABLE (type: {duplicate_type}) → Proposer reprise d'inscription")
-                triage_result['action'] = 'DUPLICATE_RECOVERABLE'
-                triage_result['reason'] = f"Doublon Uber détecté mais inscription récupérable (type: {duplicate_type})"
-                triage_result['method'] = 'duplicate_recovery'
-                triage_result['duplicate_deals'] = duplicate_deals
-                triage_result['duplicate_type'] = duplicate_type
-
-                # Logique de sélection de deal si 2 deals GAGNÉ
-                # Utiliser les infos retournées par deal_linking_agent
-                deal_to_work_on = linking_result.get('deal_to_work_on')
-                deal_to_disable = linking_result.get('deal_to_disable')
-                already_paid_to_cma = linking_result.get('already_paid_to_cma', False)
-
-                if deal_to_work_on:
-                    triage_result['selected_deal'] = deal_to_work_on
-                    triage_result['deal_to_work_on'] = deal_to_work_on
-                    triage_result['deal_to_disable'] = deal_to_disable
-                    triage_result['already_paid_to_cma'] = already_paid_to_cma
-                    logger.info(f"  🎯 Deal sélectionné: {deal_to_work_on.get('Deal_Name')}")
-                    if deal_to_disable:
-                        logger.info(f"  ❌ Deal à désactiver: {deal_to_disable.get('Deal_Name')}")
-                    if already_paid_to_cma:
-                        logger.warning(f"  ⚠️ FRAIS CMA DÉJÀ PAYÉS - Note à ajouter au ticket")
+                if duplicate_type == 'RECOVERABLE_NOT_PAID':
+                    # ============================================================
+                    # RECOVERABLE_NOT_PAID : Ancien deal jamais payé CMA
+                    # → Ignorer le doublon, continuer le workflow normal sur le nouveau deal
+                    # ============================================================
+                    logger.info(f"🟢 DOUBLON IGNORÉ (RECOVERABLE_NOT_PAID) → Ancien deal jamais payé, workflow normal")
+                    triage_result['action'] = 'GO'
+                    triage_result['reason'] = "Doublon Uber détecté mais ancien deal jamais payé CMA - ignoré"
+                    triage_result['method'] = 'duplicate_not_paid_ignored'
+                    # Annuler le flag doublon pour que le workflow continue normalement
+                    linking_result['has_duplicate_uber_offer'] = False
+                    # Pas de return → le triage IA va s'exécuter normalement
                 else:
-                    triage_result['selected_deal'] = selected_deal
+                    # ============================================================
+                    # RECOVERABLE_PAID / RECOVERABLE_REFUS_CMA : Ancien deal payé CMA
+                    # → Continuer workflow normal mais ajouter note CRM avec infos ancien deal
+                    # ============================================================
+                    logger.info(f"🟡 DOUBLON AVEC CMA PAYÉE (type: {duplicate_type}) → Workflow normal + note CRM")
+                    triage_result['action'] = 'GO'
+                    triage_result['reason'] = f"Doublon Uber avec CMA payée ({duplicate_type}) - workflow normal + note"
+                    triage_result['method'] = 'duplicate_paid_continue'
+                    # Annuler le flag doublon pour que le workflow continue normalement
+                    linking_result['has_duplicate_uber_offer'] = False
+                    # Stocker les infos de l'ancien deal pour la note CRM
+                    deals_sorted = sorted(duplicate_deals, key=lambda d: d.get("Closing_Date", "") or "", reverse=True)
+                    old_deal = deals_sorted[-1] if len(deals_sorted) >= 2 else deals_sorted[0]
+                    triage_result['old_paid_deal'] = old_deal
+                    triage_result['old_paid_deal_evalbox'] = old_deal.get('Evalbox', 'N/A')
+                    triage_result['old_paid_deal_id'] = old_deal.get('id')
+                    triage_result['old_paid_deal_name'] = old_deal.get('Deal_Name')
+                    triage_result['duplicate_type'] = duplicate_type
+                    logger.info(f"  📋 Ancien deal payé: {old_deal.get('Deal_Name')} (Evalbox: {old_deal.get('Evalbox')})")
+                    # Pas de return → le triage IA va s'exécuter normalement
 
-                # Flags pour le template
-                triage_result['uber_doublon_recoverable'] = True
-                triage_result['duplicate_type_refus_cma'] = duplicate_type == 'RECOVERABLE_REFUS_CMA'
-                triage_result['duplicate_type_paid'] = duplicate_type in ['RECOVERABLE_PAID', 'RECOVERABLE_REFUS_CMA']
+            if not is_recoverable:
+                # Pas de demande CPF et pas récupérable → workflow doublon Uber standard (offre épuisée)
+                triage_result['action'] = 'DUPLICATE_UBER'
+                triage_result['reason'] = f"Candidat a déjà bénéficié de l'offre Uber 20€ ({len(duplicate_deals)} opportunités GAGNÉ)"
+                triage_result['method'] = 'duplicate_detection'
+                triage_result['duplicate_deals'] = duplicate_deals
+                triage_result['selected_deal'] = selected_deal
+                logger.info("🚫 DOUBLON UBER → Workflow spécifique (pas de gratuité)")
                 return triage_result
-
-            # Pas de demande CPF et pas récupérable → workflow doublon Uber standard (offre épuisée)
-            triage_result['action'] = 'DUPLICATE_UBER'
-            triage_result['reason'] = f"Candidat a déjà bénéficié de l'offre Uber 20€ ({len(duplicate_deals)} opportunités GAGNÉ)"
-            triage_result['method'] = 'duplicate_detection'
-            triage_result['duplicate_deals'] = duplicate_deals
-            triage_result['selected_deal'] = selected_deal
-            logger.info("🚫 DOUBLON UBER → Workflow spécifique (pas de gratuité)")
-            return triage_result
 
         # Rule #2.6: CANDIDAT NON TROUVÉ - Vérifier si demande d'info/CPF avant clarification
         # Si c'est un nouveau ticket et qu'on ne trouve pas le candidat dans le CRM,
         # vérifier d'abord si c'est une demande d'information (pas un dossier en cours)
         if linking_result.get('needs_clarification'):
+            # Vérifier d'abord si c'est un candidat Uber converti (email différent du CRM)
+            # Ces keywords indiquent une connaissance du parcours Uber → pas un prospect random
+            uber_converted_keywords = [
+                # Étape du parcours Uber
+                "test de sélection", "test de selection", "test d'entrée", "test d'entree",
+                # Référence directe à l'offre
+                "offre uber", "formation uber", "offre à 20", "offre a 20",
+                # Format spécifique formation Uber
+                "visio 40h", "40h", "40 heures", "formation 40h",
+                # Mention Uber dans contexte DOC
+                "uber",
+            ]
+            content_check_uber = (subject + ' ' + last_thread_content).lower()
+            is_uber_converted = any(kw in content_check_uber for kw in uber_converted_keywords)
+
+            if is_uber_converted:
+                # Candidat Uber converti avec email différent → NEEDS_CLARIFICATION (pas Contact)
+                logger.info(f"🎯 Candidat non trouvé MAIS mention 'test de sélection' → Uber converti avec email différent")
+                logger.info(f"   → NEEDS_CLARIFICATION pour retrouver le dossier")
+                triage_result['action'] = 'NEEDS_CLARIFICATION'
+                triage_result['reason'] = "Candidat Uber converti (test de sélection réussi) - email différent du CRM"
+                triage_result['method'] = 'uber_converted_different_email'
+                triage_result['clarification_reason'] = 'uber_converted_different_email'
+                triage_result['email_searched'] = linking_result.get('email')
+                logger.info("❓ CLARIFICATION → Demander coordonnées au candidat")
+                return triage_result
+
             # Keywords indiquant une demande d'information (pas un candidat existant)
             # Ces personnes doivent être redirigées vers Contact, pas DOC
             info_request_keywords = [
@@ -1661,7 +1908,8 @@ La date d'examen dans Zoho CRM est dans le passé. Le workflow a été stoppé p
             ]
 
             # Vérifier si le contenu indique une demande d'info
-            content_to_check = (subject + ' ' + last_thread_content).lower()
+            # Utiliser clean_thread_content (sans métadonnées SalesIQ) pour éviter les faux positifs
+            content_to_check = (subject + ' ' + clean_thread_content).lower()
             is_info_request = any(kw in content_to_check for kw in info_request_keywords)
 
             if is_info_request:
@@ -1705,8 +1953,8 @@ La date d'examen dans Zoho CRM est dans le passé. Le workflow a été stoppé p
                 "travail en hauteur", "échafaudage", "echafaudage",
                 "amiante", "ss3", "ss4",
                 "aipr", "autorisation d'intervention",
-                # Taxi (différent de VTC)
-                "examen taxi", "carte taxi", "licence taxi", "formation taxi",
+                # Taxi: retiré - les candidats VTC/Uber mentionnent souvent "taxi" (erreur inscription, examen taxi/vtc)
+                # Le mot "taxi" seul ne justifie pas un routage vers Contact
                 # Prospection commerciale / Pub / Recrutement
                 "devis pour", "partenariat", "collaboration commerciale",
                 "offre commerciale", "proposition commerciale",
@@ -1960,6 +2208,26 @@ RÉSUMÉ (2-3 phrases):"""
             else:
                 logger.info(f"  📋 TRANSMET_DOCUMENTS + Date_Dossier_reçu={date_dossier_recu} → Correction, route vers Refus CMA")
 
+        # ================================================================
+        # RÈGLE: Candidat Uber 20€ + mention "taxi" → rester en DOC
+        # Les candidats VTC inscrits par erreur à l'examen taxi se plaignent
+        # auprès de CAB. L'IA peut router vers Contact par erreur.
+        # Si le candidat a un deal Uber 20€, c'est une erreur interne → DOC gère.
+        # ================================================================
+        if (ai_triage['action'] == 'ROUTE'
+            and ai_triage['target_department'] == 'Contact'
+            and selected_deal
+            and selected_deal.get('Amount') == 20):
+            content_lower = (last_thread_content or '').lower() + ' ' + (subject or '').lower()
+            if 'taxi' in content_lower:
+                logger.info("  🚕 Candidat Uber 20€ + mention 'taxi' → Override IA: rester en DOC (erreur inscription interne)")
+                ai_triage['action'] = 'GO'
+                ai_triage['target_department'] = 'DOC'
+                ai_triage['reason'] = 'Candidat Uber 20€ mentionne taxi (erreur inscription) - traitement interne DOC'
+                triage_result['action'] = 'GO'
+                triage_result['target_department'] = 'DOC'
+                triage_result['reason'] = ai_triage['reason']
+
         # Determine action based on AI recommendation
         if ai_triage['action'] == 'ROUTE' and ai_triage['target_department'] != 'DOC':
             # Auto-transfer if enabled
@@ -2007,6 +2275,15 @@ RÉSUMÉ (2-3 phrases):"""
                 'ancien_dossier': bool
             }
         """
+        # Initialisation variables de confirmation date (évite UnboundLocalError si skip CAS A)
+        confirmed_exam_date_valid = False
+        confirmed_exam_date_id = None
+        confirmed_exam_date_info = None
+        confirmed_exam_date_unavailable = False
+        available_exam_dates_for_dept = []
+        confirmed_new_exam_date = None
+        session_year_error_corrected = None
+
         # Get ticket
         ticket = self.desk_client.get_ticket(ticket_id)
         email = ticket.get('email', '')
@@ -4151,11 +4428,12 @@ L'équipe CAB Formations"""
             'threads': analysis_result.get('threads', []),
 
             # Données extraites pour les placeholders (niveau racine)
-            # Filtrer next_dates: exclure la date actuelle et limiter à 1 alternative
+            # Filtrer next_dates: exclure la date actuelle
+            # DEMANDE_ANNULATION: proposer plus de dates pour alternative au candidat
             'next_dates': self._filter_next_dates(
                 date_examen_vtc_result.get('next_dates', []),
                 date_examen_vtc_result.get('date_examen_info', {}).get('Date_Examen', '') if date_examen_vtc_result.get('date_examen_info') else '',
-                limit=1
+                limit=5 if triage_result.get('detected_intent') == 'DEMANDE_ANNULATION' else 1
             ),
             'date_case': date_examen_vtc_result.get('case'),
             'date_cloture': date_examen_vtc_result.get('date_cloture'),
@@ -4316,11 +4594,11 @@ L'équipe CAB Formations"""
             except Exception as e:
                 logger.warning(f"  ⚠️ Erreur parsing date_cloture: {e}")
 
-        # LOAD next_dates si intention REPORT_DATE ou DEMANDE_REINSCRIPTION mais dates vides
+        # LOAD next_dates si intention nécessite des dates alternatives mais dates vides
         # (CAS 7, 9 et autres cas ne chargent pas next_dates par défaut)
         detected_intent = detected_state.context_data.get('detected_intent', '')
         next_dates = detected_state.context_data.get('next_dates', [])
-        needs_next_dates = detected_intent in ['REPORT_DATE', 'DEMANDE_REINSCRIPTION']
+        needs_next_dates = detected_intent in ['REPORT_DATE', 'DEMANDE_REINSCRIPTION', 'DEMANDE_ANNULATION']
         if needs_next_dates and not next_dates:
             from src.utils.date_examen_vtc_helper import get_next_exam_dates
             departement = detected_state.context_data.get('departement')
@@ -4398,16 +4676,104 @@ L'équipe CAB Formations"""
         # Enrichir le primary_state avec le contexte combiné (y compris warnings)
         detected_states.primary_state = detected_state  # Avec le context_data enrichi
 
-        # FILTRE FINAL: Exclure la date actuelle et limiter à 1 date alternative
+        # FILTRE FINAL: Exclure la date actuelle et limiter les dates alternatives
         # Utilise DateFilter centralisé
         current_exam_date = detected_state.context_data.get('date_examen_vtc_data', {}).get('date_examen_info', {})
         current_date_str = current_exam_date.get('Date_Examen', '')[:10] if current_exam_date and current_exam_date.get('Date_Examen') else ''
 
         raw_next_dates = detected_state.context_data.get('next_dates', [])
         if raw_next_dates and current_date_str:
-            filtered_next_dates = apply_final_filter(raw_next_dates, current_date_str, limit=1)
+            # DEMANDE_ANNULATION: proposer plus de dates pour que le candidat choisisse
+            final_limit = 5 if detected_intent in ['DEMANDE_ANNULATION', 'REPORT_DATE'] else 1
+            filtered_next_dates = apply_final_filter(raw_next_dates, current_date_str, limit=final_limit)
             detected_state.context_data['next_dates'] = filtered_next_dates
-            logger.info(f"  📅 Filtre final next_dates: {len(raw_next_dates)} → {len(filtered_next_dates)} (exclu {current_date_str})")
+            logger.info(f"  📅 Filtre final next_dates: {len(raw_next_dates)} → {len(filtered_next_dates)} (exclu {current_date_str}, limit={final_limit})")
+
+        # CROSS-DÉPARTEMENT: Si REPORT_DATE et aucune date alternative dans le département
+        # → chercher TOUTES les dates dans d'autres départements (avant ET après)
+        filtered_next_dates = detected_state.context_data.get('next_dates', [])
+        if detected_intent == 'REPORT_DATE' and not filtered_next_dates and current_date_str:
+            departement = detected_state.context_data.get('departement')
+            if departement and self.crm_client:
+                logger.info(f"  🔄 REPORT_DATE: Aucune date alternative dans dept {departement} → recherche cross-département (toutes dates)...")
+                from src.utils.date_examen_vtc_helper import get_next_exam_dates_any_department, DEPT_TO_REGION, REGION_TO_DEPTS
+                compte_existe = detected_state.context_data.get('compte_examt3p', False)
+
+                def _fmt_date(d):
+                    """YYYY-MM-DD → DD/MM/YYYY"""
+                    try:
+                        parts = str(d)[:10].split('-')
+                        return f"{parts[2]}/{parts[1]}/{parts[0]}" if len(parts) == 3 else str(d)
+                    except Exception:
+                        return str(d)
+
+                all_dates = get_next_exam_dates_any_department(self.crm_client, limit=30)
+                # Exclure les dates du département actuel et la date actuelle
+                other_dept_dates = [
+                    d for d in all_dates
+                    if str(d.get('Departement', '')) != str(departement)
+                    and d.get('Date_Examen', '')[:10] != current_date_str
+                ]
+
+                # Séparer par région
+                current_region = DEPT_TO_REGION.get(str(departement), 'Autre')
+                same_region_depts = set(REGION_TO_DEPTS.get(current_region, []))
+                same_region = []
+                other_region = []
+                today = datetime.now().date()
+
+                for d in other_dept_dates:
+                    dept = str(d.get('Departement', ''))
+                    cloture_str = d.get('Date_Cloture_Inscription', '')
+                    # Calculer jours jusqu'à clôture
+                    days_until = 999
+                    try:
+                        if 'T' in str(cloture_str):
+                            cloture_dt = datetime.fromisoformat(str(cloture_str).replace('Z', '+00:00')).date()
+                        else:
+                            cloture_dt = datetime.strptime(str(cloture_str)[:10], '%Y-%m-%d').date()
+                        days_until = (cloture_dt - today).days
+                    except Exception:
+                        pass
+                    if days_until < 7:
+                        continue  # Pas assez de temps
+
+                    # Formater pour le template
+                    exam_date_str = d.get('Date_Examen', '')[:10]
+                    enriched = {
+                        **d,
+                        'days_until_cloture': days_until,
+                        'is_urgent': days_until < 14,
+                        'region': DEPT_TO_REGION.get(dept, 'Autre'),
+                        'date_examen_formatted': _fmt_date(exam_date_str),
+                        'date_cloture_formatted': _fmt_date(str(cloture_str)[:10]),
+                    }
+                    if dept in same_region_depts:
+                        same_region.append(enriched)
+                    else:
+                        other_region.append(enriched)
+
+                same_region = same_region[:5]
+                other_region = other_region[:5]
+                all_options = same_region + other_region
+
+                cross_dept_data = {
+                    'same_region_options': same_region,
+                    'other_region_options': other_region,
+                    'has_same_region_options': bool(same_region),
+                    'has_other_region_options': bool(other_region),
+                    'requires_department_change_process': compte_existe,
+                    'current_region': current_region,
+                }
+
+                if all_options:
+                    detected_state.context_data['alternative_department_dates'] = all_options
+                    detected_state.context_data['cross_department_data'] = cross_dept_data
+                    detected_state.context_data['no_dates_in_own_dept'] = True
+                    logger.info(f"  ✅ {len(all_options)} date(s) cross-département trouvée(s) (region: {len(same_region)}, autres: {len(other_region)})")
+                else:
+                    detected_state.context_data['no_dates_in_own_dept'] = True
+                    logger.info(f"  ⚠️ Aucune date cross-département disponible non plus")
 
         template_result = self.template_engine.generate_response_multi(
             detected_states=detected_states,
@@ -4470,10 +4836,16 @@ L'équipe CAB Formations"""
         # Get proposed dates for validation
         proposed_dates = analysis_result.get('date_examen_vtc_result', {}).get('next_dates', [])
 
+        # Montants autorisés selon l'intention
+        allowed_amounts = None
+        if detected_intent == 'DEMANDE_ANNULATION':
+            allowed_amounts = [20]  # Template mentionne le prix de l'offre Uber 20€
+
         validation_result = self.response_validator.validate(
             response_text=response_text,
             state=detected_state,
             proposed_dates=proposed_dates,
+            allowed_amounts=allowed_amounts,
             template_used=template_result.get('template_used')
         )
 

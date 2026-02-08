@@ -468,14 +468,19 @@ intentions:
     tone: apologetic_reassuring
     escalation: true
 
-  DEMANDE_REMBOURSEMENT:
+  DEMANDE_ANNULATION:
     id: "I26"
-    description: "Demande de remboursement"
+    description: "Demande d'annulation, rétractation ou remboursement de l'offre Uber 20€"
     triggers:
       - "remboursement"
       - "rembourser"
       - "annuler inscription"
-    routing: Comptabilité
+      - "annuler"
+      - "rétractation"
+      - "désistement"
+      - "arrêter"
+      - "arnaque"
+    tone: empathetic_firm
 
   # --- Problèmes techniques ---
   SIGNALE_PAS_RECU_EMAIL:
@@ -2086,13 +2091,18 @@ matrix:
       - engagement_resolution
     escalation: true
 
-  "*:DEMANDE_REMBOURSEMENT":
-    template: "demande_remboursement.html"
-    routing:
-      department: "Comptabilité"
+  "*:DEMANDE_ANNULATION":
+    template: "response_master.html"
+    context_flags:
+      intention_demande_annulation: true
+      show_statut_section: false
+      # show_dates_section: dynamique (True si CMA payée, False sinon) - géré par template_engine.py
+      show_sessions_section: false
     blocks:
-      - accuse_reception
-      - transfert_comptabilite
+      - accuse_reception_annulation
+      - politique_non_remboursable
+      - valeur_offre
+      - alternatives
 
   "*:REMERCIEMENT":
     template: "remerciement.html"

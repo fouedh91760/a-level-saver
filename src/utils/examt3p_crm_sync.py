@@ -682,30 +682,20 @@ def sync_exam_date_from_examt3p(
     logger.info(f"  📊 Dates différentes: CRM={crm_date or 'VIDE'} → ExamT3P={examt3p_date}")
 
     # ================================================================
-    # 2b. VÉRIFIER RÈGLE DE BLOCAGE (VALIDE CMA + date ExamT3P passée)
+    # 2b. VÉRIFIER RÈGLE DE BLOCAGE
     # ================================================================
-    # Si le dossier est VALIDE CMA ET que la date ExamT3P est dans le passé,
-    # on NE DOIT PAS écraser la date CRM car c'est probablement une erreur
-    # de synchronisation (la CMA a validé pour une date future dans le CRM).
+    # Seul "Convoc CMA reçue" autorise l'écrasement de la date CRM par ExamT3P.
+    # Pour tous les autres statuts, le CRM est la source de vérité (auto-report, etc.)
+    # et ExamT3P peut contenir une date passée qui est un artefact.
     current_evalbox = deal_data.get('Evalbox', '')
 
-    # Vérifier si la date ExamT3P est dans le passé
-    examt3p_date_is_past = False
-    try:
-        from datetime import datetime
-        # examt3p_date est au format dd/mm/yyyy
-        date_obj = datetime.strptime(examt3p_date, "%d/%m/%Y")
-        examt3p_date_is_past = date_obj.date() < datetime.now().date()
-    except Exception:
-        pass
-
-    if current_evalbox == 'VALIDE CMA' and examt3p_date_is_past:
-        logger.warning(f"  🔒 BLOCAGE SYNC DATE: Evalbox=VALIDE CMA + date ExamT3P passée ({examt3p_date})")
+    if crm_date and current_evalbox != 'Convoc CMA reçue':
+        logger.info(f"  🔒 BLOCAGE SYNC DATE: Evalbox={current_evalbox!r} ≠ 'Convoc CMA reçue' → CRM protégé ({crm_date})")
         result['blocked'] = True
         result['blocked_reason'] = (
-            f"Evalbox=VALIDE CMA et date ExamT3P ({examt3p_date}) est passée. "
+            f"Evalbox={current_evalbox!r} n'est pas 'Convoc CMA reçue'. "
             f"La date CRM ({crm_date}) est protégée. "
-            f"Synchronisation bloquée pour éviter d'écraser une date future validée."
+            f"Seule une convocation CMA peut écraser la date CRM."
         )
         result['sync_performed'] = True
         return result

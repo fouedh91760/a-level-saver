@@ -781,6 +781,10 @@ class TemplateEngine:
                 context.get('compte_uber', False) and
                 context.get('eligible_uber', False)
             ),
+            # Timeline vérification éligibilité Uber (basée sur Date_Dossier_reçu)
+            # Utilisé dans partials/uber/eligibility_status.html
+            **self._compute_uber_eligibility_timeline(context, deal_data),
+
             # Frais d'examen : si "Oui", CAB paye les 241€ (Uber, partenariats, etc.)
             # Champ CRM: EXAM_INCLUS (picklist: Oui/Non/N/A)
             'exam_inclus': deal_data.get('EXAM_INCLUS', '') == 'Oui',
@@ -938,6 +942,9 @@ class TemplateEngine:
             **self._extract_cross_department_data(context),
             'cross_department_data': context.get('cross_department_data', {}),
 
+            # Cross-department fallback for REPORT_DATE when dept has no alternatives
+            'no_dates_in_own_dept': context.get('no_dates_in_own_dept', False),
+
             # Early date request flags (DEMANDE_DATE_PLUS_TOT)
             'has_earlier_options': context.get('has_earlier_options', False),
             'no_earlier_dates_available': context.get('no_earlier_dates_available', False),
@@ -987,6 +994,23 @@ class TemplateEngine:
             # Choix remboursement CMA (pour ERREUR_PAIEMENT_CMA)
             'remboursement_cma_choice_remboursement': intent_context.get('remboursement_cma_choice') == 'remboursement',
             'remboursement_cma_choice_conserver': intent_context.get('remboursement_cma_choice') == 'conserver',
+
+            # Motif annulation (pour DEMANDE_ANNULATION)
+            'cancellation_is_timing': intent_context.get('cancellation_reason') == 'timing',
+            'cancellation_is_retractation': intent_context.get('cancellation_reason') == 'retractation',
+            'cancellation_is_contestation': intent_context.get('cancellation_reason') == 'contestation',
+            # CMA déjà payée (Dossier Synchronisé, VALIDE CMA, Convoc CMA reçue, Refusé CMA)
+            # Note: Refusé CMA = CAB a payé 241€ puis la CMA a refusé des documents
+            'cma_already_paid': evalbox in ['Dossier Synchronisé', 'VALIDE CMA', 'Convoc CMA reçue', 'Refusé CMA'],
+            # Clôture passée ou non (pour DEMANDE_ANNULATION avec CMA payée)
+            # Refusé CMA a son propre flag (repositionné auto, pas de remboursement à mentionner)
+            'cma_paid_cloture_open': evalbox in ['Dossier Synchronisé', 'VALIDE CMA', 'Convoc CMA reçue'] and not context.get('cloture_passed', False),
+            'cma_paid_cloture_passed': evalbox in ['Dossier Synchronisé', 'VALIDE CMA', 'Convoc CMA reçue'] and context.get('cloture_passed', False),
+            # Refusé CMA = 241€ engagés, candidat repositionné sur prochaine date, peut encore décaler
+            'cma_refused_repositioned': evalbox == 'Refusé CMA',
+
+            # Préoccupation éligibilité (détectée par triage - toute intention)
+            'eligibility_concern': intent_context.get('eligibility_concern', False),
 
             # Permis probatoire (pour PERMIS_PROBATOIRE)
             'probation_completed': intent_context.get('probation_status') == 'completed',
@@ -1106,6 +1130,17 @@ class TemplateEngine:
             logger.info("📅 show_dates_section=False (confirmation détectée)")
         elif not is_report_intention:
             result['show_dates_section'] = not date_examen and bool(context.get('next_dates', []))
+
+        # DEMANDE_ANNULATION: show_dates_section dynamique
+        # - CMA payée + next_dates → True (proposer décalage comme alternative)
+        # - Sinon → False (pas de dates à proposer pour une annulation simple)
+        if context.get('primary_intent') == 'DEMANDE_ANNULATION':
+            if result.get('cma_already_paid') and bool(context.get('next_dates', [])):
+                result['show_dates_section'] = True
+                logger.info("📅 show_dates_section=True (DEMANDE_ANNULATION + CMA payée → proposer décalage)")
+            else:
+                result['show_dates_section'] = False
+                logger.info("📅 show_dates_section=False (DEMANDE_ANNULATION sans CMA payée)")
 
         # show_sessions_section - CONFIRMATION_SESSION et session existante ont priorité absolue
         # Si le candidat a confirmé sa session OU si une session existe déjà, on ne propose JAMAIS d'autres sessions
@@ -1251,6 +1286,9 @@ class TemplateEngine:
         'QUESTION_HEBERGEMENT': 'intention_question_hebergement',
         'PERMIS_PROBATOIRE': 'intention_permis_probatoire',
         'RECLAMATION': 'intention_reclamation',
+        'DEMANDE_ANNULATION': 'intention_demande_annulation',
+        # Rétrocompat: ancien nom
+        'DEMANDE_REMBOURSEMENT': 'intention_demande_annulation',
         # Intentions doublon
         'CONFIRMATION_DOUBLON': 'intention_confirmation_doublon',
         'REFUS_DOUBLON': 'intention_refus_doublon',
@@ -1300,6 +1338,7 @@ class TemplateEngine:
             # Intentions doublon
             'intention_confirmation_doublon': False,
             'intention_refus_doublon': False,
+            'intention_demande_annulation': False,
         }
 
         # Récupérer l'intention principale (rétrocompatibilité + nouveau format)
@@ -2170,6 +2209,91 @@ class TemplateEngine:
                 logger.warning(f"⚠️ Aucune session '{original_type}' trouvée avant examen, affichage de toutes les sessions")
 
         return all_sessions
+
+    def _compute_uber_eligibility_timeline(self, context: Dict, deal_data: Dict) -> Dict:
+        """
+        Calcule les flags de timeline pour la vérification d'éligibilité Uber.
+
+        Basé sur Date_Dossier_reçu :
+        - Pas de date → uber_no_docs_yet (soumettez vos documents)
+        - Date < 4 jours → uber_eligibility_pending (en cours de vérification)
+        - Date >= 4 jours → vérification terminée (résultat dans compte_uber/eligible_uber)
+
+        Returns:
+            Dict avec les flags pour le template
+        """
+        is_uber = context.get('is_uber_20_deal', False)
+        if not is_uber:
+            return {
+                'uber_no_docs_yet': False,
+                'uber_eligibility_pending': False,
+                'uber_eligibility_known': False,
+                'days_until_eligibility_check': 0,
+                'days_until_eligibility_text': '',
+            }
+
+        date_dossier_recu = context.get('date_dossier_recu') or deal_data.get('Date_Dossier_re_u')
+        compte_uber = context.get('compte_uber', False)
+        eligible_uber = context.get('eligible_uber', False)
+
+        # Si éligibilité déjà confirmée → pas besoin de timeline
+        if compte_uber and eligible_uber:
+            return {
+                'uber_no_docs_yet': False,
+                'uber_eligibility_pending': False,
+                'uber_eligibility_known': True,
+                'days_until_eligibility_check': 0,
+                'days_until_eligibility_text': '',
+            }
+
+        # Pas de documents soumis
+        if not date_dossier_recu:
+            return {
+                'uber_no_docs_yet': True,
+                'uber_eligibility_pending': False,
+                'uber_eligibility_known': False,
+                'days_until_eligibility_check': 4,
+                'days_until_eligibility_text': '4 jours après soumission de vos documents',
+            }
+
+        # Documents soumis — calculer le délai
+        try:
+            from src.utils.date_utils import parse_date_flexible
+            dossier_date = parse_date_flexible(date_dossier_recu)
+            today = datetime.now()
+            days_since = (today - dossier_date).days
+            days_remaining = max(0, 4 - days_since)
+
+            if days_remaining > 0:
+                if days_remaining == 1:
+                    text = 'demain'
+                else:
+                    text = f'dans {days_remaining} jour(s)'
+                return {
+                    'uber_no_docs_yet': False,
+                    'uber_eligibility_pending': True,
+                    'uber_eligibility_known': False,
+                    'days_until_eligibility_check': days_remaining,
+                    'days_until_eligibility_text': text,
+                }
+            else:
+                # J+4 passé mais pas encore coché → on sait (CAS D/E géré ailleurs)
+                return {
+                    'uber_no_docs_yet': False,
+                    'uber_eligibility_pending': False,
+                    'uber_eligibility_known': True,
+                    'days_until_eligibility_check': 0,
+                    'days_until_eligibility_text': '',
+                }
+        except Exception as e:
+            logger.warning(f"Erreur calcul timeline éligibilité Uber: {e}")
+            return {
+                'uber_no_docs_yet': False,
+                'uber_eligibility_pending': False,
+                'uber_eligibility_known': False,
+                'days_until_eligibility_check': 0,
+                'days_until_eligibility_text': '',
+            }
 
     def _format_statut(self, evalbox: str) -> str:
         """Formate le statut Evalbox pour affichage."""

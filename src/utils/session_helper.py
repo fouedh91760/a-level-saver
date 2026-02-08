@@ -905,6 +905,42 @@ def match_sessions_by_date_range(
         result['match_type'] = 'NO_MATCH'
         logger.info("  🎯 Match type: NO_MATCH")
 
+    # ================================================================
+    # FALLBACK: Si NO_MATCH avec un type spécifique, chercher l'autre type
+    # On ne doit JAMAIS laisser le candidat sans alternatives
+    # ================================================================
+    if result['match_type'] == 'NO_MATCH' and session_type:
+        other_type = 'soir' if session_type == 'jour' else 'jour'
+        logger.info(f"  🔄 Aucune session '{session_type}' disponible, recherche sessions '{other_type}' comme alternative...")
+
+        # Refaire la recherche sans filtre de type pour trouver les alternatives
+        fallback_result = match_sessions_by_date_range(crm_client, requested_dates, session_type=None)
+
+        # Récupérer les sessions de l'autre type comme alternatives
+        other_type_key_before = f'closest_before_{other_type}'
+        other_type_key_after = f'closest_after_{other_type}'
+
+        if fallback_result.get(other_type_key_before) or fallback_result.get(other_type_key_after):
+            result['no_sessions_of_requested_type'] = True
+            result['requested_type'] = session_type
+            result['alternative_type'] = other_type
+            result['alternative_type_label'] = 'Cours du soir' if other_type == 'soir' else 'Cours du jour'
+
+            # Proposer les sessions de l'autre type comme fallback
+            result['fallback_closest_before'] = fallback_result.get(other_type_key_before)
+            result['fallback_closest_after'] = fallback_result.get(other_type_key_after)
+
+            # Mettre aussi dans closest_before/after globaux pour le template
+            if not result['closest_before']:
+                result['closest_before'] = fallback_result.get(other_type_key_before)
+            if not result['closest_after']:
+                result['closest_after'] = fallback_result.get(other_type_key_after)
+
+            # Mettre à jour le match_type
+            if result['closest_before'] or result['closest_after']:
+                result['match_type'] = 'CLOSEST_FALLBACK'
+                logger.info(f"  ✅ Alternatives '{other_type}' trouvées comme fallback")
+
     return result
 
 

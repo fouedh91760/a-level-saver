@@ -1,12 +1,18 @@
 <!-- Partial: Reponse a l'intention ERREUR_PAIEMENT_CMA -->
 <!-- Candidat Uber 20€ qui a payé les frais CMA lui-même par erreur -->
+<!-- OU candidat qui pense avoir payé alors que c'est CAB (confusion reçu CMA) -->
 <!-- OU candidat qui se plaint du délai de paiement (mais paiement déjà fait) -->
 
 {{#if cab_paye_examen}}
-{{#if evalbox_dossier_synchronise}}
-<!-- CAS SPÉCIAL: Paiement DÉJÀ effectué par CAB, candidat se plaint du délai -->
-<!-- Ne rien afficher ici - la réclamation est traitée par le partial reclamation.html -->
-<!-- et le statut dossier_synchronise.html confirme que tout est en ordre -->
+{{#if cma_already_paid}}
+<!-- CAB a payé et le dossier est avancé (Dossier Synchronisé, VALIDE CMA, Refusé CMA, Convoc) -->
+<!-- Le candidat a probablement reçu un reçu de la CMA et pense que c'est lui qui a payé -->
+<b>Concernant les frais d'inscription à la CMA</b><br>
+<br>
+Nous souhaitons vous rassurer : dans le cadre de votre offre Uber x CAB Formations, <b>c'est CAB Formations qui a réglé vos frais d'inscription à la CMA (241€)</b>. Ce montant n'a pas été prélevé sur votre compte.<br>
+<br>
+Si vous avez reçu un reçu ou une confirmation de paiement de la part de la CMA, c'est normal : la CMA envoie ces confirmations car le paiement est effectué pour votre dossier, mais c'est bien nous qui en sommes à l'origine.<br>
+<br>
 {{else}}
 {{#if evalbox_pret_a_payer}}
 <!-- Paiement en cours de traitement par CAB -->

@@ -42,9 +42,45 @@ Votre examen est prévu le <b>{{date_examen}}</b>.<br>
 {{/if}}
 Vous recevrez le lien d'invitation à la visioconférence par email avant le début de la formation.<br>
 {{else}}
+{{#if has_date_range_request}}
+{{!-- CAS: Le candidat a demandé des dates spécifiques --}}
+Nous avons bien noté votre préférence{{#if preference_horaire_text}} pour les <b>{{preference_horaire_text}}</b>{{/if}}.<br>
+<br>
+{{#if is_exact_match}}
+{{!-- Match exact trouvé --}}
+Voici la session correspondant à vos dates :<br>
+{{else}}
+{{#if is_overlap_match}}
+{{!-- Chevauchement trouvé --}}
+Voici les sessions proches de vos dates :<br>
+{{else}}
+{{!-- Pas de match - proposer alternatives --}}
+Malheureusement, aucune session {{#if preference_horaire_text}}{{preference_horaire_text}}{{/if}} ne correspond à vos dates ({{requested_dates_raw}}).<br>
+<br>
+{{#if no_sessions_of_requested_type}}
+<b>Note :</b> Il n'y a actuellement pas de session <b>{{preference_horaire_text}}</b> disponible. Voici les alternatives en <b>{{alternative_type_label}}</b> :<br>
+{{else}}
+<b>Alternatives disponibles :</b><br>
+{{/if}}
+{{#if closest_session_before}}
+→ Avant vos dates : <b>{{closest_session_before.session_type_label}}</b> du {{closest_session_before.date_debut}} au {{closest_session_before.date_fin}}<br>
+{{/if}}
+{{#if closest_session_after}}
+→ Après vos dates : <b>{{closest_session_after.session_type_label}}</b> du {{closest_session_after.date_debut}} au {{closest_session_after.date_fin}}<br>
+{{/if}}
+{{#unless closest_session_before}}{{#unless closest_session_after}}
+Aucune session n'est disponible à proximité de vos dates pour le moment.<br>
+{{/unless}}{{/unless}}
+<br>
+Merci de nous indiquer si l'une de ces alternatives vous convient, ou si vous avez d'autres disponibilités.<br>
+{{/if}}
+{{/if}}
+{{else}}
+{{!-- CAS standard: pas de dates spécifiques --}}
 {{#if preference_horaire_text}}
 Nous avons bien noté votre préférence pour les <b>{{preference_horaire_text}}</b>.<br>
 Dès que votre session sera confirmée, vous recevrez un email avec le lien d'invitation à la visioconférence.<br>
+{{/if}}
 {{/if}}
 {{#if date_examen}}
 Votre examen est prévu le <b>{{date_examen}}</b>.<br>

@@ -426,8 +426,8 @@ class ResponseValidator:
                 # Extraire le nombre
                 amount = int(re.search(r'\d+', match).group())
 
-                # 20€ est toujours interdit
-                if amount == 20:
+                # 20€ est interdit sauf si explicitement autorisé (ex: DEMANDE_ANNULATION)
+                if amount == 20 and 20 not in default_allowed:
                     result.add_error(ValidationError(
                         'forbidden_amount',
                         "Montant 20€ interdit (ne pas mentionner le prix de l'offre)",
@@ -535,7 +535,7 @@ class ResponseValidator:
         context = state.context_data
         detected_intent = context.get('detected_intent')
 
-        if detected_intent in ['REPORT_DATE', 'REFUS_PARTAGE_CREDENTIALS', 'FORCE_MAJEURE_REPORT']:
+        if detected_intent in ['REPORT_DATE', 'REFUS_PARTAGE_CREDENTIALS', 'FORCE_MAJEURE_REPORT', 'DEMANDE_ANNULATION']:
             # Pour ces intentions, le template utilisé est souvent différent du template de l'état
             default_template = state.response_config.get('template', '')
             if default_template and template_used and default_template != template_used:

@@ -1318,6 +1318,20 @@ Emails alternatifs trouvés:"""
                                     logger.warning(f"  ⚠️ OFFRE DÉJÀ UTILISÉE: Resultat='{resultat}'")
 
                             # ==================================================================
+                            # CLASSIFICATION DU TYPE DE DOUBLON
+                            # Toujours classifier quand un doublon est détecté (email, téléphone, nom+CP)
+                            # ==================================================================
+                            if result["has_duplicate_uber_offer"] and not result.get("duplicate_type"):
+                                dup_deals = result.get("duplicate_deals", deals_20_won)
+                                if len(dup_deals) >= 2:
+                                    dup_sorted = sorted(dup_deals, key=lambda d: d.get("Closing_Date", "") or "", reverse=True)
+                                    dup = dup_sorted[-1]  # Le plus ancien = le doublon
+                                else:
+                                    dup = dup_deals[0] if dup_deals else None
+                                if dup:
+                                    result["duplicate_type"] = self._classify_duplicate_type(dup)
+
+                            # ==================================================================
                             # VÉRIFICATION FORMATION PAYANTE PLUS RÉCENTE
                             # Si le candidat a une formation payante (>20€) après l'offre Uber,
                             # on annule le flag doublon et on traite normalement
@@ -1386,6 +1400,21 @@ Emails alternatifs trouvés:"""
         # Si le deal est déjà lié via cf_opportunite, on a juste besoin de l'email pour le draft
         # Pas besoin de refaire la recherche de contacts/deals
         if deal_already_linked:
+            # Recalculer le département avec le contenu du thread (pas disponible au premier calcul)
+            # Nécessaire pour détecter les envois de documents (deals non-20€ → DOCS CAB)
+            if threads and result.get("all_deals"):
+                last_inbound = next((t for t in threads if t.get("direction") == "in" and t.get("status") != "DRAFT"), None)
+                if last_inbound:
+                    last_content = last_inbound.get("content") or last_inbound.get("plainText") or ""
+                    try:
+                        dept_with_content = BusinessRules.determine_department_from_deals_and_ticket(
+                            result["all_deals"], ticket, last_thread_content=last_content
+                        )
+                        if dept_with_content and dept_with_content != result.get("recommended_department"):
+                            logger.info(f"  📍 Département recalculé avec contenu thread: {dept_with_content} (était: {result.get('recommended_department')})")
+                            result["recommended_department"] = dept_with_content
+                    except Exception as e:
+                        logger.warning(f"  ⚠️ Erreur recalcul département: {e}")
             logger.info(f"  ✅ Deal déjà lié + email extrait ({email}) - retour anticipé")
             return result
 
@@ -1743,6 +1772,20 @@ Emails alternatifs trouvés:"""
                     result["offer_already_used"] = True  # Flag spécifique pour ce cas
                     logger.warning(f"⚠️ OFFRE DÉJÀ UTILISÉE: Le deal a Resultat='{resultat}' (examen déjà passé)")
                     logger.warning(f"   - {deal.get('Deal_Name')} (ID: {deal.get('id')}, Resultat: {resultat})")
+
+            # ==================================================================
+            # CLASSIFICATION DU TYPE DE DOUBLON
+            # Toujours classifier quand un doublon est détecté (email, téléphone, nom+CP)
+            # ==================================================================
+            if result["has_duplicate_uber_offer"] and not result.get("duplicate_type"):
+                dup_deals = result.get("duplicate_deals", deals_20_won)
+                if len(dup_deals) >= 2:
+                    dup_sorted = sorted(dup_deals, key=lambda d: d.get("Closing_Date", "") or "", reverse=True)
+                    dup = dup_sorted[-1]  # Le plus ancien = le doublon
+                else:
+                    dup = dup_deals[0] if dup_deals else None
+                if dup:
+                    result["duplicate_type"] = self._classify_duplicate_type(dup)
 
             # ==================================================================
             # VÉRIFICATION FORMATION PAYANTE PLUS RÉCENTE

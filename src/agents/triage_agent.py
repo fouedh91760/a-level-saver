@@ -76,7 +76,8 @@ RÈGLES DE TRIAGE:
      → C'est un envoi initial de documents, on traite dans DOC
 
 4. **ROUTE vers Contact** si:
-   - Demande d'information sur une formation NON Uber (formation classique, TAXI, etc.)
+   - Demande d'information sur une formation NON Uber (formation classique, CACES, etc.)
+   - ⚠️ "TAXI" n'est PAS un motif de routage vers Contact ! Les candidats VTC mentionnent souvent "taxi" (examen taxi/vtc, erreur inscription)
    - ⚠️ JAMAIS pour les prospects Uber 20€ même en EN ATTENTE - ils restent dans DOC !
    - Demande de suppression de données (RGPD, droit à l'oubli, destruction données)
      → Intention DEMANDE_SUPPRESSION_DONNEES → Note automatique: "Transférer à jc@cab-formations.fr (Référent RGPD)"
@@ -295,9 +296,24 @@ INTENTIONS POSSIBLES (par ordre de spécificité - préfère les intentions spé
   - remboursement_cma_choice: "remboursement" si le candidat dit "je choisis le remboursement", "option 1", "je préfère demander le remboursement"
   - remboursement_cma_choice: "conserver" si le candidat dit "je garde mon paiement", "option 2", "je préfère conserver"
   - remboursement_cma_choice: null si c'est la première détection (pas encore de choix)
-- DEMANDE_REMBOURSEMENT: Demande de remboursement (hors cas Uber paiement CMA)
-  Exemples: "remboursement formation", "annuler et rembourser", "je veux arrêter"
-  ⚠️ Ne pas utiliser si c'est un candidat Uber qui a payé les frais CMA → utiliser ERREUR_PAIEMENT_CMA
+- DEMANDE_ANNULATION: Demande d'annulation, rétractation ou remboursement de l'offre Uber 20€
+  Exemples: "je veux annuler", "remboursement", "rétractation", "je veux arrêter", "désistement",
+            "annuler mon inscription", "je ne veux plus", "c'est une arnaque", "à mon insu"
+  ⚠️ Action: **GO** (rester dans DOC) - NE PAS ROUTER vers Contact ou Comptabilité !
+  ⚠️ L'offre Uber 20€ est non remboursable - le template DOC gère la réponse appropriée
+  ⚠️ Ne pas utiliser si c'est un candidat Uber qui a payé les frais CMA 241€ → utiliser ERREUR_PAIEMENT_CMA
+  Pour DEMANDE_ANNULATION, détecter le motif (cancellation_reason):
+  - cancellation_reason: "timing" si indisponibilité/dates ne conviennent pas (ex: "pas disponible", "dates ne me conviennent pas", "pas présent")
+  - cancellation_reason: "retractation" si rétractation/désistement/veut arrêter (ex: "remboursement", "rétractation", "désistement", "ne veut plus")
+  - cancellation_reason: "contestation" si conteste l'offre/malentendu (ex: "arnaque", "mensonger", "à mon insu", "pensais que ça incluait tout")
+
+**Détection eligibility_concern (valable pour TOUTE intention, pas seulement DEMANDE_ANNULATION) :**
+  Mettre eligibility_concern: true si le candidat mentionne un problème d'éligibilité Uber :
+  - "compte Uber bloqué", "compte bloqué", "pas éligible", "non éligible"
+  - "on m'a dit que je ne peux pas m'inscrire", "inscription refusée", "inscription impossible"
+  - "compte Uber Eats bloqué/désactivé/suspendu"
+  - "pas le droit de s'inscrire", "interdit inscription"
+  Sinon: eligibility_concern: false
 - REMERCIEMENT: Simple remerciement sans autre demande
   Exemples: "merci beaucoup", "super merci", "c'est parfait merci"
 
@@ -471,6 +487,8 @@ Réponds UNIQUEMENT en JSON valide:
         "requested_location": "ville ou département tel que mentionné" | null,
         "requested_dept_code": "75" | "34" | ... | null,
         "remboursement_cma_choice": "remboursement" | "conserver" | null,
+        "cancellation_reason": "timing" | "retractation" | "contestation" | null,
+        "eligibility_concern": true | false,
         "communication_mode": "request" | "clarification" | "verification" | "follow_up",
         "references_previous_communication": true | false,
         "mentions_discrepancy": true | false,

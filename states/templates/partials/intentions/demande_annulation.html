@@ -1,0 +1,138 @@
+<!-- Partial: Reponse a l'intention DEMANDE_ANNULATION -->
+<!-- Candidat qui demande annulation, retractation ou remboursement de l'offre Uber 20€ -->
+<!-- L'offre est non remboursable - on explique la valeur et propose des alternatives -->
+<!-- Flags CMA: cma_paid_cloture_open, cma_paid_cloture_passed, cma_refused_repositioned -->
+
+{{#if cancellation_is_timing}}
+<!-- MOTIF TIMING: Le candidat ne peut pas etre present / dates ne conviennent pas -->
+<b>Concernant votre demande de changement</b><br>
+<br>
+Nous comprenons que les dates actuelles ne vous conviennent pas. Bonne nouvelle : il est tout à fait possible de <b>reporter votre formation et/ou votre date d'examen</b> sans frais supplémentaires.<br>
+<br>
+Votre inscription à l'offre Uber x CAB Formations reste active et vous pouvez choisir de nouvelles dates qui vous conviennent mieux.<br>
+<br>
+{{#if cma_refused_repositioned}}
+<b>Information importante :</b> nous avons déjà réglé vos frais d'inscription à la CMA (241€). Votre dossier est en cours de repositionnement sur la prochaine date d'examen disponible. Vous pouvez choisir une autre date parmi celles proposées ci-dessous si vous le souhaitez.<br>
+<br>
+{{else}}
+{{#if cma_paid_cloture_open}}
+<b>Information importante :</b> nous avons déjà réglé vos frais d'inscription à la CMA (241€) pour l'examen du <b>{{date_examen_formatted}}</b>. La date de clôture des inscriptions n'étant pas encore passée, nous pouvons décaler votre examen sur une prochaine date sans difficulté.<br>
+<br>
+{{/if}}
+{{#if cma_paid_cloture_passed}}
+<b>Information importante :</b> nous avons déjà réglé vos frais d'inscription à la CMA (241€) pour l'examen du <b>{{date_examen_formatted}}</b>. La date de clôture des inscriptions étant passée, <b>votre inscription à cet examen ne peut plus être modifiée</b>.<br>
+<br>
+Nous vous recommandons vivement de passer l'examen à cette date. Si vous ne vous présentez pas, les 241€ de frais CMA seront perdus et vous ne pourrez plus bénéficier de cette offre.<br>
+<br>
+{{/if}}
+{{/if}}
+<b>Merci de nous confirmer la date souhaitée</b> parmi les dates proposées ci-dessous, ou de nous indiquer vos préférences (cours du jour ou cours du soir, période souhaitée).<br>
+<br>
+
+{{else}}
+{{#if cancellation_is_contestation}}
+<!-- MOTIF CONTESTATION: Le candidat conteste l'offre / malentendu -->
+<b>Concernant votre demande</b><br>
+<br>
+Nous comprenons votre inquiétude et souhaitons clarifier le contenu de l'offre Uber x CAB Formations à 20€.<br>
+<br>
+<b>Ce que l'offre inclut :</b><br>
+<ul>
+<li>La <b>formation de préparation à l'examen théorique VTC</b> (en visioconférence + accès e-learning illimité)</li>
+<li>Les <b>frais d'inscription à l'examen CMA</b> (241€ pris en charge par CAB Formations)</li>
+<li>Les <b>frais de passage de l'examen pratique</b></li>
+<li>Un <b>accompagnement personnalisé</b> tout au long du processus</li>
+</ul>
+<b>Ce que l'offre n'inclut pas :</b><br>
+<ul>
+<li>La formation pratique (non obligatoire pour passer l'examen)</li>
+<li>La mise à disposition du véhicule double commande (obligatoire pour l'examen pratique, à votre charge)</li>
+</ul>
+Sans cette offre, le coût total serait de <b>plus de 700€</b> (241€ de frais CMA + formation théorique). L'offre à 20€ représente donc une économie très significative.<br>
+<br>
+Conformément aux conditions générales acceptées lors de l'inscription, <b>l'offre Uber x CAB Formations à 20€ est non remboursable</b>.<br>
+<br>
+{{#if cma_refused_repositioned}}
+<b>À noter :</b> nous avons déjà réglé vos frais d'inscription à la CMA (241€). Votre dossier est en cours de repositionnement sur la prochaine date d'examen. Si vous confirmez l'annulation définitive, <b>l'offre sera définitivement perdue</b> et les 241€ ne pourront pas être récupérés.<br>
+<br>
+<b>Merci de nous confirmer votre choix :</b><br>
+<ul>
+<li><b>Option 1 :</b> Choisir une nouvelle date d'examen parmi celles proposées ci-dessous (vous conservez tous les avantages de l'offre)</li>
+<li><b>Option 2 :</b> Confirmer l'annulation définitive (l'offre et les 241€ seront définitivement perdus)</li>
+</ul>
+{{else}}
+{{#if cma_paid_cloture_open}}
+<b>À noter :</b> nous avons déjà réglé vos frais d'inscription à la CMA (241€) pour l'examen du <b>{{date_examen_formatted}}</b>. Si vous confirmez l'annulation définitive, nous demanderons un remboursement à la CMA, mais <b>l'offre Uber à 20€ sera définitivement perdue</b> — elle n'est valable qu'une seule fois.<br>
+<br>
+<b>Merci de nous confirmer votre choix :</b><br>
+<ul>
+<li><b>Option 1 :</b> Choisir une nouvelle date d'examen parmi celles proposées ci-dessous (vous conservez tous les avantages de l'offre)</li>
+<li><b>Option 2 :</b> Confirmer l'annulation définitive (l'offre sera perdue et les 241€ remboursés à CAB Formations)</li>
+</ul>
+{{/if}}
+{{#if cma_paid_cloture_passed}}
+<b>À noter :</b> nous avons déjà réglé vos frais d'inscription à la CMA (241€) pour l'examen du <b>{{date_examen_formatted}}</b>. La date de clôture étant passée, <b>ces frais ne sont plus remboursables</b>. Si vous ne passez pas l'examen, les 241€ seront perdus et vous ne pourrez plus bénéficier de cette offre.<br>
+<br>
+{{/if}}
+{{/if}}
+{{#unless cma_already_paid}}
+Nous vous encourageons vivement à poursuivre votre parcours. Votre inscription est active et nous sommes là pour vous accompagner à chaque étape.<br>
+<br>
+{{/unless}}
+
+{{else}}
+<!-- MOTIF RETRACTATION (defaut): Le candidat veut se desister / rembourser -->
+<b>Concernant votre demande d'annulation</b><br>
+<br>
+Nous avons bien pris note de votre souhait. Nous comprenons que vos projets peuvent évoluer.<br>
+<br>
+Cependant, conformément aux conditions générales acceptées lors de l'inscription, <b>l'offre Uber x CAB Formations à 20€ est non remboursable</b>.<br>
+<br>
+Pour rappel, cette offre vous donne accès à :<br>
+<ul>
+<li>La <b>formation de préparation à l'examen théorique VTC</b> (valeur : plusieurs centaines d'euros)</li>
+<li>Les <b>frais d'inscription à l'examen CMA</b> de 241€ (pris en charge par CAB Formations)</li>
+<li>Les <b>frais de passage de l'examen pratique</b></li>
+</ul>
+Sans cette offre, le coût total serait de <b>plus de 700€</b>. Votre inscription à 20€ reste donc très avantageuse.<br>
+<br>
+{{#if cma_refused_repositioned}}
+<b>Information importante :</b> nous avons déjà réglé vos frais d'inscription à la CMA (241€). Votre dossier est en cours de repositionnement sur la prochaine date d'examen. Si vous confirmez l'annulation définitive, <b>l'offre et les 241€ seront définitivement perdus</b>.<br>
+<br>
+<b>Merci de nous confirmer votre choix :</b><br>
+<ul>
+<li><b>Option 1 :</b> Choisir une nouvelle date d'examen parmi celles proposées ci-dessous (vous conservez tous les avantages de l'offre)</li>
+<li><b>Option 2 :</b> Confirmer l'annulation définitive (l'offre et les 241€ seront définitivement perdus)</li>
+</ul>
+{{else}}
+{{#if cma_paid_cloture_open}}
+<b>Information importante :</b> nous avons déjà réglé vos frais d'inscription à la CMA (241€) pour l'examen du <b>{{date_examen_formatted}}</b>. Si vous confirmez l'annulation définitive, nous demanderons un remboursement à la CMA, mais <b>l'offre Uber à 20€ sera définitivement perdue</b> — elle n'est valable qu'une seule fois et vous ne pourrez plus jamais en bénéficier.<br>
+<br>
+<b>Merci de nous confirmer votre choix :</b><br>
+<ul>
+<li><b>Option 1 :</b> Choisir une nouvelle date d'examen parmi celles proposées ci-dessous (vous conservez tous les avantages de l'offre)</li>
+<li><b>Option 2 :</b> Confirmer l'annulation définitive (l'offre sera perdue et les 241€ remboursés à CAB Formations)</li>
+</ul>
+{{/if}}
+{{#if cma_paid_cloture_passed}}
+<b>Information importante :</b> nous avons déjà réglé vos frais d'inscription à la CMA (241€) pour l'examen du <b>{{date_examen_formatted}}</b>. La date de clôture des inscriptions étant passée, <b>ces frais ne sont plus remboursables</b>. Vous n'avez pas d'autre choix que de passer l'examen à cette date, sans quoi les 241€ seront définitivement perdus et vous ne pourrez plus bénéficier de cette offre.<br>
+<br>
+{{/if}}
+{{/if}}
+{{#unless cma_already_paid}}
+Votre inscription reste <b>active sans limite de durée</b>. Vous pouvez reprendre votre parcours à tout moment, choisir de nouvelles dates de formation et d'examen quand vous le souhaitez.<br>
+<br>
+Si vous souhaitez continuer, merci de nous indiquer vos disponibilités et nous vous accompagnerons pour la suite.<br>
+<br>
+{{/unless}}
+{{#if cma_already_paid}}
+{{#unless cma_paid_cloture_passed}}
+{{#unless cma_refused_repositioned}}
+Votre inscription reste active. Si c'est un problème de dates, vous pouvez choisir une nouvelle date parmi celles proposées ci-dessous sans perdre le bénéfice de l'offre.<br>
+<br>
+{{/unless}}
+{{/unless}}
+{{/if}}
+
+{{/if}}
+{{/if}}

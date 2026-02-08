@@ -56,7 +56,12 @@ DOCUMENT_KEYWORDS = [
     "attachment", "attaché", "attache",
     "je vous envoie ci-joint", "veuillez trouver ci-joint",
     "vous trouverez ci-joint", "je vous transmets",
-    # Note: "document" retiré - trop générique (faux positifs avec footers/HTML)
+    # Envoi de documents (formulations courantes)
+    "voici mes documents", "voici mes pièces", "voici mes pieces",
+    "je vous envoie les pièces", "je vous envoie les pieces",
+    "je vous envoie les documents", "les pièces demandées", "les pieces demandees",
+    "les pièces demandés", "les pieces demandes",
+    # Note: "document" seul retiré - trop générique (faux positifs avec footers/HTML)
 
     # Identité
     "pièce d'identité", "piece d'identite", "photo d'identité", "photo d'identite",
@@ -255,8 +260,8 @@ class BusinessRules:
                 "compte cpf",
                 "compte formation",
                 "mon compte formation",
-                # Taxi / autres métiers
-                "taxi",
+                # Taxi: retiré - les candidats VTC/Uber mentionnent souvent "taxi" (erreur inscription, examen taxi/vtc)
+                # Le mot "taxi" seul ne justifie pas un routage vers Contact
                 "ambulance",
                 "capacité de transport",
                 "capacite de transport"
@@ -274,8 +279,9 @@ class BusinessRules:
                 combined_content += cleaned_content.lower()
 
             # Si demande autre service détectée → Contact (malgré deal 20€)
-            if any(keyword in combined_content for keyword in other_service_keywords):
-                logger.info(f"🚦 Keyword autre service détecté dans contenu nettoyé → Contact")
+            matched_keyword = next((kw for kw in other_service_keywords if kw in combined_content), None)
+            if matched_keyword:
+                logger.info(f"🚦 Keyword autre service détecté dans contenu nettoyé: '{matched_keyword}' → Contact")
                 return "Contact"
 
             evalbox = selected_deal.get("Evalbox", "")
@@ -338,6 +344,23 @@ class BusinessRules:
         ]
 
         if other_deals_won_or_pending:
+            # Vérifier si le candidat ENVOIE des documents avant de router vers Contact
+            # Un candidat formation payante qui envoie ses docs doit aller vers DOCS CAB
+            ticket_subject = ticket.get("subject", "") if ticket else ""
+            has_doc_keywords = False
+            if ticket_subject and BusinessRules.is_document_submission(ticket_subject):
+                has_doc_keywords = True
+            if last_thread_content and BusinessRules.is_document_submission(last_thread_content):
+                has_doc_keywords = True
+            # "documents" dans le SUJET est un signal fiable d'envoi de docs
+            # (retiré du body car trop générique, mais dans un sujet c'est explicite)
+            if ticket_subject and "document" in ticket_subject.lower():
+                has_doc_keywords = True
+
+            if has_doc_keywords:
+                logger.info(f"📄 Deal non-20€ + envoi documents → DOCS CAB")
+                return "DOCS CAB"
+
             return "Contact"
 
         # Étape 6: Aucun deal pertinent trouvé

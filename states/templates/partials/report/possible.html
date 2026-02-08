@@ -46,6 +46,23 @@ Si vous souhaitez <b>modifier</b> votre date d'examen, un changement est encore 
 {{/each}}
 <br>
 {{/if}}
+{{#if no_dates_in_own_dept}}{{#if has_alternative_department_dates}}
+Il n'y a pas d'autre date disponible dans votre departement (CMA {{departement}}). Cependant, des dates sont disponibles dans d'autres departements :<br>
+{{#if cross_department_data.has_same_region_options}}
+<i>Dans votre region ({{cross_department_data.current_region}}) :</i><br>
+{{#each cross_department_data.same_region_options}}&nbsp;&nbsp;&rarr; <b>{{this.date_examen_formatted}}</b> &mdash; CMA {{this.Departement}} (cloture : {{this.date_cloture_formatted}}){{#if this.is_urgent}} <span style="color:#c0392b;">⚠️ cloture proche</span>{{/if}}<br>
+{{/each}}
+{{/if}}
+{{#if cross_department_data.has_other_region_options}}
+<i>Dans d'autres regions :</i><br>
+{{#each cross_department_data.other_region_options}}&nbsp;&nbsp;&rarr; <b>{{this.date_examen_formatted}}</b> &mdash; CMA {{this.Departement}} ({{this.region}}) (cloture : {{this.date_cloture_formatted}})<br>
+{{/each}}
+{{/if}}
+{{#if cross_department_data.requires_department_change_process}}
+<i>Note : Votre compte ExamT3P etant cree sur la CMA {{departement}}, un changement de departement necessite une demande via l'onglet Messagerie de <a href="https://www.exament3p.fr">exament3p.fr</a>.</i><br>
+{{/if}}
+<br>
+{{/if}}{{/if}}
 Merci de nous confirmer si vous souhaitez <b>conserver</b> la date du {{date_examen}} ou si vous preferez <b>changer</b> pour une autre option.<br>
 {{#if has_sessions_proposees}}
 <i>Note : Un changement de date entraine egalement un changement de session de formation.</i><br>
@@ -76,7 +93,22 @@ Merci de nous confirmer votre choix de date et session.<br>
 {{/each}}{{/if}}{{#if has_next_dates}}<br>
 <b>Prochaines dates disponibles :</b><br>
 {{#each next_dates}}&nbsp;&nbsp;&rarr; <b>{{this.date_examen_formatted}}</b> &mdash; {{this.Departement}} (cloture : {{this.date_cloture_formatted}})<br>
-{{/each}}{{/if}}<br>
+{{/each}}{{/if}}{{#if no_dates_in_own_dept}}{{#if has_alternative_department_dates}}<br>
+Il n'y a pas d'autre date disponible dans votre departement (CMA {{departement}}). Cependant, des dates sont disponibles dans d'autres departements :<br>
+{{#if cross_department_data.has_same_region_options}}
+<i>Dans votre region ({{cross_department_data.current_region}}) :</i><br>
+{{#each cross_department_data.same_region_options}}&nbsp;&nbsp;&rarr; <b>{{this.date_examen_formatted}}</b> &mdash; CMA {{this.Departement}} (cloture : {{this.date_cloture_formatted}}){{#if this.is_urgent}} <span style="color:#c0392b;">⚠️ cloture proche</span>{{/if}}<br>
+{{/each}}
+{{/if}}
+{{#if cross_department_data.has_other_region_options}}
+<i>Dans d'autres regions :</i><br>
+{{#each cross_department_data.other_region_options}}&nbsp;&nbsp;&rarr; <b>{{this.date_examen_formatted}}</b> &mdash; CMA {{this.Departement}} ({{this.region}}) (cloture : {{this.date_cloture_formatted}})<br>
+{{/each}}
+{{/if}}
+{{#if cross_department_data.requires_department_change_process}}
+<i>Note : Votre compte ExamT3P etant cree sur la CMA {{departement}}, un changement de departement necessite une demande via l'onglet Messagerie de <a href="https://www.exament3p.fr">exament3p.fr</a>.</i><br>
+{{/if}}
+{{/if}}{{/if}}<br>
 Merci de nous confirmer la nouvelle date souhaitee pour que nous puissions effectuer le changement.<br>
 <i>Note : Un changement de date entraine egalement un changement de session de formation. Nous vous proposerons les nouvelles sessions disponibles une fois votre choix confirme.</i><br>
 {{/if}}

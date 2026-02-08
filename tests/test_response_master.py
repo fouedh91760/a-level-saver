@@ -249,6 +249,313 @@ def test_response_master_uber_case():
     return all_passed
 
 
+def test_demande_annulation_refused_repositioned():
+    """Test DEMANDE_ANNULATION with Refusé CMA (repositioned)."""
+    from src.state_engine.pybars_renderer import PybarsRenderer
+
+    states_path = project_root / "states"
+    renderer = PybarsRenderer(states_path)
+    renderer.load_all_partials()
+
+    template_path = states_path / "templates" / "response_master.html"
+    template = template_path.read_text(encoding='utf-8')
+
+    # Context: Refusé CMA + retractation (default motif)
+    context = {
+        "prenom": "Nicolas",
+        "intention_demande_annulation": True,
+        "show_statut_section": False,
+        "show_sessions_section": False,
+        # CMA flags for Refusé CMA
+        "cma_already_paid": True,
+        "cma_paid_cloture_open": False,
+        "cma_paid_cloture_passed": False,
+        "cma_refused_repositioned": True,
+        # Cancellation reason
+        "cancellation_is_timing": False,
+        "cancellation_is_retractation": False,
+        "cancellation_is_contestation": False,
+        # Dates
+        "date_examen_formatted": "26/05/2026",
+        "show_dates_section": True,
+        "has_next_dates": True,
+        "next_dates": [
+            {
+                "date_examen_formatted": "26/05/2026",
+                "date_cloture_formatted": "08/05/2026",
+                "Departement": "94",
+                "is_first_of_dept": True,
+            },
+            {
+                "date_examen_formatted": "30/06/2026",
+                "date_cloture_formatted": "12/06/2026",
+                "Departement": "94",
+                "is_first_of_dept": True,
+            },
+        ],
+        # Disable other sections
+        "uber_cas_a": False, "uber_cas_b": False, "uber_cas_d": False, "uber_cas_e": False,
+        "uber_doublon": False, "uber_prospect": False,
+        "resultat_admis": False, "resultat_non_admis": False, "resultat_absent": False,
+        "report_bloque": False, "report_possible": False, "report_force_majeure": False,
+        "credentials_invalid": False, "credentials_inconnus": False,
+        "show_prospect_rappel": False, "has_required_action": False,
+    }
+
+    result = renderer.render(template, context)
+
+    checks = [
+        ("Greeting", "Bonjour Nicolas" in result),
+        ("241€ mentioned", "241" in result),
+        ("Repositionnement", "repositionnement" in result.lower()),
+        ("Option 1", "Option 1" in result),
+        ("Option 2", "Option 2" in result),
+        ("NO refund mention", "remboursement à la CMA" not in result),
+        ("Dates section", "26/05/2026" in result),
+        ("Non remboursable", "non remboursable" in result),
+    ]
+
+    print("\nTest: DEMANDE_ANNULATION - Refusé CMA (repositionné)")
+    print("-" * 50)
+
+    all_passed = True
+    for name, passed in checks:
+        status = "PASS" if passed else "FAIL"
+        print(f"  {status}: {name}")
+        if not passed:
+            all_passed = False
+
+    if not all_passed:
+        print("\nRendered output:")
+        print(result[:1500])
+        print("...")
+
+    return all_passed
+
+
+def test_demande_annulation_cloture_open():
+    """Test DEMANDE_ANNULATION with Dossier Synchronisé + clôture not yet passed."""
+    from src.state_engine.pybars_renderer import PybarsRenderer
+
+    states_path = project_root / "states"
+    renderer = PybarsRenderer(states_path)
+    renderer.load_all_partials()
+
+    template_path = states_path / "templates" / "response_master.html"
+    template = template_path.read_text(encoding='utf-8')
+
+    # Context: Dossier Synchronisé + clôture NOT passed + contestation motif
+    context = {
+        "prenom": "Maxime",
+        "intention_demande_annulation": True,
+        "show_statut_section": False,
+        "show_sessions_section": False,
+        # CMA flags for Dossier Synchronisé + clôture open
+        "cma_already_paid": True,
+        "cma_paid_cloture_open": True,
+        "cma_paid_cloture_passed": False,
+        "cma_refused_repositioned": False,
+        # Cancellation reason: contestation
+        "cancellation_is_timing": False,
+        "cancellation_is_retractation": False,
+        "cancellation_is_contestation": True,
+        # Dates
+        "date_examen_formatted": "30/06/2026",
+        "show_dates_section": True,
+        "has_next_dates": True,
+        "next_dates": [
+            {
+                "date_examen_formatted": "30/06/2026",
+                "date_cloture_formatted": "12/06/2026",
+                "Departement": "95",
+                "is_first_of_dept": True,
+            },
+        ],
+        # Disable other sections
+        "uber_cas_a": False, "uber_cas_b": False, "uber_cas_d": False, "uber_cas_e": False,
+        "uber_doublon": False, "uber_prospect": False,
+        "resultat_admis": False, "resultat_non_admis": False, "resultat_absent": False,
+        "report_bloque": False, "report_possible": False, "report_force_majeure": False,
+        "credentials_invalid": False, "credentials_inconnus": False,
+        "show_prospect_rappel": False, "has_required_action": False,
+    }
+
+    result = renderer.render(template, context)
+
+    checks = [
+        ("Greeting", "Bonjour Maxime" in result),
+        ("241€ mentioned", "241" in result),
+        ("Refund mention (cloture open)", "remboursement" in result.lower() or "remboursés" in result.lower()),
+        ("Option 1", "Option 1" in result),
+        ("Option 2", "Option 2" in result),
+        ("Contestation intro", "clarifier" in result.lower() or "contenu de l'offre" in result.lower()),
+        ("700€ value", "700" in result),
+        ("Non remboursable", "non remboursable" in result),
+        ("Dates section", "30/06/2026" in result),
+    ]
+
+    print("\nTest: DEMANDE_ANNULATION - Dossier Synchronisé + clôture ouverte")
+    print("-" * 50)
+
+    all_passed = True
+    for name, passed in checks:
+        status = "PASS" if passed else "FAIL"
+        print(f"  {status}: {name}")
+        if not passed:
+            all_passed = False
+
+    if not all_passed:
+        print("\nRendered output:")
+        print(result[:1500])
+        print("...")
+
+    return all_passed
+
+
+def test_demande_annulation_no_cma():
+    """Test DEMANDE_ANNULATION without CMA payment (early stage)."""
+    from src.state_engine.pybars_renderer import PybarsRenderer
+
+    states_path = project_root / "states"
+    renderer = PybarsRenderer(states_path)
+    renderer.load_all_partials()
+
+    template_path = states_path / "templates" / "response_master.html"
+    template = template_path.read_text(encoding='utf-8')
+
+    # Context: No CMA payment (early stage, e.g. Dossier créé)
+    context = {
+        "prenom": "Nathan",
+        "intention_demande_annulation": True,
+        "show_statut_section": False,
+        "show_sessions_section": False,
+        "show_dates_section": False,
+        # CMA flags: not paid
+        "cma_already_paid": False,
+        "cma_paid_cloture_open": False,
+        "cma_paid_cloture_passed": False,
+        "cma_refused_repositioned": False,
+        # Cancellation reason: default retractation
+        "cancellation_is_timing": False,
+        "cancellation_is_retractation": False,
+        "cancellation_is_contestation": False,
+        # No dates for simple annulation
+        "has_next_dates": False,
+        # Disable other sections
+        "uber_cas_a": False, "uber_cas_b": False, "uber_cas_d": False, "uber_cas_e": False,
+        "uber_doublon": False, "uber_prospect": False,
+        "resultat_admis": False, "resultat_non_admis": False, "resultat_absent": False,
+        "report_bloque": False, "report_possible": False, "report_force_majeure": False,
+        "credentials_invalid": False, "credentials_inconnus": False,
+        "show_prospect_rappel": False, "has_required_action": False,
+    }
+
+    result = renderer.render(template, context)
+
+    checks = [
+        ("Greeting", "Bonjour Nathan" in result),
+        ("Non remboursable", "non remboursable" in result),
+        ("700€ value", "700" in result),
+        ("Active inscription", "active" in result.lower()),
+        ("NO Option 1/2 (no CMA)", "Option 1" not in result),
+        ("NO repositionnement", "repositionnement" not in result.lower()),
+    ]
+
+    print("\nTest: DEMANDE_ANNULATION - Pas de CMA payée (stade précoce)")
+    print("-" * 50)
+
+    all_passed = True
+    for name, passed in checks:
+        status = "PASS" if passed else "FAIL"
+        print(f"  {status}: {name}")
+        if not passed:
+            all_passed = False
+
+    if not all_passed:
+        print("\nRendered output:")
+        print(result[:1500])
+        print("...")
+
+    return all_passed
+
+
+def test_demande_annulation_timing():
+    """Test DEMANDE_ANNULATION with timing motif (just wants to reschedule)."""
+    from src.state_engine.pybars_renderer import PybarsRenderer
+
+    states_path = project_root / "states"
+    renderer = PybarsRenderer(states_path)
+    renderer.load_all_partials()
+
+    template_path = states_path / "templates" / "response_master.html"
+    template = template_path.read_text(encoding='utf-8')
+
+    # Context: CMA paid + timing motif (dates don't work)
+    context = {
+        "prenom": "Ahmed",
+        "intention_demande_annulation": True,
+        "show_statut_section": False,
+        "show_sessions_section": False,
+        # CMA flags: paid, cloture open
+        "cma_already_paid": True,
+        "cma_paid_cloture_open": True,
+        "cma_paid_cloture_passed": False,
+        "cma_refused_repositioned": False,
+        # Cancellation reason: timing
+        "cancellation_is_timing": True,
+        "cancellation_is_retractation": False,
+        "cancellation_is_contestation": False,
+        # Dates
+        "date_examen_formatted": "26/05/2026",
+        "show_dates_section": True,
+        "has_next_dates": True,
+        "next_dates": [
+            {
+                "date_examen_formatted": "26/05/2026",
+                "date_cloture_formatted": "08/05/2026",
+                "Departement": "94",
+                "is_first_of_dept": True,
+            },
+        ],
+        # Disable other sections
+        "uber_cas_a": False, "uber_cas_b": False, "uber_cas_d": False, "uber_cas_e": False,
+        "uber_doublon": False, "uber_prospect": False,
+        "resultat_admis": False, "resultat_non_admis": False, "resultat_absent": False,
+        "report_bloque": False, "report_possible": False, "report_force_majeure": False,
+        "credentials_invalid": False, "credentials_inconnus": False,
+        "show_prospect_rappel": False, "has_required_action": False,
+    }
+
+    result = renderer.render(template, context)
+
+    checks = [
+        ("Greeting", "Bonjour Ahmed" in result),
+        ("Reporter mention", "reporter" in result.lower()),
+        ("Sans frais", "sans frais" in result.lower()),
+        ("241€ CMA info", "241" in result),
+        ("Confirmer date", "confirmer" in result.lower()),
+        ("NO non remboursable (timing)", "non remboursable" not in result),
+        ("Dates section", "26/05/2026" in result),
+    ]
+
+    print("\nTest: DEMANDE_ANNULATION - Timing (report de dates)")
+    print("-" * 50)
+
+    all_passed = True
+    for name, passed in checks:
+        status = "PASS" if passed else "FAIL"
+        print(f"  {status}: {name}")
+        if not passed:
+            all_passed = False
+
+    if not all_passed:
+        print("\nRendered output:")
+        print(result[:1500])
+        print("...")
+
+    return all_passed
+
+
 def run_all_tests():
     """Run all tests."""
     print("=" * 60)
@@ -259,6 +566,10 @@ def run_all_tests():
         test_response_master_statut_dossier,
         test_response_master_confirmation_session,
         test_response_master_uber_case,
+        test_demande_annulation_refused_repositioned,
+        test_demande_annulation_cloture_open,
+        test_demande_annulation_no_cma,
+        test_demande_annulation_timing,
     ]
 
     passed = 0

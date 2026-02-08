@@ -91,9 +91,25 @@
 {{/if}}
 
 <!-- =====================================================================
-     SECTION 1: RÉPONDRE À L'INTENTION DU CANDIDAT
-     (Masqué pour Uber CAS A - tout est déjà dans le partial cas_a_docs_manquants)
+     SECTION 0.5: STATUT ÉLIGIBILITÉ UBER (si pas encore vérifiée)
+     S'affiche uniquement quand le candidat exprime une préoccupation
+     sur son éligibilité (eligibility_concern détecté par le triage)
      ===================================================================== -->
+{{#if eligibility_concern}}
+{{#if uber_20}}
+{{#unless uber_eligible}}
+{{> partials/uber/eligibility_status}}
+{{/unless}}
+{{/if}}
+{{/if}}
+
+<!-- =====================================================================
+     SECTION 1: RÉPONDRE À L'INTENTION DU CANDIDAT
+     (Masqué pour Uber CAS A - SAUF DEMANDE_ANNULATION qui prime sur CAS A)
+     ===================================================================== -->
+{{#if intention_demande_annulation}}
+{{> partials/intentions/demande_annulation}}
+{{/if}}
 {{#unless uber_cas_a}}
 {{#if intention_reclamation}}
 {{> partials/intentions/reclamation}}
