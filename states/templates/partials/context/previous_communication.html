@@ -2,6 +2,12 @@
 <!-- Affiche un message de reconnaissance quand le candidat fait reference a un echange precedent -->
 <!-- NOTE: Desactive pour deadline_passed_auto_reschedule car le partial report_date gere deja l'intro -->
 {{#unless deadline_passed_auto_reschedule}}
+{{#if tm_is_relance}}
+<!-- ThreadMemory: relance detectee - le candidat a ecrit apres notre derniere reponse -->
+<b>Suite a votre message</b><br>
+Nous avons bien recu votre relance et nous excusons pour le delai de reponse. Voici les dernieres informations concernant votre dossier :<br>
+<br>
+{{else}}
 {{#if references_previous_communication}}
 {{#if is_clarification_mode}}
 <!-- Mode clarification: le candidat questionne une incoherence -->
@@ -13,6 +19,7 @@ Nous comprenons votre interrogation suite aux informations recues.<br>
 <!-- Mode follow-up: suite a un message precedent -->
 <b>Suite a notre precedent echange</b><br>
 <br>
+{{/if}}
 {{/if}}
 {{/if}}
 {{/if}}

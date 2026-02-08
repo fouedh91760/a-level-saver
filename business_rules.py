@@ -92,12 +92,14 @@ class BusinessRules:
 
         Les emails transférés de CMA contiennent souvent des footers avec "TAXI",
         "capacité de transport", etc. qui ne reflètent pas l'intention du candidat.
+        Les réponses incluent aussi le message précédent de CAB cité en dessous,
+        qui peut contenir "examen pratique" etc.
 
         Args:
             content: Contenu HTML ou texte de l'email
 
         Returns:
-            Contenu nettoyé sans les blockquotes/forwards
+            Contenu nettoyé sans les blockquotes/forwards/quoted replies
         """
         import re
 
@@ -107,17 +109,40 @@ class BusinessRules:
         # 1. Supprimer les <blockquote> HTML (emails transférés)
         content = re.sub(r'<blockquote[^>]*>.*?</blockquote>', '', content, flags=re.DOTALL | re.IGNORECASE)
 
-        # 2. Supprimer les sections "Begin forwarded message" et après
+        # 2. Supprimer les conteneurs Gmail de citation
+        content = re.sub(r'<div\s+class="gmail_quote"[^>]*>.*?</div>\s*$', '', content, flags=re.DOTALL | re.IGNORECASE)
+        content = re.sub(r'<div\s+class="gmail_extra"[^>]*>.*?</div>\s*$', '', content, flags=re.DOTALL | re.IGNORECASE)
+
+        # 3. Supprimer les conteneurs Outlook de citation
+        content = re.sub(r'<div\s+id="appendonsend"[^>]*>.*', '', content, flags=re.DOTALL | re.IGNORECASE)
+        content = re.sub(r'<div\s+id="divRplyFwdMsg"[^>]*>.*', '', content, flags=re.DOTALL | re.IGNORECASE)
+
+        # 4. Supprimer les sections "Begin forwarded message" et après
         content = re.sub(r'Begin forwarded message:.*', '', content, flags=re.DOTALL | re.IGNORECASE)
         content = re.sub(r'---------- Forwarded message ---------.*', '', content, flags=re.DOTALL | re.IGNORECASE)
         content = re.sub(r'Message transféré.*', '', content, flags=re.DOTALL | re.IGNORECASE)
 
-        # 3. Supprimer les lignes citées (commençant par >)
+        # 5. Supprimer les en-têtes de réponse français (coupent tout après)
+        # "Le 08/02/2026 à 10:30, doc@cab-formations.fr a écrit :"
+        content = re.sub(r'Le\s+\d{1,2}[/.-]\d{1,2}[/.-]\d{2,4}\s+[àa]\s+\d{1,2}[h:]\d{2}.*?(?:a\s+[eé]crit|wrote)\s*:.*', '', content, flags=re.DOTALL | re.IGNORECASE)
+
+        # 6. Supprimer les en-têtes Outlook FR/EN
+        # "De : doc@cab-formations.fr\nEnvoyé : ...\nÀ : ...\nObjet : ..."
+        content = re.sub(r'(?:De|From)\s*:.*?(?:Objet|Subject)\s*:.*', '', content, flags=re.DOTALL | re.IGNORECASE)
+
+        # 7. Supprimer "-----Message d'origine-----" / "-----Original Message-----"
+        content = re.sub(r'-{3,}\s*(?:Message d.origine|Original Message)\s*-{3,}.*', '', content, flags=re.DOTALL | re.IGNORECASE)
+
+        # 8. Supprimer les séparateurs Outlook (ligne de underscores)
+        content = re.sub(r'_{10,}.*', '', content, flags=re.DOTALL)
+
+        # 9. Supprimer les lignes citées (commençant par >)
         content = re.sub(r'^>.*$', '', content, flags=re.MULTILINE)
 
-        # 4. Supprimer les signatures email communes
+        # 10. Supprimer les signatures email communes
         content = re.sub(r'Sent from my iPhone.*', '', content, flags=re.DOTALL | re.IGNORECASE)
         content = re.sub(r'Envoyé depuis mon.*', '', content, flags=re.DOTALL | re.IGNORECASE)
+        content = re.sub(r'Envoy[eé] de mon.*', '', content, flags=re.DOTALL | re.IGNORECASE)
 
         return content
 

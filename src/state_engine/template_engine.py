@@ -1016,6 +1016,9 @@ class TemplateEngine:
             'probation_completed': intent_context.get('probation_status') == 'completed',
             'probation_pending': intent_context.get('probation_status') == 'pending',
 
+            # ===== THREAD MEMORY (mémoire persistante) =====
+            **self._extract_thread_memory_flags(context),
+
             # ===== MATCHING DATES SPÉCIFIQUES (DEMANDE_CHANGEMENT_SESSION) =====
             # Variables pour le template intelligent qui gère les demandes avec dates précises
             'has_date_range_request': context.get('has_date_range_request', False),
@@ -1201,6 +1204,19 @@ class TemplateEngine:
                 )
                 if session_exists_but_can_override:
                     logger.info("📚 show_sessions_section=True (formation manquée → proposer rafraîchissement)")
+
+        # ================================================================
+        # THREAD MEMORY: Suppression sections déjà communiquées
+        # RÈGLE: Ne s'applique QUE si la matrice n'a PAS défini le flag (Rule 11)
+        # ================================================================
+        thread_mem = context.get('thread_memory', {})
+        if thread_mem.get('has_history'):
+            if thread_mem.get('suppress_dates') and 'show_dates_section' not in context and result.get('show_dates_section'):
+                result['show_dates_section'] = False
+                logger.info("📅 show_dates_section=False (ThreadMemory: déjà communiqué, pas de changement)")
+            if thread_mem.get('suppress_sessions') and 'show_sessions_section' not in context and result.get('show_sessions_section'):
+                result['show_sessions_section'] = False
+                logger.info("📚 show_sessions_section=False (ThreadMemory: déjà communiqué, pas de changement)")
 
         return result
 
@@ -2085,6 +2101,40 @@ class TemplateEngine:
             'cma_contact_urgent': days_until_cloture < 5,
             'is_department_change': context.get('requires_department_change_process', False),
             'is_date_change': primary_intent == 'REPORT_DATE',
+        }
+
+    def _extract_thread_memory_flags(self, context: Dict[str, Any]) -> Dict[str, Any]:
+        """Extract ThreadMemory flags for template variables.
+
+        These flags allow templates to:
+        - Acknowledge relances (tm_is_relance)
+        - Show progression info (tm_evalbox_changed, tm_date_exam_changed)
+        - The suppression flags are applied separately in section visibility logic.
+        """
+        thread_mem = context.get('thread_memory', {})
+        if not thread_mem or not thread_mem.get('has_history'):
+            return {
+                'tm_has_history': False,
+                'tm_is_relance': False,
+                'tm_days_since_last': 0,
+                'tm_evalbox_changed': False,
+                'tm_evalbox_previous': '',
+                'tm_evalbox_current': '',
+                'tm_date_exam_changed': False,
+                'tm_date_exam_previous': '',
+                'tm_date_exam_current': '',
+            }
+
+        return {
+            'tm_has_history': True,
+            'tm_is_relance': thread_mem.get('is_relance', False),
+            'tm_days_since_last': thread_mem.get('days_since_last', 0),
+            'tm_evalbox_changed': thread_mem.get('evalbox_changed', False),
+            'tm_evalbox_previous': thread_mem.get('evalbox_previous', ''),
+            'tm_evalbox_current': thread_mem.get('evalbox_current', ''),
+            'tm_date_exam_changed': thread_mem.get('date_exam_changed', False),
+            'tm_date_exam_previous': thread_mem.get('date_exam_previous', ''),
+            'tm_date_exam_current': thread_mem.get('date_exam_current', ''),
         }
 
     def _extract_cross_department_data(self, context: Dict[str, Any]) -> Dict[str, Any]:

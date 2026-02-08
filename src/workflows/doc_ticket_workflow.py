@@ -904,6 +904,9 @@ Le candidat a un ancien dossier dont les frais CMA (241€) ont déjà été ré
             # DEMANDE_ANNULATION: Détection d'insistance
             # Si on a déjà répondu à une demande d'annulation (thread sortant
             # contenant "non remboursable"), le candidat insiste → escalade
+            # GARDE-FOU: Vérifier que le DERNIER message entrant parle encore
+            # d'annulation. Si le candidat a accepté la proposition, ce n'est
+            # plus une insistance.
             # ================================================================
             detected_intent_go = triage_result.get('detected_intent', '')
             if detected_intent_go == 'DEMANDE_ANNULATION':
@@ -911,10 +914,13 @@ Le candidat a un ancien dossier dont les frais CMA (241€) ont déjà été ré
                 from src.utils.text_utils import get_clean_thread_content
                 annulation_already_answered = False
                 cma_payment_mentioned = False
+                candidate_still_wants_annulation = False
                 try:
                     threads = self.desk_client.get_all_threads_with_full_content(ticket_id)
                     annulation_markers = ['non remboursable', 'non-remboursable', 'plus de 700']
                     cma_markers = ['241', 'frais d\'inscription à la cma', 'frais cma']
+
+                    # 1. Vérifier si on a déjà répondu à une demande d'annulation
                     for thread in threads:
                         if thread.get('direction') == 'out':
                             thread_content = get_clean_thread_content(thread).lower()
@@ -923,10 +929,38 @@ Le candidat a un ancien dossier dont les frais CMA (241€) ont déjà été ré
                                 if any(marker in thread_content for marker in cma_markers):
                                     cma_payment_mentioned = True
                                 break
+
+                    # 2. GARDE-FOU: Vérifier que le dernier message entrant parle
+                    # encore d'annulation/remboursement (pas une acceptation)
+                    if annulation_already_answered:
+                        annulation_keywords = [
+                            'annuler', 'annulation', 'résilier', 'résiliation',
+                            'remboursement', 'rembourser', 'remboursé',
+                            'rétractation', 'retractation', 'rétracter',
+                            'arrêter', 'abandonner', 'désinscrire',
+                        ]
+                        last_inbound = next(
+                            (t for t in threads if t.get('direction') == 'in'),
+                            None
+                        )
+                        if last_inbound:
+                            last_msg = get_clean_thread_content(last_inbound).lower()
+                            # Nettoyer le contenu cité pour ne garder que le message du candidat
+                            from business_rules import BusinessRules
+                            last_msg = BusinessRules.strip_forwarded_content(last_msg).lower()
+                            candidate_still_wants_annulation = any(
+                                kw in last_msg for kw in annulation_keywords
+                            )
+                            if not candidate_still_wants_annulation:
+                                logger.info("  ✅ DEMANDE_ANNULATION: Le dernier message du candidat ne mentionne plus l'annulation → pas d'insistance")
+                        else:
+                            # Pas de message entrant trouvé — ne pas escalader par sécurité
+                            candidate_still_wants_annulation = False
+
                 except Exception as e:
                     logger.warning(f"⚠️ Erreur vérification insistance annulation: {e}")
 
-                if annulation_already_answered:
+                if annulation_already_answered and candidate_still_wants_annulation:
                     logger.warning("🔴 DEMANDE_ANNULATION: INSISTANCE DÉTECTÉE → Escalade Lamia (priorité HIGH)")
                     # Construire la note selon que la CMA a été payée ou non
                     if cma_payment_mentioned:
@@ -2598,6 +2632,43 @@ Deux comptes ExamenT3P fonctionnels ont été détectés pour ce candidat, et le
             logger.info("  📚 Sessions deja proposees recemment (< 48h)")
 
         # ================================================================
+        # THREAD MEMORY - Mémoire persistante via notes CRM [META]
+        # ================================================================
+        thread_memory_result = None
+        if deal_id:
+            try:
+                from src.utils.thread_memory import analyze_thread_memory
+                deal_notes = self.crm_client.get_deal_notes(deal_id)
+
+                # Timeline API (v8) — field changes + human interventions
+                deal_timeline = None
+                try:
+                    deal_timeline = self.crm_client.get_deal_timeline(deal_id)
+                except Exception as e:
+                    logger.warning(f"  ⚠️ Timeline API failed (graceful degradation): {e}")
+
+                current_intent = triage_result.get('detected_intent', '')
+                thread_memory_result = analyze_thread_memory(
+                    notes=deal_notes,
+                    current_deal_data=deal_data,
+                    current_intent=current_intent,
+                    ticket_threads=threads_data,
+                    timeline=deal_timeline
+                )
+                if thread_memory_result and thread_memory_result.has_history:
+                    logger.info(f"  🧠 ThreadMemory: {len(thread_memory_result.previous_records)} interactions précédentes")
+                    if thread_memory_result.is_relance:
+                        logger.info(f"  ⚠️ RELANCE détectée (dernière réponse il y a {thread_memory_result.days_since_last}j, {thread_memory_result.unanswered_count} msg sans réponse)")
+                    if thread_memory_result.evalbox_changed:
+                        logger.info(f"  📈 Progression Evalbox: {thread_memory_result.evalbox_previous} → {thread_memory_result.evalbox_current}")
+                    if thread_memory_result.human_intervention_detected:
+                        logger.info(f"  👤 Intervention humaine détectée: {thread_memory_result.human_intervention_actor} → suppression reset")
+                else:
+                    logger.info("  🧠 ThreadMemory: première interaction")
+            except Exception as e:
+                logger.warning(f"  ⚠️ ThreadMemory failed (graceful degradation): {e}")
+
+        # ================================================================
         # DETECTION MODE COMMUNICATION CANDIDAT
         # ================================================================
         # Detecte si le candidat fait reference a une communication precedente
@@ -3676,6 +3747,8 @@ L'équipe CAB Formations"""
             'dates_proposed_recently': dates_proposed_recently,
             'sessions_proposed_recently': sessions_proposed_recently,
             'cab_proposals': cab_proposals,
+            # ThreadMemory - mémoire persistante (suppression sections, progression, relance)
+            'thread_memory': thread_memory_result,
             # Mode de communication du candidat (request/clarification/verification/follow_up)
             'communication_mode': communication_mode,
             'references_previous_communication': references_previous,
@@ -4568,6 +4641,32 @@ L'équipe CAB Formations"""
             # CRITIQUE: Contient session_date_debut, session_date_fin, session_type, etc.
             'enriched_lookups': analysis_result.get('enriched_lookups', {}),
         })
+
+        # ================================================================
+        # THREAD MEMORY: Injecter les flags dans le contexte du template
+        # ================================================================
+        thread_memory = analysis_result.get('thread_memory')
+        if thread_memory and thread_memory.has_history:
+            detected_state.context_data['thread_memory'] = {
+                'has_history': thread_memory.has_history,
+                'is_relance': thread_memory.is_relance,
+                'days_since_last': thread_memory.days_since_last,
+                'unanswered_count': thread_memory.unanswered_count,
+                'evalbox_changed': thread_memory.evalbox_changed,
+                'evalbox_previous': thread_memory.evalbox_previous,
+                'evalbox_current': thread_memory.evalbox_current,
+                'date_exam_changed': thread_memory.date_exam_changed,
+                'date_exam_previous': thread_memory.date_exam_previous,
+                'date_exam_current': thread_memory.date_exam_current,
+                'suppress_identifiants': thread_memory.suppress_identifiants,
+                'suppress_dates': thread_memory.suppress_dates,
+                'suppress_sessions': thread_memory.suppress_sessions,
+                'suppress_elearning': thread_memory.suppress_elearning,
+                'suppress_statut': thread_memory.suppress_statut,
+                'suppress_paiement': thread_memory.suppress_paiement,
+                'human_intervention_detected': thread_memory.human_intervention_detected,
+                'human_intervention_actor': thread_memory.human_intervention_actor,
+            }
 
         # RECALCULATE cloture_passed et can_modify_exam_date avec date_cloture enrichie
         # (le StateDetector n'a pas accès à date_cloture lors de la détection)

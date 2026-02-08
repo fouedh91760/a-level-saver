@@ -777,6 +777,12 @@ class ZohoCRMClient(ZohoAPIClient):
     def get_deal_notes(self, deal_id: str) -> Dict[str, Any]:
         """Get notes for a specific deal."""
         url = f"{settings.zoho_crm_api_url}/Deals/{deal_id}/Notes"
+        return self._make_request("GET", url, params={"fields": "Note_Title,Note_Content,Created_Time"})
+
+    def get_deal_timeline(self, deal_id: str) -> Dict[str, Any]:
+        """Get timeline for a deal (v8 API — shows field changes and actions)."""
+        base = settings.zoho_crm_api_url.replace('/v3', '/v8')
+        url = f"{base}/Deals/{deal_id}/__timeline"
         return self._make_request("GET", url)
 
     def add_deal_note(
