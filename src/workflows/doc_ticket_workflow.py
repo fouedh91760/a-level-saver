@@ -5222,6 +5222,7 @@ Génère maintenant la personnalisation (1-3 phrases):"""
         Crée une note CRM unique et consolidée avec toutes les infos du traitement.
 
         Format:
+        0. [META] ligne structurée parseable par ThreadMemory
         1. Lien vers le ticket Desk
         2. Résumé de la réponse envoyée au candidat
         3. Mises à jour CRM effectuées
@@ -5233,6 +5234,11 @@ Génère maintenant la personnalisation (1-3 phrases):"""
         import anthropic
 
         lines = []
+
+        # === LIGNE META (parseable par ThreadMemory) ===
+        meta_line = self._build_meta_line(ticket_id, triage_result, analysis_result, response_result)
+        lines.append(meta_line)
+        lines.append("")
 
         # === EN-TÊTE avec lien ticket ===
         lines.append(f"Ticket #{ticket_id}")
@@ -5310,6 +5316,130 @@ Génère maintenant la personnalisation (1-3 phrases):"""
             lines.append("✓ Aucune alerte")
 
         return "\n".join(lines)
+
+    def _build_meta_line(
+        self,
+        ticket_id: str,
+        triage_result: Dict,
+        analysis_result: Dict,
+        response_result: Dict
+    ) -> str:
+        """
+        Construit une ligne [META] structurée parseable par ThreadMemory.
+
+        Format:
+        [META] ticket=XXX | state=YYY | intent=ZZZ | evalbox=AAA | date_exam=DD/MM/YYYY | session=type DD/MM-DD/MM | sections=a,b,c
+
+        Cette ligne est conçue pour être :
+        - Parsée par regex (key=value séparés par ' | ')
+        - Ignorée visuellement par les humains
+        - Source de vérité pour savoir ce qui a été communiqué
+        """
+        from datetime import datetime
+
+        parts = []
+
+        # Ticket ID
+        parts.append(f"ticket={ticket_id}")
+
+        # Timestamp ISO
+        parts.append(f"ts={datetime.now().strftime('%Y-%m-%dT%H:%M')}")
+
+        # État détecté
+        state_engine = response_result.get('state_engine', {})
+        state_name = state_engine.get('state_name') or state_engine.get('state_id') or 'N/A'
+        parts.append(f"state={state_name}")
+
+        # Intention principale
+        primary_intent = (
+            response_result.get('primary_intent')
+            or triage_result.get('primary_intent')
+            or triage_result.get('detected_intent')
+            or 'N/A'
+        )
+        parts.append(f"intent={primary_intent}")
+
+        # Intentions secondaires
+        secondary = response_result.get('secondary_intents') or triage_result.get('secondary_intents', [])
+        if secondary:
+            parts.append(f"intents_sec={','.join(secondary)}")
+
+        # Evalbox
+        deal_data = analysis_result.get('deal_data', {})
+        evalbox = deal_data.get('Evalbox', 'N/A')
+        parts.append(f"evalbox={evalbox}")
+
+        # Date examen
+        date_result = analysis_result.get('date_examen_vtc_result', {})
+        date_info = date_result.get('date_examen_info', {}) if isinstance(date_result.get('date_examen_info'), dict) else {}
+        date_exam = date_info.get('Date_Examen', 'N/A')
+        parts.append(f"date_exam={date_exam}")
+
+        # Cas date
+        date_case = date_result.get('cas_detecte') or date_result.get('case')
+        if date_case:
+            parts.append(f"date_case={date_case}")
+
+        # Session
+        enriched = analysis_result.get('enriched_lookups', {})
+        session_start = enriched.get('session_date_debut', '')
+        session_end = enriched.get('session_date_fin', '')
+        session_type = enriched.get('session_type', '')
+        if session_start and session_end:
+            parts.append(f"session={session_type} {session_start}/{session_end}")
+
+        # Sections communiquées (déduites de la réponse)
+        sections = self._detect_sections_communicated(response_result)
+        if sections:
+            parts.append(f"sections={','.join(sections)}")
+
+        return f"[META] {' | '.join(parts)}"
+
+    def _detect_sections_communicated(self, response_result: Dict) -> list:
+        """
+        Détecte quelles sections ont été incluses dans la réponse,
+        en analysant le texte HTML généré.
+        """
+        response_text = response_result.get('response_text', '')
+        if not response_text:
+            return []
+
+        sections = []
+        text_lower = response_text.lower()
+
+        # Identifiants ExamT3P
+        if 'exament3p' in text_lower or 'identifiant' in text_lower:
+            sections.append('identifiants')
+
+        # Statut dossier
+        if 'statut' in text_lower or 'validé' in text_lower or 'en cours' in text_lower:
+            sections.append('statut')
+
+        # Convocation
+        if 'convocation' in text_lower:
+            sections.append('convocation')
+
+        # Dates d'examen
+        if 'date d' in text_lower or "date de l'examen" in text_lower or 'prochaine' in text_lower:
+            sections.append('dates')
+
+        # Sessions de formation
+        if 'session' in text_lower or 'cours du jour' in text_lower or 'cours du soir' in text_lower:
+            sections.append('sessions')
+
+        # E-learning
+        if 'e-learning' in text_lower or 'espace e-learning' in text_lower:
+            sections.append('elearning')
+
+        # Paiement
+        if 'paiement' in text_lower or '241' in response_text:
+            sections.append('paiement')
+
+        # Annulation/remboursement
+        if 'annulation' in text_lower or 'remboursement' in text_lower or 'rétractation' in text_lower:
+            sections.append('annulation')
+
+        return sections
 
     def _generate_note_content_with_ai(
         self,
